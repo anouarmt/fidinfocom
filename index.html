@@ -2263,6 +2263,8 @@ function edTTC(p){
   return ht+tva+timbre+debours;
 }
 async function comptaEditor(pid){
+  // nettoyer tout overlay résiduel qui pourrait intercepter les clics
+  ["fullmodal","mvmodal"].forEach(function(id){var m=document.getElementById(id);if(m)m.remove();});
   var cid=String(S.curClient),g=comptaGet(cid),p=g.pieces.find(function(x){return String(x.id)===String(pid);});if(!p)return;
   var isV=p.type==="vente";
   var crumb='Accueil / '+(isV?"Ventes":"Achats")+' / '+esc(p.date||"")+' · '+esc(p.numero||p.name||"")+' · '+fmtDH2(edTTC(p))+' DH';
@@ -2284,6 +2286,11 @@ async function comptaEditor(pid){
     +'<div id="fullprev" style="flex:1.7;min-width:340px;background:#fff;min-height:0"><div class="note" style="padding:20px">Chargement de la facture…</div></div>'
     +'</div></div>';
   var w=document.createElement("div");w.innerHTML=html;document.body.appendChild(w.firstChild);
+  var modalEl=document.getElementById("fullmodal");
+  if(modalEl){
+    modalEl.addEventListener("mousedown",function(e){ if(e.target===modalEl)comptaFullClose(); });
+    if(!window._edEscBound){ window._edEscBound=true; document.addEventListener("keydown",function(e){ if(e.key==="Escape"){var m=document.getElementById("fullmodal");if(m){m.remove();renderView();}} }); }
+  }
   try{ var url=await comptaSignedUrl(p); var fp=document.getElementById("fullprev"); if(fp)fp.innerHTML=previewHtml(url,p.name,p.pages); }
   catch(e){ var fp2=document.getElementById("fullprev"); if(fp2)fp2.innerHTML='<div class="note" style="padding:20px;color:#B5530A">Aperçu indisponible : '+esc(e.message||e)+'</div>'; }
 }
