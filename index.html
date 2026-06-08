@@ -2277,13 +2277,13 @@ async function comptaEditor(pid){
     +'<button class="chip" data-act="ed_adddoc" data-id="'+p.id+'">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Ajouter document</button>'
     +'<button class="chip" data-act="comptaprint_one" data-id="'+p.id+'">'+ic("printer","width:13px;height:13px;vertical-align:-2px")+' Imprimer</button>'
     +'<button class="chip" data-act="ed_save" data-id="'+p.id+'" style="background:#0E7A5F;color:#fff;border:0">💾 Enregistrer</button>'
-    +'<button class="chip" data-act="comptafull_close" style="background:#EBC873;border:0">✕ Fermer</button>'
+    +'<button class="chip" onclick="(function(){var m=document.getElementById(\'fullmodal\');if(m)m.remove();renderView();})()" style="background:#EBC873;border:0;cursor:pointer">✕ Fermer</button>'
     +'</div></div>'
     // corps : formulaire à gauche, facture à droite
-    +'<div style="flex:1;display:flex;min-height:0;flex-wrap:wrap-reverse">'
-    +'<div style="flex:1;min-width:340px;max-width:560px;background:#F7F4EC;padding:18px;overflow:auto;min-height:0" id="ed_form">'+editorBody(p)
+    +'<div style="flex:1;display:flex;min-height:0;flex-wrap:wrap-reverse;position:relative;z-index:1">'
+    +'<div style="flex:1;min-width:340px;max-width:560px;background:#F7F4EC;padding:18px;overflow:auto;min-height:0;position:relative;z-index:2;opacity:1" id="ed_form">'+editorBody(p)
     +'<button class="btn-primary" data-act="comptavalidate" data-id="'+p.id+'" style="margin-top:14px;width:100%">'+ic("check","width:15px;height:15px")+' Valider et passer au journal</button></div>'
-    +'<div id="fullprev" style="flex:1.7;min-width:340px;background:#fff;min-height:0"><div class="note" style="padding:20px">Chargement de la facture…</div></div>'
+    +'<div id="fullprev" style="flex:1.7;min-width:340px;background:#fff;min-height:0;position:relative;z-index:1"><div class="note" style="padding:20px">Chargement de la facture…</div></div>'
     +'</div></div>';
   var w=document.createElement("div");w.innerHTML=html;document.body.appendChild(w.firstChild);
   var modalEl=document.getElementById("fullmodal");
