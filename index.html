@@ -575,7 +575,9 @@ function vTVA(){
       +'<button class="btn-primary" data-act="tvaexport" style="margin-top:16px">'+ic("receipt","width:16px;height:16px")+' Exporter en Excel</button></div>'
       +'<div class="card" style="padding:20px;margin-top:16px"><div class="sectit mb3">'+ic("alert")+' Contrôles &amp; anomalies</div><div id="tvaAnoms">'+tvaAnomsHtml(d,calc)+'</div></div>'
     +'</div>'
-    +'</div></div>';
+    +'</div>'
+    +releveDeductionsHtml(c)
+    +'</div>';
 }
 function tvaAutofill(){
   if(!S.tvaSel.id||!S.tvaSel.period){showErr("Sélectionnez un dossier et une période.");return;}
@@ -587,6 +589,96 @@ function tvaAutofill(){
   var nV=auto.detail.ventes.length,nA=auto.detail.achats.length,nI=auto.detail.immo.length,nB=auto.detail.banque.length;
   renderView();
   showOk("Pré-rempli : "+nV+" vente(s), "+nA+" achat(s)"+(nI?", "+nI+" immo":"")+(nB?", "+nB+" commission(s) bancaire(s)":"")+".");
+}
+// ===== Relevé des déductions DGI (détaillé) =====
+var TVA_CODE={20:"20",14:"14",10:"10",7:"07"};
+function releveDeductionsRows(cid,period){
+  var g=comptaGet(cid),rows=[];
+  g.pieces.filter(function(p){return (p.type==="achat"||!p.type)&&pieceYear(p)===S.year&&pieceInPeriod(p,period)&&(+p.tva>0)&&!p.tvaNonRecup;}).forEach(function(p){
+    var ht=+p.ht||0,tva=+p.tva||0,ttc=+p.ttc||(ht+tva),taux=ht>0?Math.round(tva/ht*100):20;
+    var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
+    var regDate="",regMode="",cr="";
+    var op=(g.operations||[]).find(function(o){return (o.affectations||[]).some(function(a){return String(a.pieceId)===String(p.id);});});
+    if(op){regDate=op.date||"";regMode="Virement/Chèque";cr=op.reference||"";}
+    rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
+      if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:isImmo?"Immobilisation":"Achat/charge",
+      ttc:ttc,ht:ht,taux:taux,code:TVA_CODE[taux]||String(taux),tva:tva,prorata:100,recup:tva,
+      regDate:regDate,regMode:regMode,cr:cr,compteTva:isImmo?"34551000":"34552000"});
+  });
+  (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0;}).forEach(function(o){
+    var ht=+o.htComm||0,tva=+o.tvaComm||0,ttc=ht+tva;
+    rows.push({journal:"BQ",num:o.reference||"",date:o.date||"",tiers:o.libelle||"Banque",if_:"",ice:"",design:"Commission bancaire",ttc:ttc,ht:ht,taux:o.tauxComm||10,code:TVA_CODE[o.tauxComm||10]||"10",tva:tva,prorata:100,recup:tva,regDate:o.date||"",regMode:"Banque",cr:o.reference||"",compteTva:"34552000"});
+  });
+  rows.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
+  return rows;
+}
+function releveDeductionsHtml(c){
+  if(!c)return "";
+  var rows=releveDeductionsRows(c.id,S.tvaSel.period);
+  var soc=((S.flags[c.id]||{}).societe)||{};
+  var head='<tr style="background:#14201C;color:#fff;font-size:10.5px;text-align:left">'
+    +['N°','Journal','N° Facture','Date','Tiers','IF','ICE','Désignation','TTC','HT','Taux','Code','TVA','Prorata','À récup.','Date règl.','Mode','CR','Compte TVA'].map(function(h){return '<th style="padding:5px 6px;white-space:nowrap">'+h+'</th>';}).join("")+'</tr>';
+  var body=rows.map(function(r,i){
+    return '<tr style="border-bottom:1px solid #F0EDE3;font-size:11.5px">'
+      +'<td style="padding:4px 6px">'+(i+1)+'</td><td style="padding:4px 6px">'+esc(r.journal)+'</td><td style="padding:4px 6px">'+esc(r.num)+'</td>'
+      +'<td style="padding:4px 6px" class="mono">'+esc(r.date)+'</td><td style="padding:4px 6px;font-weight:600">'+esc(r.tiers)+'</td>'
+      +'<td style="padding:4px 6px">'+esc(r.if_)+'</td><td style="padding:4px 6px">'+esc(r.ice)+'</td><td style="padding:4px 6px">'+esc(r.design)+'</td>'
+      +'<td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.ttc)+'</td><td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.ht)+'</td>'
+      +'<td style="padding:4px 6px;text-align:center">'+r.taux+'%</td><td style="padding:4px 6px;text-align:center">'+esc(r.code)+'</td>'
+      +'<td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.tva)+'</td><td style="padding:4px 6px;text-align:center">'+r.prorata+'%</td>'
+      +'<td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.recup)+'</td>'
+      +'<td style="padding:4px 6px;color:'+(r.regDate?"#14201C":"#C0392B")+'" class="mono">'+(r.regDate||"non réglé")+'</td>'
+      +'<td style="padding:4px 6px">'+esc(r.regMode)+'</td><td style="padding:4px 6px">'+esc(r.cr)+'</td><td style="padding:4px 6px" class="mono">'+esc(r.compteTva)+'</td></tr>';
+  }).join("");
+  var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tHT=rows.reduce(function(a,r){return a+r.ht;},0),tTVA=rows.reduce(function(a,r){return a+r.tva;},0),tRec=rows.reduce(function(a,r){return a+r.recup;},0);
+  var foot='<tr style="border-top:2px solid #14201C;font-weight:700;background:#F7F4EC"><td colspan="8" style="padding:7px 6px">TOTAUX ('+rows.length+')</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTTC)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tHT)+'</td><td colspan="2"></td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTVA)+'</td><td></td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tRec)+'</td><td colspan="4"></td></tr>';
+  return '<div class="card" style="padding:20px;margin-top:16px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px"><div class="sectit">'+ic("book")+' Relevé des déductions — '+esc(c.dossier)+(soc.if?' · IF '+esc(soc.if):'')+' · '+esc(S.tvaSel.period||"")+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="releve_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button><button class="chip" data-act="releve_xml">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' XML EDI</button></div></div>'
+    +(rows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1100px">'+head+body+foot+'</table></div>':'<div class="note">Aucune déduction pour cette période. Validez des factures d\'achat et sélectionnez une période.</div>')
+    +'</div>';
+}
+async function releveExportExcel(){
+  var c=clients().find(function(x){return x.id===S.tvaSel.id;})||clients().find(function(x){return x.id===S.curClient;});if(!c){showErr("Sélectionnez un dossier.");return;}
+  var rows=releveDeductionsRows(c.id,S.tvaSel.period);
+  if(!rows.length){showErr("Aucune déduction à exporter.");return;}
+  setSync("saving");
+  try{
+    if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    var aoa=[["N°","Journal","N° Facture","Date Facture","Tiers","IF","ICE","Désignation","Montant TTC","Montant HT","Taux TVA","Code TVA","Montant TVA","Taux Prorata","Montant à récupérer","Date règlement","Mode règlement","CR","Compte TVA"]];
+    rows.forEach(function(r,i){ aoa.push([i+1,r.journal,r.num,r.date,r.tiers,r.if_,r.ice,r.design,r.ttc,r.ht,r.taux,r.code,r.tva,r.prorata,r.recup,r.regDate,r.regMode,r.cr,r.compteTva]); });
+    var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tHT=rows.reduce(function(a,r){return a+r.ht;},0),tTVA=rows.reduce(function(a,r){return a+r.tva;},0),tRec=rows.reduce(function(a,r){return a+r.recup;},0);
+    aoa.push(["","","","","","","","TOTAUX",tTTC,tHT,"","",tTVA,"",tRec,"","","",""]);
+    var ws=window.XLSX.utils.aoa_to_sheet(aoa);var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,"Releve deductions");
+    window.XLSX.writeFile(wb,"Releve_deductions_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+(S.tvaSel.period||"")+".xlsx");
+    setSync("synced");showOk("Relevé des déductions exporté ("+rows.length+" lignes).");
+  }catch(e){ setSync("synced");showErr("Export impossible : "+(e.message||e)); }
+}
+function releveExportXML(){
+  var c=clients().find(function(x){return x.id===S.tvaSel.id;})||clients().find(function(x){return x.id===S.curClient;});if(!c){showErr("Sélectionnez un dossier.");return;}
+  var rows=releveDeductionsRows(c.id,S.tvaSel.period);
+  if(!rows.length){showErr("Aucune déduction à exporter.");return;}
+  var soc=((S.flags[c.id]||{}).societe)||{};
+  function x(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+  function n2(v){return (Math.round((+v||0)*100)/100).toFixed(2);}
+  var lignes=rows.map(function(r){
+    return '    <Detail_Deduction>'
+      +'<Num_Fact>'+x(r.num)+'</Num_Fact><Des_Compte>'+x(r.design)+'</Des_Compte>'
+      +'<Mnt_Fact_TTC>'+n2(r.ttc)+'</Mnt_Fact_TTC><Date_Fact>'+x(r.date)+'</Date_Fact>'
+      +'<IF_Frs>'+x(r.if_)+'</IF_Frs><ICE_Frs>'+x(r.ice)+'</ICE_Frs><Nom_Frs>'+x(r.tiers)+'</Nom_Frs>'
+      +'<Mnt_HT>'+n2(r.ht)+'</Mnt_HT><Taux_TVA>'+x(r.taux)+'</Taux_TVA><Mnt_TVA>'+n2(r.tva)+'</Mnt_TVA>'
+      +'<Mnt_TVA_Recup>'+n2(r.recup)+'</Mnt_TVA_Recup><Taux_Prorata>'+x(r.prorata)+'</Taux_Prorata>'
+      +'<Mode_Paiement>'+x(r.regMode)+'</Mode_Paiement><Date_Paiement>'+x(r.regDate)+'</Date_Paiement>'
+      +'</Detail_Deduction>';
+  }).join("\n");
+  var xml='<?xml version="1.0" encoding="UTF-8"?>\n<DeclarationTVA>\n'
+    +'  <Identifiant_Fiscal>'+x(soc.if||"")+'</Identifiant_Fiscal>\n  <ICE>'+x(soc.ice||"")+'</ICE>\n'
+    +'  <Raison_Sociale>'+x(c.dossier||"")+'</Raison_Sociale>\n  <Annee>'+S.year+'</Annee>\n  <Periode>'+x(S.tvaSel.period||"")+'</Periode>\n'
+    +'  <Releve_Deductions>\n'+lignes+'\n  </Releve_Deductions>\n</DeclarationTVA>\n';
+  var blob=new Blob([xml],{type:"application/xml;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=(c.dossier||"SOC").replace(/[^a-zA-Z0-9]/g,"_")+"_TVA_"+(S.tvaSel.period||"")+".xml";
+  document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+  showOk("XML EDI généré ("+rows.length+" lignes). ⚠️ À vérifier avec le cahier des charges DGI avant dépôt.");
 }
 function tvaInput(t){
   var key=tvaKey();var d=Object.assign({},S.tva[key]||{ventes:[{base:"",taux:20}],rc:"",ri:"",credit:""});
@@ -3101,6 +3193,8 @@ document.addEventListener("click",e=>{
   else if(a==="payrythme"){var id=+t.dataset.id;S.flags[id]=Object.assign({},S.flags[id],{payRythme:t.dataset.v});save("flags");S.modal={type:"pay",id:id};renderModal();}
   else if(a==="tvaperiod"){S.tvaSel.period=t.dataset.v;renderView();}
   else if(a==="tva_autofill"){tvaAutofill();}
+  else if(a==="releve_excel"){releveExportExcel();}
+  else if(a==="releve_xml"){releveExportXML();}
   else if(a==="tvarowadd"){var k=tvaKey();var d=Object.assign({},S.tva[k]||{ventes:[],rc:"",ri:"",credit:""});d.ventes=(d.ventes||[]).concat([{base:"",taux:20}]);S.tva[k]=d;save("tva");renderView();}
   else if(a==="tvarowdel"){var k=tvaKey();var d=Object.assign({},S.tva[k]||{});d.ventes=(d.ventes||[]).filter(function(_,i){return i!==+t.dataset.i;});if(!d.ventes.length)d.ventes=[{base:"",taux:20}];S.tva[k]=d;save("tva");renderView();}
   else if(a==="tvaexport"){tvaExport();}
