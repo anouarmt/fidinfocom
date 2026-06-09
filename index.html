@@ -3133,13 +3133,154 @@ function doPrintReceipt(id){
 }
 
 
-const NAV=[["dash","Tableau de bord","dash"],["compta","Comptabilité","book"],["ech","Échéances","bell"],["cli","Clients","users"],["hon","Honoraires","wallet"],["tva","TVA","bank"],["sal","Salaires 9421","wallet"],["liasse","Liasse / IS","gavel"],["docs","Documents","folder"],["jur","Juridique","scale"]];
+const NAV=[["dash","Tableau de bord","dash"],["compta","Comptabilité","book"],["delais","Délais paiement","clock"],["ech","Échéances","bell"],["cli","Clients","users"],["hon","Honoraires","wallet"],["tva","TVA","bank"],["sal","Salaires 9421","wallet"],["liasse","Liasse / IS","gavel"],["docs","Documents","folder"],["jur","Juridique","scale"]];
 function renderNav(){
   document.getElementById("nav").innerHTML=NAV.map(n=>'<button class="'+(S.tab===n[0]?"on":"")+'" data-act="tab" data-tab="'+n[0]+'">'+ic(n[2])+'<span>'+n[1]+'</span></button>').join("");
   document.getElementById("foot").innerHTML='Exercice <b class="mono">'+S.year+'</b><br>'+clients().length+' dossiers suivis'+syncBadge()+(CLOUD?'':'<button data-act="cloudinfo" style="display:block;margin-top:8px;font-size:11px;color:var(--gold);text-decoration:underline">☁ Configurer la synchronisation</button>')+'<div style="margin-top:8px;font-size:10px;color:rgba(167,206,190,.5);letter-spacing:.04em">'+VERSION+'</div>';
 }
+/* ===== MODULE DÉLAIS DE PAIEMENT (loi marocaine) ===== */
+function delaiFrs(cid,fournisseur){
+  var f=((S.flags[cid]||{}).delaisFrs)||{};
+  var key=(fournisseur||"").trim().toUpperCase();
+  return f[key]!=null?+f[key]:60; // 60 jours par défaut
+}
+function setDelaiFrs(cid,fournisseur,jours){
+  S.flags[cid]=Object.assign({},S.flags[cid]);
+  var f=Object.assign({},S.flags[cid].delaisFrs||{});
+  var key=(fournisseur||"").trim().toUpperCase();
+  if(jours===""||jours==null)delete f[key]; else f[key]=+jours;
+  S.flags[cid].delaisFrs=f;save("flags");
+}
+function addDays(dateStr,days){
+  if(!dateStr||!/^\d{4}-\d{2}-\d{2}/.test(dateStr))return "";
+  var d=new Date(dateStr+"T00:00:00");d.setDate(d.getDate()+(+days||0));
+  return d.toISOString().slice(0,10);
+}
+// trouve la date de paiement (dernière affectation bancaire) d'une facture
+function piecePaiement(pid,g){
+  var last=null;
+  (g.operations||[]).forEach(function(o){
+    (o.affectations||[]).forEach(function(a){
+      if(String(a.pieceId)===String(pid)&&o.date){ if(!last||o.date>last.date)last={date:o.date,mode:o.isCommission?"Banque":"Virement/Chèque",ref:o.reference||""}; }
+    });
+  });
+  return last;
+}
+function delaisRows(cid){
+  var g=comptaGet(cid),rows=[];
+  g.pieces.filter(function(p){return (p.type==="achat"||!p.type)&&pieceYear(p)===S.year;}).forEach(function(p){
+    var ttc=+p.ttc||((+p.ht||0)+(+p.tva||0));
+    var delai=(p.delaiPaiement!=null&&p.delaiPaiement!=="")?+p.delaiPaiement:delaiFrs(cid,p.fournisseur);
+    var echeance=addDays(p.date,delai);
+    var regle=pieceRegle(p.id,g),nonPaye=Math.round((ttc-regle)*100)/100;
+    var pay=piecePaiement(p.id,g);
+    var dateePaie=pay?pay.date:"";
+    // montant payé hors délai : si payé après l'échéance
+    var horsDelai=0;
+    if(dateePaie&&echeance&&dateePaie>echeance)horsDelai=regle;
+    // en retard : échéance dépassée et non soldé
+    var enRetard=echeance&&nonPaye>0.01&&echeance<todayISO();
+    rows.push({
+      id:p.id,tiers:p.fournisseur||"",num:p.numero||"",date:p.date||"",delai:delai,echeance:echeance,
+      nature:p.natureMarch||"",dateLivr:p.dateLivraison||"",datePaie:dateePaie,mode:pay?pay.mode:"",ref:pay?pay.ref:"",
+      ttc:ttc,nonPaye:nonPaye,horsDelai:horsDelai,
+      ice:p.ice||"",if_:p.if_fournisseur||p.if_||"",rc:p.rc||"",adresse:p.adresse||"",
+      enRetard:enRetard
+    });
+  });
+  rows.sort(function(a,b){return (a.echeance||"").localeCompare(b.echeance||"");});
+  return rows;
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function delaisPieceSet(pid,field,val){
+  var c=clients().find(function(x){return x.id===S.curClient;});if(!c)return;
+  var g=comptaGet(c.id),p=g.pieces.find(function(x){return String(x.id)===String(pid);});if(!p)return;
+  p[field]=val;save("compta");
+}
+function vDelais(){
+  var cs=clients();
+  if(S.curClient&&cs.find(function(c){return c.id===S.curClient;})){ /* garde le client courant */ }
+  else if(!S.curClient){ S.curClient=(cs[0]||{}).id||null; }
+  var c=cs.find(function(x){return x.id===S.curClient;});
+  if(!c)return header()+'<div class="wrap"><div class="card" style="padding:30px;text-align:center">Aucun dossier sélectionné.</div></div>';
+  var rows=delaisRows(c.id);
+  var soc=((S.flags[c.id]||{}).societe)||{};
+  // liste des fournisseurs distincts pour configurer les délais
+  var frsSet={};rows.forEach(function(r){if(r.tiers)frsSet[r.tiers.trim().toUpperCase()]=r.tiers;});
+  var frsList=Object.keys(frsSet).sort();
+  var delaisConf=frsList.map(function(k){
+    var cur=delaiFrs(c.id,k);
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F0EDE3"><div style="flex:1;font-size:13px;font-weight:600">'+esc(frsSet[k])+'</div>'
+      +'<input class="ipt mono" type="number" data-delai-frs="'+esc(k)+'" value="'+cur+'" style="width:90px;text-align:right" placeholder="60"><span style="font-size:12px;color:var(--muted)">jours</span></div>';
+  }).join("")||'<div class="note">Aucun fournisseur. Importez des factures d\'achat d\'abord.</div>';
+
+  var head='<tr style="background:#14201C;color:#fff;font-size:10.5px;text-align:left">'
+    +['Tiers','N° fact.','Date fact.','Délai (j)','Échéance','Nature','Livraison','Paiement','Mode','Réf.','TTC','Non payé','Payé hors délai','ICE','IF','RC'].map(function(h){return '<th style="padding:5px 6px;white-space:nowrap">'+h+'</th>';}).join("")+'</tr>';
+  var body=rows.map(function(r){
+    var bg=r.enRetard?'background:#FDEAEA;':'';
+    return '<tr style="border-bottom:1px solid #F0EDE3;font-size:11.5px;'+bg+'">'
+      +'<td style="padding:4px 6px;font-weight:600">'+esc(r.tiers)+'</td><td style="padding:4px 6px">'+esc(r.num)+'</td>'
+      +'<td style="padding:4px 6px" class="mono">'+esc(r.date)+'</td>'
+      +'<td style="padding:4px 6px;text-align:center"><input class="ipt mono" type="number" data-delai-piece="'+r.id+'" value="'+r.delai+'" style="width:60px;text-align:center;padding:2px 4px;font-size:11px"></td>'
+      +'<td style="padding:4px 6px;font-weight:600;color:'+(r.enRetard?"#C0392B":"#14201C")+'" class="mono">'+esc(r.echeance)+'</td>'
+      +'<td style="padding:4px 6px"><input class="ipt" data-nature-piece="'+r.id+'" value="'+esc(r.nature)+'" style="width:90px;padding:2px 4px;font-size:11px" placeholder="—"></td>'
+      +'<td style="padding:4px 6px"><input class="ipt mono" type="date" data-livr-piece="'+r.id+'" value="'+esc(r.dateLivr)+'" style="width:130px;padding:2px 4px;font-size:11px"></td>'
+      +'<td style="padding:4px 6px" class="mono">'+(r.datePaie||'<span style="color:#C0392B">non payé</span>')+'</td>'
+      +'<td style="padding:4px 6px">'+esc(r.mode)+'</td><td style="padding:4px 6px">'+esc(r.ref)+'</td>'
+      +'<td style="padding:4px 6px;text-align:right;font-weight:700" class="mono">'+fmtDH2(r.ttc)+'</td>'
+      +'<td style="padding:4px 6px;text-align:right" class="mono">'+(r.nonPaye>0.01?fmtDH2(r.nonPaye):"—")+'</td>'
+      +'<td style="padding:4px 6px;text-align:right;color:'+(r.horsDelai>0?"#C0392B":"#9A9684")+'" class="mono">'+(r.horsDelai>0?fmtDH2(r.horsDelai):"—")+'</td>'
+      +'<td style="padding:4px 6px">'+esc(r.ice)+'</td><td style="padding:4px 6px">'+esc(r.if_)+'</td><td style="padding:4px 6px">'+esc(r.rc)+'</td></tr>';
+  }).join("");
+  var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tNon=rows.reduce(function(a,r){return a+r.nonPaye;},0),tHors=rows.reduce(function(a,r){return a+r.horsDelai;},0);
+  var nRetard=rows.filter(function(r){return r.enRetard;}).length;
+  var foot='<tr style="border-top:2px solid #14201C;font-weight:700;background:#F7F4EC"><td colspan="10" style="padding:7px 6px">TOTAUX ('+rows.length+' factures'+(nRetard?' · '+nRetard+' en retard':'')+')</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTTC)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tNon)+'</td><td style="padding:7px 6px;text-align:right;color:#C0392B" class="mono">'+fmtDH2(tHors)+'</td><td colspan="3"></td></tr>';
+
+  return header()+'<div class="wrap">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px"><div><div class="ptitle">Délais de paiement</div><div class="psub">'+esc(c.dossier)+' · '+S.year+' — suivi des délais fournisseurs (loi 69-21)</div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="delais_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button><button class="chip" data-act="delais_pdf">'+ic("printer","width:13px;height:13px;vertical-align:-2px")+' PDF</button></div></div>'
+    +'<div class="grid" style="grid-template-columns:300px 1fr;gap:16px;align-items:start">'
+    +'<div class="card" style="padding:18px"><div class="sectit mb3">'+ic("clock")+' Délais par fournisseur</div><div class="note" style="font-size:11px;margin-bottom:10px">Définissez le délai (en jours) par fournisseur. Il s\'applique à toutes ses factures. Défaut : 60 jours.</div>'+delaisConf+'</div>'
+    +'<div class="card" style="padding:14px;overflow-x:auto">'+(rows.length?'<table style="width:100%;border-collapse:collapse;min-width:1200px">'+head+body+foot+'</table>':'<div class="note" style="padding:20px">Aucune facture d\'achat pour '+S.year+'.</div>')+'</div>'
+    +'</div></div>';
+}
+async function delaisExportExcel(){
+  var c=clients().find(function(x){return x.id===S.curClient;});if(!c){showErr("Sélectionnez un dossier.");return;}
+  var rows=delaisRows(c.id);if(!rows.length){showErr("Aucune facture à exporter.");return;}
+  setSync("saving");
+  try{
+    if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    var aoa=[["Tiers","N° facture","Date facture","Délai (jours)","Date échéance","Nature marchandise","Date livraison","Date paiement","Mode paiement","Référence","TTC","Montant non payé","Montant payé hors délai","ICE","IF","RC","Adresse"]];
+    rows.forEach(function(r){ aoa.push([r.tiers,r.num,r.date,r.delai,r.echeance,r.nature,r.dateLivr,r.datePaie,r.mode,r.ref,r.ttc,r.nonPaye,r.horsDelai,r.ice,r.if_,r.rc,r.adresse]); });
+    var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tNon=rows.reduce(function(a,r){return a+r.nonPaye;},0),tHors=rows.reduce(function(a,r){return a+r.horsDelai;},0);
+    aoa.push(["TOTAUX ("+rows.length+")","","","","","","","","","",tTTC,tNon,tHors,"","","",""]);
+    var ws=window.XLSX.utils.aoa_to_sheet(aoa);var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,"Delais paiement");
+    window.XLSX.writeFile(wb,"Delais_paiement_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+S.year+".xlsx");
+    setSync("synced");showOk("Délais de paiement exportés ("+rows.length+" lignes).");
+  }catch(e){ setSync("synced");showErr("Export impossible : "+(e.message||e)); }
+}
+function delaisExportPDF(){
+  var c=clients().find(function(x){return x.id===S.curClient;});if(!c){showErr("Sélectionnez un dossier.");return;}
+  var rows=delaisRows(c.id);if(!rows.length){showErr("Aucune facture à exporter.");return;}
+  var soc=((S.flags[c.id]||{}).societe)||{};
+  var rowsHtml=rows.map(function(r){
+    var bg=r.enRetard?' style="background:#FDEAEA"':'';
+    return '<tr'+bg+'><td>'+esc(r.tiers)+'</td><td>'+esc(r.num)+'</td><td>'+esc(r.date)+'</td><td style="text-align:center">'+r.delai+'</td><td>'+esc(r.echeance)+'</td><td>'+esc(r.nature)+'</td><td>'+esc(r.datePaie||"non payé")+'</td><td class="n">'+fmtDH2(r.ttc)+'</td><td class="n">'+(r.nonPaye>0.01?fmtDH2(r.nonPaye):"—")+'</td><td class="n">'+(r.horsDelai>0?fmtDH2(r.horsDelai):"—")+'</td><td>'+esc(r.ice)+'</td><td>'+esc(r.if_)+'</td></tr>';
+  }).join("");
+  var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tNon=rows.reduce(function(a,r){return a+r.nonPaye;},0),tHors=rows.reduce(function(a,r){return a+r.horsDelai;},0);
+  var win=window.open("","_blank");if(!win){showErr("Autorisez les fenêtres popup.");return;}
+  var doc='<!doctype html><html><head><meta charset="utf-8"><title>Délais de paiement '+esc(c.dossier)+'</title>'
+    +'<style>body{font-family:Arial,sans-serif;margin:20px;color:#14201C}h1{font-size:16px;margin:0 0 2px}.sub{color:#666;font-size:11px;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #ccc;padding:4px 5px;text-align:left}th{background:#14201C;color:#fff;font-size:9px}.n{text-align:right}tfoot td{font-weight:700;background:#f0ede3}@media print{body{margin:8mm}}</style></head><body>'
+    +'<h1>Suivi des délais de paiement — '+esc(c.dossier)+'</h1>'
+    +'<div class="sub">Exercice '+S.year+(soc.ice?' · ICE '+esc(soc.ice):'')+(soc.if?' · IF '+esc(soc.if):'')+' · édité le '+new Date().toLocaleDateString("fr-FR")+' · loi 69-21</div>'
+    +'<table><thead><tr><th>Tiers</th><th>N° fact.</th><th>Date</th><th>Délai</th><th>Échéance</th><th>Nature</th><th>Paiement</th><th>TTC</th><th>Non payé</th><th>Payé hors délai</th><th>ICE</th><th>IF</th></tr></thead><tbody>'+rowsHtml+'</tbody>'
+    +'<tfoot><tr><td colspan="7">TOTAUX ('+rows.length+')</td><td class="n">'+fmtDH2(tTTC)+'</td><td class="n">'+fmtDH2(tNon)+'</td><td class="n">'+fmtDH2(tHors)+'</td><td colspan="2"></td></tr></tfoot></table>'
+    +'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},400);};</scr'+'ipt></body></html>';
+  win.document.write(doc);win.document.close();
+  showOk("PDF des délais prêt.");
+}
 function renderView(){
-  const v={dash:vDash,ech:vEch,cli:vCli,hon:vHon,tva:vTVA,sal:vSal,liasse:vLiasse,docs:vDocs,compta:vCompta,jur:vJur}[S.tab]();
+  const v={dash:vDash,ech:vEch,cli:vCli,hon:vHon,tva:vTVA,sal:vSal,liasse:vLiasse,docs:vDocs,compta:vCompta,jur:vJur,delais:vDelais}[S.tab]();
   document.getElementById("view").innerHTML=v;
 }
 function renderModal(){
@@ -3195,6 +3336,8 @@ document.addEventListener("click",e=>{
   else if(a==="tva_autofill"){tvaAutofill();}
   else if(a==="releve_excel"){releveExportExcel();}
   else if(a==="releve_xml"){releveExportXML();}
+  else if(a==="delais_excel"){delaisExportExcel();}
+  else if(a==="delais_pdf"){delaisExportPDF();}
   else if(a==="tvarowadd"){var k=tvaKey();var d=Object.assign({},S.tva[k]||{ventes:[],rc:"",ri:"",credit:""});d.ventes=(d.ventes||[]).concat([{base:"",taux:20}]);S.tva[k]=d;save("tva");renderView();}
   else if(a==="tvarowdel"){var k=tvaKey();var d=Object.assign({},S.tva[k]||{});d.ventes=(d.ventes||[]).filter(function(_,i){return i!==+t.dataset.i;});if(!d.ventes.length)d.ventes=[{base:"",taux:20}];S.tva[k]=d;save("tva");renderView();}
   else if(a==="tvaexport"){tvaExport();}
@@ -3288,6 +3431,10 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const t=e.target;
+  if(t.dataset.delaiFrs!=null){var c=clients().find(x=>x.id===S.curClient);if(c){setDelaiFrs(c.id,t.dataset.delaiFrs,t.value);renderView();}return;}
+  if(t.dataset.delaiPiece!=null){delaisPieceSet(t.dataset.delaiPiece,"delaiPaiement",t.value);renderView();return;}
+  if(t.dataset.naturePiece!=null){delaisPieceSet(t.dataset.naturePiece,"natureMarch",t.value);return;}
+  if(t.dataset.livrPiece!=null){delaisPieceSet(t.dataset.livrPiece,"dateLivraison",t.value);renderView();return;}
   if(t.dataset.tva!=null){tvaInput(t);return;}
   if(t.dataset.sal!=null){salInput(t);return;}
   if(t.dataset.liasse!=null){liasseInput(t);return;}
