@@ -3372,6 +3372,36 @@ function empEchAdd(empId){
   if(!emp.echeances)emp.echeances=[];
   emp.echeances.push({date:"",capital:"",interet:"",crd:""});empSave(cid,arr);renderView();
 }
+async function empScan(empId,files){
+  if(!sb||!session){showErr("Connectez-vous (cloud) pour scanner.");return;}
+  files=Array.prototype.slice.call(files||[]);if(!files.length)return;
+  var cid=String(S.curClient),arr=empList(cid),emp=arr.find(function(e){return String(e.id)===String(empId);});if(!emp)return;
+  var f=files[0];if(f.size>52428800){showErr("Fichier trop volumineux (max 50 Mo).");return;}
+  setSync("saving");showOk("Lecture du tableau d'amortissement en cours…");
+  try{
+    var b64=await blobToB64(f),mt=f.type||(/\.pdf$/i.test(f.name)?"application/pdf":"image/jpeg");
+    var resp=await sb.functions.invoke("extract-amortissement",{body:{fileBase64:b64,mediaType:mt}});
+    if(resp.error)throw resp.error;
+    var data=resp.data||{};
+    if(data.error)throw new Error(data.error);
+    // remplir l'en-tête (sans écraser ce qui est déjà bien renseigné s'il manque)
+    if(data.organisme)emp.organisme=data.organisme;
+    if(data.montant)emp.montant=data.montant;
+    if(data.taux)emp.taux=data.taux;
+    if(data.duree)emp.duree=data.duree;
+    if(data.periodicite)emp.periodicite=(data.periodicite==="trimestrielle"?"trimestrielle":"mensuelle");
+    // remplacer les échéances et basculer en mode manuel (vraies données banque)
+    var ech=Array.isArray(data.echeances)?data.echeances:[];
+    emp.echeances=ech.map(function(e){return {date:e.date||"",capital:+e.capital||0,interet:+e.interet||0,crd:+e.crd||0};});
+    if(emp.echeances.length)emp.mode="manuel";
+    empSave(cid,arr);setSync("synced");renderView();
+    if(emp.echeances.length)showOk(emp.echeances.length+" échéance(s) détectée(s) et importée(s).");
+    else showErr("Aucune échéance détectée. Vérifiez la qualité du scan ou saisissez manuellement.");
+  }catch(e){
+    setSync("synced");
+    showErr("Lecture impossible : "+(e.message||e)+". Avez-vous bien créé la fonction extract-amortissement ?");
+  }
+}
 function vEmprunts(){
   var cs=clients();
   if(!S.curClient)S.curClient=(cs[0]||{}).id||null;
@@ -3405,7 +3435,7 @@ function vEmprunts(){
       +'<div style="display:flex;gap:6px"><button class="chip" data-act="emp_mode" data-id="'+emp.id+'" data-v="auto" style="'+(!isManuel?"background:#14201C;color:#fff":"")+'">Calcul auto</button><button class="chip" data-act="emp_mode" data-id="'+emp.id+'" data-v="manuel" style="'+(isManuel?"background:#14201C;color:#fff":"")+'">Saisie manuelle</button></div>'
       +'</div>'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><div style="flex:1;min-width:110px"><div class="flbl">Compte capital</div><input class="ipt mono" data-emp="'+emp.id+':cptCapital" value="'+esc(emp.cptCapital||EMP_CAPITAL)+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte intérêts</div><input class="ipt mono" data-emp="'+emp.id+':cptInteret" value="'+esc(emp.cptInteret||EMP_INTERET)+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte TVA</div><input class="ipt mono" data-emp="'+emp.id+':cptTva" value="'+esc(emp.cptTva||EMP_TVA)+'"></div></div>'
-      +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="emp_del" data-id="'+emp.id+'" style="color:#C0392B">Supprimer cet emprunt</button>'+(isManuel?'<button class="chip" data-act="emp_ech_add" data-id="'+emp.id+'">'+ic("plus")+' Ajouter une échéance</button>':'')+'</div>'
+      +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn-primary" data-act="emp_scan_click" data-id="'+emp.id+'">'+ic("down","width:14px;height:14px;vertical-align:-2px")+' Scanner le tableau d\'amortissement</button><input type="file" id="emp_file_'+emp.id+'" accept="application/pdf,image/*" style="display:none"><button class="chip" data-act="emp_del" data-id="'+emp.id+'" style="color:#C0392B">Supprimer cet emprunt</button>'+(isManuel?'<button class="chip" data-act="emp_ech_add" data-id="'+emp.id+'">'+ic("plus")+' Ajouter une échéance</button>':'')+'</div>'
       +'</div>';
 
     // tableau d'amortissement
@@ -3505,6 +3535,7 @@ document.addEventListener("click",e=>{
   else if(a==="emp_valider"){empValiderEcheance(t.dataset.id,+t.dataset.n);}
   else if(a==="emp_valider_annee"){empValiderAnnee(t.dataset.id);}
   else if(a==="emp_ech_add"){empEchAdd(t.dataset.id);}
+  else if(a==="emp_scan_click"){var inp=document.getElementById("emp_file_"+t.dataset.id);if(inp){inp.onchange=function(){empScan(t.dataset.id,inp.files);};inp.click();}}
   else if(a==="tvarowadd"){var k=tvaKey();var d=Object.assign({},S.tva[k]||{ventes:[],rc:"",ri:"",credit:""});d.ventes=(d.ventes||[]).concat([{base:"",taux:20}]);S.tva[k]=d;save("tva");renderView();}
   else if(a==="tvarowdel"){var k=tvaKey();var d=Object.assign({},S.tva[k]||{});d.ventes=(d.ventes||[]).filter(function(_,i){return i!==+t.dataset.i;});if(!d.ventes.length)d.ventes=[{base:"",taux:20}];S.tva[k]=d;save("tva");renderView();}
   else if(a==="tvaexport"){tvaExport();}
