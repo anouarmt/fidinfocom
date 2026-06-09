@@ -243,6 +243,8 @@ const JUR_STATUTS=["À FAIRE","EN COURS","TERMINÉ"];
 const FORMES=["personne morale","personne physique","cpu","particulier"];
 const STATUTS=["EN ATTENTE","DÉPOSÉ ✓","MANQUE DOC","NÉANT","EXONÉRÉ","SORTANT",""];
 const REGS=[["trimestrielle","TVA trimestrielle"],["mensuelle","TVA mensuelle"],["neant","TVA néant / exonéré"]];
+const REGS_TVA=[["debit","Régime des débits (à la facturation)"],["encaissement","Régime de l'encaissement"]];
+const REG_TVA_LABEL={debit:"Régime des débits",encaissement:"Régime de l'encaissement"};
 const PAY_MODES=["Espèces","Chèque","Virement","Carte bancaire","Effet"];
 const MOIS_FULL=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -268,6 +270,25 @@ function save(k){
   ["done","pay"].forEach(st=>{const o=S[st],n={};for(const k in o){const nk=yr.test(k)?k:(YEAR+"|"+k);n[nk]=o[k];if(nk!==k)changed=true;}S[st]=n;});
   if(changed){save("done");save("pay");}
 })();
+
+/* ===== Filtre intelligent : recherche par abréviation / initiales ===== */
+function _norm(s){return (s==null?"":String(s)).toLowerCase()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g,"")      // enlève les accents
+  .replace(/[^a-z0-9]+/g," ").trim();}                  // ponctuation -> espace
+function _acr(s){return _norm(s).split(" ").filter(Boolean).map(function(w){return w[0];}).join("");}
+function _subseq(q,txt){ var i=0; for(var j=0;j<txt.length&&i<q.length;j++){ if(txt[j]===q[i])i++; } return i===q.length; }
+// renvoie true si "query" correspond à "text" : sous-chaîne, initiales (acronyme) ou abréviation par sous-séquence
+function smartMatch(query,text){
+  var q=_norm(query).replace(/\s+/g,"");
+  if(!q)return true;
+  var n=_norm(text).replace(/\s+/g,"");        // texte sans espaces
+  if(n.indexOf(q)>=0)return true;              // 1) sous-chaîne directe  ("ai" -> AI STUDY)
+  var acr=_acr(text);                          // initiales de chaque mot
+  if(acr.indexOf(q)>=0)return true;            // 2) acronyme exact       ("gsc" -> Genius Store Concept)
+  if(_subseq(q,acr))return true;               // 3) initiales dans l'ordre ("gc" -> Genius … Concept)
+  if(q.length>=3&&_subseq(q,n))return true;    // 4) abréviation floue    ("consimo" -> CONSTRUCIMMO)
+  return false;
+}
 
 function clients(){
   return SEED.concat(S.custom).filter(c=>!S.deleted[c.id]).map(c=>Object.assign({},c,S.flags[c.id]||{}));
@@ -475,29 +496,67 @@ function pieceInPeriod(p,period){
   var mo=+p.date.slice(5,7)-1;
   return mo>=mm[0]&&mo<=mm[1];
 }
+// régime TVA d'un client : "debit" (par défaut, à la facturation) ou "encaissement"
+function regTvaOf(c){ return (c&&c.regTva)==="encaissement"?"encaissement":"debit"; }
+// taux de TVA d'une pièce (déduit du rapport TVA/HT)
+function pieceTaux(p){ var ht=+p.ht||0,tva=+p.tva||0; return ht>0?Math.round(tva/ht*100):20; }
 // calcule la TVA automatiquement depuis la comptabilité (factures + commissions bancaires)
+// selon le régime du client : débit (facturation) ou encaissement (règlements)
 function tvaAuto(cid,period){
   var g=comptaGet(cid);
+  var c=clients().find(function(x){return x.id===cid;})||{};
+  var regime=regTvaOf(c);
   var ventesByRate={},rc=0,ri=0,detail={ventes:[],achats:[],immo:[],banque:[]};
-  // VENTES -> TVA exigible (régime débit : à la facturation)
-  g.pieces.filter(function(p){return (p.type==="vente")&&pieceYear(p)===S.year&&pieceInPeriod(p,period);}).forEach(function(p){
-    var ht=+p.ht||0,tva=+p.tva||0,taux=ht>0?Math.round(tva/ht*100):20;
-    if(tva>0||ht>0){ventesByRate[taux]=ventesByRate[taux]||0;ventesByRate[taux]+=ht;detail.ventes.push({nom:p.fournisseur,num:p.numero,ht:ht,tva:tva});}
-  });
-  // ACHATS -> TVA déductible (charges 6xxx / immo 2xxx), hors TVA non récupérable
-  g.pieces.filter(function(p){return (p.type==="achat"||!p.type)&&pieceYear(p)===S.year&&pieceInPeriod(p,period);}).forEach(function(p){
-    var tva=+p.tva||0;if(tva<=0||p.tvaNonRecup)return;
-    var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
-    if(isImmo){ri+=tva;detail.immo.push({nom:p.fournisseur,num:p.numero,tva:tva});}
-    else{rc+=tva;detail.achats.push({nom:p.fournisseur,num:p.numero,tva:tva});}
-  });
-  // COMMISSIONS BANCAIRES -> TVA déductible (frais avec TVA 10%)
+
+  if(regime==="encaissement"){
+    // ===== RÉGIME DE L'ENCAISSEMENT =====
+    // VENTES -> TVA exigible sur les ENCAISSEMENTS clients reçus dans la période
+    var ventesById={}; g.pieces.forEach(function(p){ if(p.type==="vente") ventesById[String(p.id)]=p; });
+    (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period);}).forEach(function(o){
+      (o.affectations||[]).forEach(function(a){
+        var p=ventesById[String(a.pieceId)]; if(!p)return;
+        var mt=+a.montant||0; if(mt<=0)return;                 // montant encaissé (TTC)
+        var taux=pieceTaux(p);
+        var base=taux>0?(mt*100/(100+taux)):mt, tv=mt-base;     // on extrait la TVA du TTC encaissé
+        ventesByRate[taux]=(ventesByRate[taux]||0)+base;
+        detail.ventes.push({nom:p.fournisseur,num:p.numero,ht:base,tva:tv,enc:mt});
+      });
+    });
+    // ACHATS -> TVA déductible sur les PAIEMENTS fournisseurs effectués dans la période
+    var achatsById={}; g.pieces.forEach(function(p){ if(p.type==="achat"||!p.type) achatsById[String(p.id)]=p; });
+    (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period);}).forEach(function(o){
+      (o.affectations||[]).forEach(function(a){
+        var p=achatsById[String(a.pieceId)]; if(!p||p.tvaNonRecup)return;
+        var mt=+a.montant||0; if(mt<=0)return;                 // montant payé (TTC)
+        var taux=pieceTaux(p); if(taux<=0)return;
+        var tv=mt*taux/(100+taux);                              // TVA incluse dans le paiement
+        var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
+        if(isImmo){ri+=tv;detail.immo.push({nom:p.fournisseur,num:p.numero,tva:tv});}
+        else{rc+=tv;detail.achats.push({nom:p.fournisseur,num:p.numero,tva:tv});}
+      });
+    });
+  }else{
+    // ===== RÉGIME DES DÉBITS (à la facturation) — comportement par défaut =====
+    // VENTES -> TVA exigible à la facturation
+    g.pieces.filter(function(p){return (p.type==="vente")&&pieceYear(p)===S.year&&pieceInPeriod(p,period);}).forEach(function(p){
+      var ht=+p.ht||0,tva=+p.tva||0,taux=ht>0?Math.round(tva/ht*100):20;
+      if(tva>0||ht>0){ventesByRate[taux]=ventesByRate[taux]||0;ventesByRate[taux]+=ht;detail.ventes.push({nom:p.fournisseur,num:p.numero,ht:ht,tva:tva});}
+    });
+    // ACHATS -> TVA déductible (charges 6xxx / immo 2xxx), hors TVA non récupérable
+    g.pieces.filter(function(p){return (p.type==="achat"||!p.type)&&pieceYear(p)===S.year&&pieceInPeriod(p,period);}).forEach(function(p){
+      var tva=+p.tva||0;if(tva<=0||p.tvaNonRecup)return;
+      var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
+      if(isImmo){ri+=tva;detail.immo.push({nom:p.fournisseur,num:p.numero,tva:tva});}
+      else{rc+=tva;detail.achats.push({nom:p.fournisseur,num:p.numero,tva:tva});}
+    });
+  }
+  // COMMISSIONS BANCAIRES -> TVA déductible (frais déjà prélevés : identique dans les deux régimes)
   (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0;}).forEach(function(o){
     rc+=(+o.tvaComm||0);detail.banque.push({nom:o.libelle,tva:+o.tvaComm});
   });
   var ventes=Object.keys(ventesByRate).map(function(t){return {base:Math.round(ventesByRate[t]*100)/100,taux:+t};});
   if(!ventes.length)ventes=[{base:"",taux:20}];
-  return {ventes:ventes,rc:Math.round(rc*100)/100,ri:Math.round(ri*100)/100,detail:detail};
+  return {ventes:ventes,rc:Math.round(rc*100)/100,ri:Math.round(ri*100)/100,detail:detail,regime:regime};
 }
 function tvaCalc(d){
   d=d||{};var caHT=0,exig=0,byRate={};
@@ -549,7 +608,9 @@ function vTVA(){
   if(c.reg==="neant"){
     return head+'<div class="card mt5" style="padding:20px"><div style="margin-bottom:12px"><span class="flbl">Dossier</span><select class="ipt" id="tvaclient" style="max-width:360px">'+clientOpts+'</select></div><div class="note">Ce client est en régime <b>TVA néant / exonéré</b>. Modifiez son régime (fiche client → Éditer) pour saisir une déclaration, ou choisissez un autre dossier.</div></div></div>';
   }
+  tvaEnsureAuto();
   var d=tvaGet(),calc=tvaCalc(d);
+  var regime=regTvaOf(c);
   var perBtns=periods.map(function(p){return '<button data-act="tvaperiod" data-v="'+p.k+'" class="chip" style="'+(S.tvaSel.period===p.k?"background:#0E7A5F;color:#fff;border-color:#0E7A5F":"")+'">'+esc(p.label)+'</button>';}).join("");
   var vrows=(d.ventes||[]).map(function(l,i){
     var taux=TVA_RATES.map(function(t){return '<option value="'+t+'"'+((+l.taux)===t?" selected":"")+'>'+t+'%</option>';}).join("");
@@ -561,8 +622,18 @@ function vTVA(){
     +'<div class="card" style="padding:20px">'
       +'<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap" class="mb4"><div style="flex:1;min-width:200px"><div class="flbl">Dossier</div><select class="ipt" id="tvaclient">'+clientOpts+'</select></div></div>'
       +'<div class="flbl">Période ('+(c.reg==="mensuelle"?"mensuel":"trimestriel")+')</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+perBtns+'</div>'
-      +'<div style="margin-bottom:18px"><button class="btn-primary" data-act="tva_autofill" style="width:100%">'+ic("down","width:15px;height:15px;vertical-align:-2px")+' Pré-remplir depuis la comptabilité</button><div class="note" style="font-size:11px;margin-top:6px">Récupère automatiquement la TVA des factures (ventes/achats), immobilisations et commissions bancaires de la période. Vous pouvez ensuite ajuster.</div></div>'
-      +'<div class="sectit mb3" style="color:var(--muted)">TVA FACTURÉE (ventes)</div>'
+      +'<div class="flbl">Régime de TVA</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+        +REGS_TVA.map(function(r){return '<button data-act="tvareg" data-id="'+c.id+'" data-v="'+r[0]+'" class="chip" style="'+(regime===r[0]?"background:#14201C;color:#fff;border-color:#14201C":"")+'">'+esc(r[1])+'</button>';}).join("")
+      +'</div>'
+      +'<div class="note" style="font-size:11px;margin-bottom:14px;color:var(--muted);background:#F7F4EC;border-radius:8px;padding:7px 10px">'
+        +(regime==="encaissement"
+          ? "TVA exigible sur les <b>sommes encaissées</b> des clients ; TVA déductible sur les <b>paiements</b> fournisseurs de la période. La synchronisation s'appuie sur les règlements rapprochés en banque."
+          : "TVA exigible dès la <b>facturation</b> (ventes datées dans la période) ; TVA déductible sur les <b>factures d'achat</b> de la période.")
+      +'</div>'
+      +'<div style="margin-bottom:18px">'
+        +(d._auto?'<div class="note" style="background:#E3F1EB;color:#0a5f4a;border-radius:10px;padding:8px 12px;font-size:12px;margin-bottom:8px">✓ Déclaration pré-remplie automatiquement depuis la comptabilité. Vous pouvez ajuster les montants ci-dessous.</div>':'')
+        +'<button class="btn-primary" data-act="tva_autofill" style="width:100%">'+ic("down","width:15px;height:15px;vertical-align:-2px")+' Re-synchroniser depuis la comptabilité</button><div class="note" style="font-size:11px;margin-top:6px">Le calcul est récupéré automatiquement à l\'ouverture (factures ventes/achats, immobilisations, commissions bancaires). Ce bouton force une nouvelle synchronisation après ajout de pièces.</div></div>'
+      +'<div class="sectit mb3" style="color:var(--muted)">'+(regime==="encaissement"?"TVA ENCAISSÉE (ventes réglées)":"TVA FACTURÉE (ventes)")+'</div>'
       +'<div class="rowline" style="grid-template-columns:1fr 90px 110px 40px;font-size:11px;color:var(--faint)"><div>Base HT (DH)</div><div>Taux</div><div style="text-align:right;padding-right:6px">TVA</div><div></div></div>'
       +vrows
       +'<button class="chip" data-act="tvarowadd" style="margin-top:4px">'+ic("plus")+'Ajouter une ligne</button>'
@@ -576,8 +647,21 @@ function vTVA(){
       +'<div class="card" style="padding:20px;margin-top:16px"><div class="sectit mb3">'+ic("alert")+' Contrôles &amp; anomalies</div><div id="tvaAnoms">'+tvaAnomsHtml(d,calc)+'</div></div>'
     +'</div>'
     +'</div>'
+    +ventesDetailHtml(c)
     +releveDeductionsHtml(c)
     +'</div>';
+}
+// Pré-remplit automatiquement la TVA depuis la comptabilité si aucune saisie n'existe encore pour cette période.
+// Ne touche jamais à une déclaration déjà saisie/modifiée par l'utilisateur.
+function tvaEnsureAuto(){
+  if(!S.tvaSel.id||!S.tvaSel.period)return;
+  var key=tvaKey();
+  if(S.tva[key])return;                                   // déjà saisi → on n'écrase pas
+  var auto=tvaAuto(S.tvaSel.id,S.tvaSel.period);
+  var has=(auto.ventes||[]).some(function(v){return (+v.base||0)>0;})||(+auto.rc>0)||(+auto.ri>0);
+  if(!has)return;                                         // rien en compta → on laisse vide pour la saisie manuelle
+  S.tva[key]={ventes:auto.ventes,rc:auto.rc,ri:auto.ri,credit:"",_auto:true};
+  save("tva");
 }
 function tvaAutofill(){
   if(!S.tvaSel.id||!S.tvaSel.period){showErr("Sélectionnez un dossier et une période.");return;}
@@ -592,19 +676,121 @@ function tvaAutofill(){
 }
 // ===== Relevé des déductions DGI (détaillé) =====
 var TVA_CODE={20:"20",14:"14",10:"10",7:"07"};
+// ===== Journal des ventes (TVA collectée / exigible) — détaillé =====
+function ventesDetailRows(cid,period){
+  var g=comptaGet(cid),rows=[];
+  var c=clients().find(function(x){return x.id===cid;})||{};
+  var regime=regTvaOf(c);
+  if(regime==="encaissement"){
+    // TVA exigible sur les ENCAISSEMENTS clients reçus dans la période
+    var ventesById={}; g.pieces.forEach(function(p){ if(p.type==="vente") ventesById[String(p.id)]=p; });
+    (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period);}).forEach(function(o){
+      (o.affectations||[]).forEach(function(a){
+        var p=ventesById[String(a.pieceId)]; if(!p)return;
+        var mt=+a.montant||0; if(mt<=0)return;                 // encaissé TTC
+        var taux=pieceTaux(p);
+        var tva=taux>0?(mt*taux/(100+taux)):0, ht=mt-tva;
+        rows.push({journal:"VE",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
+          if_:p.if_client||p.if_||"",ice:p.ice||"",design:"Vente / prestation (encaissée)",
+          ttc:mt,ht:ht,taux:taux,code:TVA_CODE[taux]||String(taux),tva:tva,
+          regDate:o.date||"",regMode:o.isCommission?"Banque":"Virement/Chèque",cr:o.reference||"",compteTva:"44552000"});
+      });
+    });
+  }else{
+    // Régime des débits : TVA exigible à la date de facture
+    g.pieces.filter(function(p){return p.type==="vente"&&pieceYear(p)===S.year&&pieceInPeriod(p,period)&&((+p.ht>0)||(+p.tva>0));}).forEach(function(p){
+      var ht=+p.ht||0,tva=+p.tva||0,ttc=+p.ttc||(ht+tva),taux=ht>0?Math.round(tva/ht*100):20;
+      var regDate="",regMode="",cr="";
+      var op=(g.operations||[]).find(function(o){return (o.affectations||[]).some(function(a){return String(a.pieceId)===String(p.id);});});
+      if(op){regDate=op.date||"";regMode="Virement/Chèque";cr=op.reference||"";}
+      rows.push({journal:"VE",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
+        if_:p.if_client||p.if_||"",ice:p.ice||"",design:"Vente / prestation",
+        ttc:ttc,ht:ht,taux:taux,code:TVA_CODE[taux]||String(taux),tva:tva,
+        regDate:regDate,regMode:regMode,cr:cr,compteTva:"44552000"});
+    });
+  }
+  rows.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
+  return rows;
+}
+function ventesDetailHtml(c){
+  if(!c)return "";
+  var rows=ventesDetailRows(c.id,S.tvaSel.period);
+  var soc=((S.flags[c.id]||{}).societe)||{};
+  var regime=regTvaOf(c);
+  var head='<tr style="background:#0E7A5F;color:#fff;font-size:10.5px;text-align:left">'
+    +['N°','Journal','N° Facture','Date','Client','IF','ICE','Désignation','TTC','HT','Taux','Code','TVA collectée',(regime==="encaissement"?'Date encaiss.':'Date règl.'),'Mode','Réf.','Compte TVA'].map(function(h){return '<th style="padding:5px 6px;white-space:nowrap">'+h+'</th>';}).join("")+'</tr>';
+  var body=rows.map(function(r,i){
+    return '<tr style="border-bottom:1px solid #F0EDE3;font-size:11.5px">'
+      +'<td style="padding:4px 6px">'+(i+1)+'</td><td style="padding:4px 6px">'+esc(r.journal)+'</td><td style="padding:4px 6px">'+esc(r.num)+'</td>'
+      +'<td style="padding:4px 6px" class="mono">'+esc(r.date)+'</td><td style="padding:4px 6px;font-weight:600">'+esc(r.tiers)+'</td>'
+      +'<td style="padding:4px 6px">'+esc(r.if_)+'</td><td style="padding:4px 6px">'+esc(r.ice)+'</td><td style="padding:4px 6px">'+esc(r.design)+'</td>'
+      +'<td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.ttc)+'</td><td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.ht)+'</td>'
+      +'<td style="padding:4px 6px;text-align:center">'+r.taux+'%</td><td style="padding:4px 6px;text-align:center">'+esc(r.code)+'</td>'
+      +'<td style="padding:4px 6px;text-align:right;color:#0a5f4a;font-weight:600" class="mono">'+fmtDH2(r.tva)+'</td>'
+      +'<td style="padding:4px 6px;color:'+(r.regDate?"#14201C":"#C0392B")+'" class="mono">'+(r.regDate||"non réglé")+'</td>'
+      +'<td style="padding:4px 6px">'+esc(r.regMode)+'</td><td style="padding:4px 6px">'+esc(r.cr)+'</td><td style="padding:4px 6px" class="mono">'+esc(r.compteTva)+'</td></tr>';
+  }).join("");
+  var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tHT=rows.reduce(function(a,r){return a+r.ht;},0),tTVA=rows.reduce(function(a,r){return a+r.tva;},0);
+  var foot='<tr style="border-top:2px solid #0E7A5F;font-weight:700;background:#E3F1EB"><td colspan="8" style="padding:7px 6px">TOTAUX ('+rows.length+')</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTTC)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tHT)+'</td><td colspan="2"></td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTVA)+'</td><td colspan="4"></td></tr>';
+  return '<div class="card" style="padding:20px;margin-top:16px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px"><div class="sectit">'+ic("receipt")+' Journal des ventes (TVA collectée) — '+esc(c.dossier)+(soc.if?' · IF '+esc(soc.if):'')+' · '+esc(S.tvaSel.period||"")+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="ventes_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button></div></div>'
+    +'<div class="note" style="font-size:11px;margin-bottom:10px;color:var(--muted);background:#F7F4EC;border-radius:8px;padding:7px 10px">'
+      +(regime==="encaissement"?"Ventes <b>encaissées</b> dans la période (TVA exigible sur les règlements clients reçus).":"Ventes <b>facturées</b> dans la période (TVA exigible dès la facturation).")
+    +'</div>'
+    +(rows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1050px">'+head+body+foot+'</table></div>':'<div class="note">Aucune vente pour cette période. Validez des factures de vente et sélectionnez une période.</div>')
+    +'</div>';
+}
+async function ventesDetailExportExcel(){
+  var c=clients().find(function(x){return x.id===S.tvaSel.id;})||clients().find(function(x){return x.id===S.curClient;});if(!c){showErr("Sélectionnez un dossier.");return;}
+  var rows=ventesDetailRows(c.id,S.tvaSel.period);
+  if(!rows.length){showErr("Aucune vente à exporter.");return;}
+  setSync("saving");
+  try{
+    if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    var aoa=[["N°","Journal","N° Facture","Date Facture","Client","IF","ICE","Désignation","Montant TTC","Montant HT","Taux TVA","Code TVA","TVA collectée","Date règlement","Mode règlement","Référence","Compte TVA"]];
+    rows.forEach(function(r,i){ aoa.push([i+1,r.journal,r.num,r.date,r.tiers,r.if_,r.ice,r.design,r.ttc,r.ht,r.taux,r.code,r.tva,r.regDate,r.regMode,r.cr,r.compteTva]); });
+    var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tHT=rows.reduce(function(a,r){return a+r.ht;},0),tTVA=rows.reduce(function(a,r){return a+r.tva;},0);
+    aoa.push(["","","","","","","","TOTAUX",tTTC,tHT,"","",tTVA,"","","",""]);
+    var ws=window.XLSX.utils.aoa_to_sheet(aoa);var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,"Journal ventes");
+    window.XLSX.writeFile(wb,"Journal_ventes_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+(S.tvaSel.period||"")+".xlsx");
+    setSync("synced");showOk("Journal des ventes exporté ("+rows.length+" lignes).");
+  }catch(e){ setSync("synced");showErr("Export impossible : "+(e.message||e)); }
+}
 function releveDeductionsRows(cid,period){
   var g=comptaGet(cid),rows=[];
-  g.pieces.filter(function(p){return (p.type==="achat"||!p.type)&&pieceYear(p)===S.year&&pieceInPeriod(p,period)&&(+p.tva>0)&&!p.tvaNonRecup;}).forEach(function(p){
-    var ht=+p.ht||0,tva=+p.tva||0,ttc=+p.ttc||(ht+tva),taux=ht>0?Math.round(tva/ht*100):20;
-    var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
-    var regDate="",regMode="",cr="";
-    var op=(g.operations||[]).find(function(o){return (o.affectations||[]).some(function(a){return String(a.pieceId)===String(p.id);});});
-    if(op){regDate=op.date||"";regMode="Virement/Chèque";cr=op.reference||"";}
-    rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-      if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:isImmo?"Immobilisation":"Achat/charge",
-      ttc:ttc,ht:ht,taux:taux,code:TVA_CODE[taux]||String(taux),tva:tva,prorata:100,recup:tva,
-      regDate:regDate,regMode:regMode,cr:cr,compteTva:isImmo?"34551000":"34552000"});
-  });
+  var c=clients().find(function(x){return x.id===cid;})||{};
+  var regime=regTvaOf(c);
+  if(regime==="encaissement"){
+    // Déductions sur PAIEMENTS fournisseurs réglés dans la période
+    var achatsById={}; g.pieces.forEach(function(p){ if(p.type==="achat"||!p.type) achatsById[String(p.id)]=p; });
+    (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period);}).forEach(function(o){
+      (o.affectations||[]).forEach(function(a){
+        var p=achatsById[String(a.pieceId)]; if(!p||p.tvaNonRecup)return;
+        var mt=+a.montant||0; if(mt<=0)return;
+        var taux=pieceTaux(p); if(taux<0)taux=20;
+        var ttc=mt, tva=taux>0?(mt*taux/(100+taux)):0, ht=ttc-tva;
+        var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
+        rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
+          if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":"Achat/charge")+" (réglé)",
+          ttc:ttc,ht:ht,taux:taux,code:TVA_CODE[taux]||String(taux),tva:tva,prorata:100,recup:tva,
+          regDate:o.date||"",regMode:o.isCommission?"Banque":"Virement/Chèque",cr:o.reference||"",compteTva:isImmo?"34551000":"34552000"});
+      });
+    });
+  }else{
+    // Régime des débits : déductions à la date de facture
+    g.pieces.filter(function(p){return (p.type==="achat"||!p.type)&&pieceYear(p)===S.year&&pieceInPeriod(p,period)&&(+p.tva>0)&&!p.tvaNonRecup;}).forEach(function(p){
+      var ht=+p.ht||0,tva=+p.tva||0,ttc=+p.ttc||(ht+tva),taux=ht>0?Math.round(tva/ht*100):20;
+      var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
+      var regDate="",regMode="",cr="";
+      var op=(g.operations||[]).find(function(o){return (o.affectations||[]).some(function(a){return String(a.pieceId)===String(p.id);});});
+      if(op){regDate=op.date||"";regMode="Virement/Chèque";cr=op.reference||"";}
+      rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
+        if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:isImmo?"Immobilisation":"Achat/charge",
+        ttc:ttc,ht:ht,taux:taux,code:TVA_CODE[taux]||String(taux),tva:tva,prorata:100,recup:tva,
+        regDate:regDate,regMode:regMode,cr:cr,compteTva:isImmo?"34551000":"34552000"});
+    });
+  }
   (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0;}).forEach(function(o){
     var ht=+o.htComm||0,tva=+o.tvaComm||0,ttc=ht+tva;
     rows.push({journal:"BQ",num:o.reference||"",date:o.date||"",tiers:o.libelle||"Banque",if_:"",ice:"",design:"Commission bancaire",ttc:ttc,ht:ht,taux:o.tauxComm||10,code:TVA_CODE[o.tauxComm||10]||"10",tva:tva,prorata:100,recup:tva,regDate:o.date||"",regMode:"Banque",cr:o.reference||"",compteTva:"34552000"});
@@ -686,6 +872,7 @@ function tvaInput(t){
   var f=t.dataset.tva.split(":");
   if(f[0]==="v"){var i=+f[1];d.ventes[i]=Object.assign({},d.ventes[i]);d.ventes[i][f[2]]=t.value;}
   else d[f[0]]=t.value;
+  d._auto=false;
   S.tva[key]=d;save("tva");
   var calc=tvaCalc(d);
   var r=document.getElementById("tvaResults");if(r)r.innerHTML=tvaResultsHtml(calc);
@@ -699,8 +886,9 @@ async function tvaExport(){
     var aoa=[];
     aoa.push(["DÉCLARATION TVA — "+c.dossier]);
     aoa.push(["Période",S.tvaSel.period+" / "+S.year,"","ICE",((S.flags[c.id]||{}).societe||{}).ice||""]);
+    aoa.push(["Régime",REG_TVA_LABEL[regTvaOf(c)]||"Régime des débits"]);
     aoa.push([]);
-    aoa.push(["TVA FACTURÉE (ventes)"]);
+    aoa.push([regTvaOf(c)==="encaissement"?"TVA ENCAISSÉE (ventes réglées)":"TVA FACTURÉE (ventes)"]);
     aoa.push(["Taux","Base HT","TVA exigible"]);
     Object.keys(calc.byRate).sort(function(a,b){return b-a;}).forEach(function(t){var r=calc.byRate[t];if(r.base||r.tva)aoa.push([t+"%",r.base,r.tva]);});
     aoa.push(["TOTAL",calc.caHT,calc.exig]);
@@ -1742,14 +1930,16 @@ function vCompta(){
   var head='<div class="wrap">'+header("Comptabilité","Saisie, journal et grand livre · Exercice "+S.year);
   if(!cs.length)return head+'<div class="empty">Aucun client.</div></div>';
   var clientOpts=cs.map(function(x){return '<option value="'+x.id+'"'+(x.id===S.curClient?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("");
-  var tabs=[["saisie","Saisie / Import"],["journal","Journal général"],["gl","Grand livre"],["recap","Toutes sociétés"]];
+  var tabs=[["saisie","Saisie / Import"],["manuel","Saisie manuelle"],["journal","Journal général"],["gl","Grand livre"],["balance","Balance"],["recap","Toutes sociétés"]];
   var toggle='<div style="display:flex;gap:6px;background:#EDEAE0;border-radius:10px;padding:3px;flex-wrap:wrap">'+tabs.map(function(t){return '<button data-act="comptaview" data-v="'+t[0]+'" class="chip" style="border:0;'+(S.comptaView===t[0]?"background:#14201C;color:#fff":"background:transparent")+'">'+t[1]+'</button>';}).join("")+'</div>';
   var bar='<div class="card mt5" style="padding:16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div class="flbl">Société</div><select class="ipt" id="comptaclient">'+clientOpts+'</select></div>'+toggle+'</div>';
   // hidden file inputs
   var hidden='<input type="file" id="compta_file_achat" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none"><input type="file" id="compta_file_vente" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none"><input type="file" id="compta_file_banque" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none">';
   var body;
   if(S.comptaView==="journal") body=comptaJournalBody(c);
+  else if(S.comptaView==="manuel") body=comptaManuelBody(c);
   else if(S.comptaView==="gl") body=comptaGLBody(c);
+  else if(S.comptaView==="balance") body=comptaBalanceBody(c);
   else if(S.comptaView==="recap") body=comptaRecapBody();
   else if(S.comptaView==="list") body=comptaListBody(c);
   else body=comptaSaisieBody(c);
@@ -1771,10 +1961,140 @@ function comptaSaisieBody(c){
   var rev=av.length?('<div style="display:flex;justify-content:space-between;align-items:center;margin:22px 0 12px;flex-wrap:wrap;gap:8px"><div class="sectit">À valider ('+av.length+')</div><button class="btn-primary" data-act="comptavalidateall">'+ic("check","width:15px;height:15px")+' Tout valider ('+av.length+')</button></div>'+av.map(reviewCard).join("")):'<div class="note mt5">Aucune pièce à valider. Cliquez « Importer » sur la carte Achats pour déposer une facture (OCR automatique).</div>';
   return cards+printAll+rev;
 }
+// ===== Saisie manuelle des écritures comptables (journal OD / AC / VE / BQ) =====
+var OD_JOURNALS=[["OD","Opérations diverses"],["AC","Achats"],["VE","Ventes"],["BQ","Banque"]];
+function odDefaultDate(){ var iso=new Date().toISOString().slice(0,10); return (+iso.slice(0,4)===S.year)?iso:(S.year+"-01-01"); }
+function odDraftDefault(){ return {editId:null,journal:"OD",date:odDefaultDate(),piece:"",lignes:[{compte:"",libelle:"",debit:"",credit:""},{compte:"",libelle:"",debit:"",credit:""}]}; }
+function odEnsureDraft(){ if(!S.comptaDraft)S.comptaDraft=odDraftDefault(); if(!S.comptaDraft.lignes||!S.comptaDraft.lignes.length)S.comptaDraft.lignes=[{compte:"",libelle:"",debit:"",credit:""}]; return S.comptaDraft; }
+function odPlanOptions(){
+  var seen={},out=[];
+  function add(c,l){ if(!c||seen[c])return; seen[c]=1; out.push('<option value="'+esc(c)+'">'+esc(c)+' · '+esc(l)+'</option>'); }
+  PLAN_COMPTABLE.forEach(function(a){add(a[0],a[1]);});
+  if(typeof PLAN_VENTES!=="undefined")PLAN_VENTES.forEach(function(a){add(a[0],a[1]);});
+  if(typeof COMPTE_LABELS!=="undefined")Object.keys(COMPTE_LABELS).forEach(function(c){add(c,COMPTE_LABELS[c]);});
+  return out.join("");
+}
+function comptaManuelBody(c){
+  if(!c)return '<div class="empty mt4">Sélectionnez une société.</div>';
+  var d=odEnsureDraft();
+  var jOpts=OD_JOURNALS.map(function(j){return '<option value="'+j[0]+'"'+(d.journal===j[0]?" selected":"")+'>'+j[0]+' · '+j[1]+'</option>';}).join("");
+  var rows=d.lignes.map(function(l,i){
+    return '<tr>'
+      +'<td style="padding:4px 5px"><input class="ipt mono" list="od_plan" data-odl="'+i+':compte" value="'+esc(l.compte)+'" placeholder="6111" style="min-width:90px"></td>'
+      +'<td style="padding:4px 5px"><input class="ipt" data-odl="'+i+':libelle" value="'+esc(l.libelle)+'" placeholder="Libellé de la ligne"></td>'
+      +'<td style="padding:4px 5px"><input class="ipt mono" type="number" step="0.01" data-odl="'+i+':debit" value="'+esc(l.debit)+'" placeholder="0,00" style="text-align:right;min-width:100px"></td>'
+      +'<td style="padding:4px 5px"><input class="ipt mono" type="number" step="0.01" data-odl="'+i+':credit" value="'+esc(l.credit)+'" placeholder="0,00" style="text-align:right;min-width:100px"></td>'
+      +'<td style="padding:4px 5px;text-align:center"><button class="iconbtn" data-act="od_delline" data-i="'+i+'" style="color:#cfccc0">'+ic("trash")+'</button></td>'
+      +'</tr>';
+  }).join("");
+  var td=0,tc=0; d.lignes.forEach(function(l){td+=+l.debit||0;tc+=+l.credit||0;});
+  var diff=Math.round((td-tc)*100)/100, bal=Math.abs(diff)<0.005 && td>0;
+  var badgeTxt=(td===0&&tc===0)?"Saisissez les montants":(bal?"✅ Équilibrée — "+fmtDH2(td):"⚠️ Déséquilibre : "+fmtDH2(diff)+" (Débit − Crédit)");
+  var badgeColor=bal?"#0E7A5F":((td===0&&tc===0)?"#78756c":"#B42318");
+  var form='<div class="card mt4" style="padding:20px">'
+    +'<datalist id="od_plan">'+odPlanOptions()+'</datalist>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px"><div class="sectit">'+(d.editId?"Modifier l'écriture":"Nouvelle écriture manuelle")+' — '+esc(c.dossier)+' · '+S.year+'</div>'+(d.editId?'<span class="chip" style="background:#FBEAE8;color:#B42318;border:0">Mode édition</span>':'')+'</div>'
+    +'<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">'
+    +'<div style="min-width:190px"><div class="flbl">Journal</div><select class="ipt" data-od="journal">'+jOpts+'</select></div>'
+    +'<div style="min-width:150px"><div class="flbl">Date</div><input class="ipt" type="date" data-od="date" value="'+esc(d.date)+'"></div>'
+    +'<div style="flex:1;min-width:200px"><div class="flbl">Pièce / référence</div><input class="ipt" data-od="piece" value="'+esc(d.piece)+'" placeholder="Ex : OD-'+S.year+'-001, régularisation, à-nouveau…"></div>'
+    +'</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px">'
+    +'<tr style="color:var(--faint);text-align:left;font-size:12px"><th style="padding:4px 5px;width:130px">Compte</th><th style="padding:4px 5px">Libellé</th><th style="padding:4px 5px;text-align:right;width:130px">Débit</th><th style="padding:4px 5px;text-align:right;width:130px">Crédit</th><th style="width:40px"></th></tr>'
+    +rows
+    +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="2" style="padding:8px 5px">TOTAUX</td><td class="mono" id="od_td" style="text-align:right;padding:8px 5px">'+fmtDH2(td)+'</td><td class="mono" id="od_tc" style="text-align:right;padding:8px 5px">'+fmtDH2(tc)+'</td><td></td></tr>'
+    +'</table></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px">'
+    +'<button class="chip" data-act="od_addline">'+ic("plus","width:13px;height:13px;vertical-align:-2px")+' Ajouter une ligne</button>'
+    +'<div id="od_badge" class="mono" style="font-size:13px;font-weight:600;color:'+badgeColor+'">'+badgeTxt+'</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">'
+    +'<button class="btn-primary" id="od_save" data-act="od_save" style="width:auto;margin-top:0;padding:11px 22px;'+(bal?"":"opacity:.5;cursor:not-allowed")+'"'+(bal?"":" disabled")+'>'+ic("check","width:15px;height:15px")+' '+(d.editId?"Enregistrer les modifications":"Enregistrer l'écriture")+'</button>'
+    +'<button class="chip" data-act="od_reset">'+(d.editId?"Annuler":"Réinitialiser")+'</button>'
+    +'</div>'
+    +'<div class="note mt4" style="font-size:11.5px">Une écriture doit être <b>équilibrée</b> (total Débit = total Crédit) pour être enregistrée. Elle alimente automatiquement le Journal général, le Grand livre, la Balance et l\'export FEC.</div>'
+    +'</div>';
+  return form+odList(c);
+}
+function odList(c){
+  var g=comptaGet(c.id);
+  var man=g.ecritures.filter(function(e){ var y=(e.date&&/^\d{4}/.test(e.date))?+e.date.slice(0,4):S.year; return e.manuel && y===S.year; });
+  man.sort(function(a,b){return (b.date||"").localeCompare(a.date||"");});
+  if(!man.length)return '<div class="note mt4">Aucune écriture manuelle pour '+S.year+'. Celles que vous enregistrez ci-dessus apparaîtront ici.</div>';
+  var rows=man.map(function(e){
+    var t=(e.lignes||[]).reduce(function(a,l){return a+(+l.debit||0);},0);
+    var det=(e.lignes||[]).map(function(l){return '<div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;color:var(--muted)"><span><span class="mono">'+esc(l.compte)+'</span> '+esc(l.libelle||"")+'</span><span class="mono">'+(+l.debit?"D "+fmtDH2(l.debit):"")+(+l.credit?"C "+fmtDH2(l.credit):"")+'</span></div>';}).join("");
+    return '<div class="card" style="padding:14px;margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">'
+      +'<div><div style="font-weight:600;color:#14201C"><span class="mono">'+esc(e.journal||"OD")+'</span> · '+esc(e.date||"")+(e.piece?' · '+esc(e.piece):'')+'</div></div>'
+      +'<div style="display:flex;align-items:center;gap:6px"><span class="mono" style="font-weight:700;color:#0a5f4a">'+fmtDH2(t)+'</span>'
+      +'<button class="chip" data-act="od_edit" data-id="'+esc(e.id)+'">✎ Modifier</button>'
+      +'<button class="iconbtn" data-act="od_del" data-id="'+esc(e.id)+'" style="color:#cfccc0">'+ic("trash")+'</button></div>'
+      +'</div><div style="margin-top:8px;border-top:1px solid #F0EDE3;padding-top:8px">'+det+'</div></div>';
+  }).join("");
+  return '<div class="mt5"><div class="sectit mb3">Écritures manuelles ('+man.length+') — '+S.year+'</div>'+rows+'</div>';
+}
+function odInput(t){
+  var d=odEnsureDraft();
+  if(t.dataset.od!=null){ d[t.dataset.od]=t.value; return; }
+  if(t.dataset.odl!=null){ var p=t.dataset.odl.split(":"),i=+p[0],f=p[1]; if(d.lignes[i]){ d.lignes[i][f]=t.value; if(f==="debit"||f==="credit")odRecalc(); } }
+}
+function odRecalc(){
+  var d=S.comptaDraft; if(!d)return;
+  var td=0,tc=0; d.lignes.forEach(function(l){td+=+l.debit||0;tc+=+l.credit||0;});
+  var diff=Math.round((td-tc)*100)/100, bal=Math.abs(diff)<0.005 && td>0;
+  var eTd=document.getElementById("od_td"),eTc=document.getElementById("od_tc"),eB=document.getElementById("od_badge"),eS=document.getElementById("od_save");
+  if(eTd)eTd.textContent=fmtDH2(td);
+  if(eTc)eTc.textContent=fmtDH2(tc);
+  if(eB){ eB.textContent=(td===0&&tc===0)?"Saisissez les montants":(bal?"✅ Équilibrée — "+fmtDH2(td):"⚠️ Déséquilibre : "+fmtDH2(diff)+" (Débit − Crédit)"); eB.style.color=bal?"#0E7A5F":((td===0&&tc===0)?"#78756c":"#B42318"); }
+  if(eS){ eS.disabled=!bal; eS.style.opacity=bal?"1":".5"; eS.style.cursor=bal?"pointer":"not-allowed"; }
+}
+function odAddLine(){ var d=odEnsureDraft(); d.lignes.push({compte:"",libelle:"",debit:"",credit:""}); renderView(); }
+function odDelLine(i){ var d=odEnsureDraft(); d.lignes.splice(+i,1); if(!d.lignes.length)d.lignes.push({compte:"",libelle:"",debit:"",credit:""}); renderView(); }
+function odReset(){ S.comptaDraft=odDraftDefault(); renderView(); }
+function odEdit(id){
+  var c=clients().find(function(x){return x.id===S.curClient;}); if(!c)return;
+  var g=comptaGet(c.id),e=g.ecritures.find(function(x){return String(x.id)===String(id);}); if(!e)return;
+  S.comptaDraft={editId:e.id,journal:e.journal||"OD",date:e.date||odDefaultDate(),piece:e.piece||"",
+    lignes:(e.lignes||[]).map(function(l){return {compte:l.compte||"",libelle:l.libelle||"",debit:(l.debit||l.debit===0)?l.debit:"",credit:(l.credit||l.credit===0)?l.credit:""};})};
+  if(!S.comptaDraft.lignes.length)S.comptaDraft.lignes=[{compte:"",libelle:"",debit:"",credit:""}];
+  renderView();
+  var m=document.querySelector(".main"); if(m)m.scrollTo({top:0,behavior:"smooth"});
+}
+function odDel(id){
+  var c=clients().find(function(x){return x.id===S.curClient;}); if(!c)return;
+  if(!window.confirm("Supprimer définitivement cette écriture manuelle ?"))return;
+  var g=comptaGet(c.id); g.ecritures=g.ecritures.filter(function(x){return String(x.id)!==String(id);});
+  if(S.comptaDraft&&String(S.comptaDraft.editId)===String(id))S.comptaDraft=odDraftDefault();
+  save("compta"); renderView(); showOk("Écriture manuelle supprimée.");
+}
+function odSave(){
+  var c=clients().find(function(x){return x.id===S.curClient;}); if(!c){showErr("Sélectionnez une société.");return;}
+  var d=odEnsureDraft();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d.date||"")){showErr("Date invalide.");return;}
+  if((+d.date.slice(0,4))!==S.year){showErr("La date doit être dans l'exercice "+S.year+".");return;}
+  var lignes=d.lignes.map(function(l){return {compte:(l.compte||"").trim(),libelle:(l.libelle||"").trim(),debit:Math.round((+l.debit||0)*100)/100,credit:Math.round((+l.credit||0)*100)/100};})
+                     .filter(function(l){return l.compte && (l.debit||l.credit);});
+  if(lignes.length<2){showErr("Saisissez au moins deux lignes avec un n° de compte et un montant.");return;}
+  var bad=lignes.find(function(l){return l.debit&&l.credit;});
+  if(bad){showErr("Une même ligne ne peut pas avoir à la fois un débit et un crédit (compte "+bad.compte+").");return;}
+  var td=lignes.reduce(function(a,l){return a+l.debit;},0),tc=lignes.reduce(function(a,l){return a+l.credit;},0);
+  if(Math.abs(td-tc)>0.005){showErr("Écriture déséquilibrée : débit "+fmtDH2(td)+" ≠ crédit "+fmtDH2(tc)+".");return;}
+  var g=comptaGet(c.id);
+  if(d.editId){
+    var e=g.ecritures.find(function(x){return String(x.id)===String(d.editId);});
+    if(e){ e.date=d.date; e.journal=d.journal||"OD"; e.piece=d.piece||""; e.lignes=lignes; e.manuel=true; }
+    else { g.ecritures.push({id:"MAN"+Date.now(),date:d.date,journal:d.journal||"OD",piece:d.piece||"",lignes:lignes,manuel:true}); }
+    save("compta"); S.comptaDraft=odDraftDefault(); renderView(); showOk("Écriture manuelle modifiée.");
+  } else {
+    g.ecritures.push({id:"MAN"+Date.now(),date:d.date,journal:d.journal||"OD",piece:d.piece||"",lignes:lignes,manuel:true});
+    save("compta"); S.comptaDraft=odDraftDefault(); renderView(); showOk("Écriture enregistrée dans le journal "+(d.journal||"OD")+".");
+  }
+}
 // ===== Liste filtrable Achats / Ventes / Banque =====
 function comptaListMatch(p,fl){
   if(fl.statut && p.status!==fl.statut)return false;
-  if(fl.q){var q=fl.q.toLowerCase();var hay=((p.fournisseur||"")+" "+(p.numero||"")+" "+(p.ice||"")+" "+(p.name||"")).toLowerCase();if(hay.indexOf(q)<0)return false;}
+  if(fl.q){var hay=(p.fournisseur||"")+" "+(p.numero||"")+" "+(p.ice||"")+" "+(p.name||"");if(!smartMatch(fl.q,hay))return false;}
   if(fl.dmin && (p.date||"")<fl.dmin)return false;
   if(fl.dmax && (p.date||"")>fl.dmax)return false;
   var ttc=+p.ttc||((+p.ht||0)+(+p.tva||0));
@@ -1784,7 +2104,7 @@ function comptaListMatch(p,fl){
 }
 function comptaOpMatch(o,fl){
   if(fl.statut && (o.status||"nouveau")!==fl.statut)return false;
-  if(fl.q){var q=fl.q.toLowerCase();var hay=((o.libelle||"")+" "+(o.reference||"")).toLowerCase();if(hay.indexOf(q)<0)return false;}
+  if(fl.q){var hay=(o.libelle||"")+" "+(o.reference||"");if(!smartMatch(fl.q,hay))return false;}
   if(fl.dmin && (o.date||"")<fl.dmin)return false;
   if(fl.dmax && (o.date||"")>fl.dmax)return false;
   var mont=(+o.debit||0)+(+o.credit||0);
@@ -2168,6 +2488,94 @@ function comptaGLBody(c){
     return '<div class="card" style="padding:16px;margin-bottom:12px"><div class="sectit mb2">'+esc(cp)+(nom?" · "+esc(nom):"")+'</div><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--faint)"><td style="padding:2px 8px">Date</td><td style="padding:2px 8px">Libellé</td><td style="text-align:right;padding:2px 8px">Débit</td><td style="text-align:right;padding:2px 8px">Crédit</td><td style="text-align:right;padding:2px 8px">Solde</td></tr>'+rows+'<tr style="font-weight:700;border-top:1px solid #14201C"><td colspan="2" style="padding:4px 8px">Totaux</td><td class="mono" style="text-align:right;padding:4px 8px">'+fmtDH2(sd)+'</td><td class="mono" style="text-align:right;padding:4px 8px">'+fmtDH2(sc)+'</td><td class="mono" style="text-align:right;padding:4px 8px">'+fmtDH2(sd-sc)+'</td></tr></table></div>';
   }).join("");
   return '<div class="mt4"><div class="sectit mb3">Grand livre — '+esc(c.dossier)+' · '+S.year+'</div>'+html+'</div>';
+}
+// ===== Balance comptable générée depuis les écritures =====
+var COMPTE_LABELS={
+  "4411":"Fournisseurs","4458":"État - retenues à la source à reverser","3421":"Clients et comptes rattachés",
+  "5141":"Banques","4711":"Compte d'attente (à affecter)","34551":"État - TVA récupérable sur immobilisations",
+  "34552":"État - TVA récupérable sur charges","4455":"État - TVA facturée","61475":"Frais et commissions sur services bancaires",
+  "61671":"Droits d'enregistrement et de timbre","61678":"Autres impôts, taxes et débours"
+};
+function libCompte(cp){
+  if(COMPTE_LABELS[cp])return COMPTE_LABELS[cp];
+  var f=(typeof PLAN_COMPTABLE!=="undefined"&&PLAN_COMPTABLE.find(function(a){return a[0]===cp;}))||(typeof PLAN_VENTES!=="undefined"&&PLAN_VENTES.find(function(a){return a[0]===cp;}));
+  if(f)return f[1];
+  var cl=classifyCompte(cp); return cl?cl.m:"";
+}
+// agrège toutes les lignes d'écriture de l'exercice par n° de compte
+function comptaBalanceRows(c){
+  var ecs=ecrituresOf(c),map={};
+  ecs.forEach(function(e){(e.lignes||[]).forEach(function(l){
+    var k=(l.compte||"").trim(); if(!k)return;
+    var m=map[k]||(map[k]={deb:0,cred:0});
+    m.deb+=(+l.debit||0); m.cred+=(+l.credit||0);
+  });});
+  return Object.keys(map).sort().map(function(cp){
+    var m=map[cp],solde=Math.round((m.deb-m.cred)*100)/100;
+    return {c:cp,lib:libCompte(cp),mvDeb:Math.round(m.deb*100)/100,mvCred:Math.round(m.cred*100)/100,
+            sDeb:solde>0?solde:0,sCred:solde<0?-solde:0,solde:solde};
+  });
+}
+// texte tabulé attendu par parseBalance : compte \t intitulé \t débit \t crédit (soldes)
+function balanceToText(rows){
+  return rows.map(function(r){return r.c+"\t"+(r.lib||"")+"\t"+(r.sDeb||0)+"\t"+(r.sCred||0);}).join("\n");
+}
+function comptaBalanceBody(c){
+  var rows=comptaBalanceRows(c);
+  if(!rows.length)return '<div class="note mt5">Aucune écriture pour '+esc(c.dossier)+' ('+S.year+'). Validez des factures dans « Saisie / Import » pour générer la balance.</div>';
+  var tDeb=0,tCred=0,tSDeb=0,tSCred=0;
+  var body=rows.map(function(r){
+    tDeb+=r.mvDeb;tCred+=r.mvCred;tSDeb+=r.sDeb;tSCred+=r.sCred;
+    return '<tr><td style="padding:3px 8px" class="mono">'+esc(r.c)+'</td><td style="padding:3px 8px">'+esc(r.lib)+'</td>'
+      +'<td class="mono" style="text-align:right;padding:3px 8px;color:var(--muted)">'+(r.mvDeb?fmtDH2(r.mvDeb):"")+'</td>'
+      +'<td class="mono" style="text-align:right;padding:3px 8px;color:var(--muted)">'+(r.mvCred?fmtDH2(r.mvCred):"")+'</td>'
+      +'<td class="mono" style="text-align:right;padding:3px 8px;color:#14201C;font-weight:600">'+(r.sDeb?fmtDH2(r.sDeb):"")+'</td>'
+      +'<td class="mono" style="text-align:right;padding:3px 8px;color:#0a5f4a;font-weight:600">'+(r.sCred?fmtDH2(r.sCred):"")+'</td></tr>';
+  }).join("");
+  var eqMvt=Math.abs(tDeb-tCred)<0.01, eqSolde=Math.abs(tSDeb-tSCred)<0.01, ok=eqMvt&&eqSolde;
+  var badge='<div style="margin:12px 0;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;background:'+(ok?"#E3F1EB":"#FBEAE8")+';color:'+(ok?"#0E7A5F":"#B42318")+'">'+(ok?"✅ Balance équilibrée — Total Débit = Total Crédit = "+fmtDH2(tDeb):"⚠️ Déséquilibre — Mouvements : Débit "+fmtDH2(tDeb)+" ≠ Crédit "+fmtDH2(tCred)+(eqSolde?"":" · Soldes : D "+fmtDH2(tSDeb)+" / C "+fmtDH2(tSCred)))+'</div>';
+  var actions='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+    +'<button class="btn-primary" data-act="comptabal_inject" data-id="'+c.id+'">'+ic("down","width:15px;height:15px;vertical-align:-2px")+' Injecter dans la liasse (Bilan / CPC / ESG)</button>'
+    +'<button class="chip" data-act="comptabal_copy" data-id="'+c.id+'">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' Copier (format liasse)</button>'
+    +'<button class="chip" data-act="comptabal_xlsx" data-id="'+c.id+'">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Export Excel</button></div>';
+  return '<div class="card mt4" style="padding:20px;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px"><div class="sectit">Balance comptable — '+esc(c.dossier)+' · '+S.year+'</div><span class="note" style="font-size:11.5px">'+rows.length+' comptes mouvementés · générée depuis les écritures de l\'exercice</span></div>'
+    +badge+actions
+    +'<table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte</th><th style="padding:4px 8px">Intitulé</th><th style="text-align:right;padding:4px 8px">Mvt Débit</th><th style="text-align:right;padding:4px 8px">Mvt Crédit</th><th style="text-align:right;padding:4px 8px">Solde Débiteur</th><th style="text-align:right;padding:4px 8px">Solde Créditeur</th></tr>'+body
+    +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="2" style="padding:6px 8px">TOTAUX</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tDeb)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tCred)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tSDeb)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tSCred)+'</td></tr></table>'
+    +'<div class="note" style="margin-top:10px;font-size:11.5px">Cette balance agrège toutes les écritures (achats, ventes, banque) validées de l\'exercice. « Injecter dans la liasse » remplit automatiquement la balance du module <b>Liasse / IS</b> pour générer le Bilan, le CPC et l\'ESG.</div></div>';
+}
+function comptaBalInject(cid){
+  var c=clients().find(function(x){return x.id===+cid;}); if(!c)return;
+  var rows=comptaBalanceRows(c); if(!rows.length){showErr("Aucune écriture à injecter.");return;}
+  S.liasseSel.id=c.id; S.curClient=c.id;
+  var d=liasseGet();
+  S.liasse[liasseKey()]=Object.assign({},d,{balText:balanceToText(rows)});
+  save("liasse");
+  S.liasseView="bilan"; S.tab="liasse"; S.modal=null;
+  render();
+  showOk("Balance de "+c.dossier+" injectée dans la liasse — Bilan / CPC / ESG générés.");
+}
+function comptaBalCopy(cid){
+  var c=clients().find(function(x){return x.id===+cid;}); if(!c)return;
+  var rows=comptaBalanceRows(c); if(!rows.length){showErr("Aucune écriture.");return;}
+  var txt=balanceToText(rows);
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){showOk("Balance copiée ("+rows.length+" comptes) — collez-la dans Excel ou la liasse.");},function(){showErr("Copie refusée par le navigateur.");});}
+  else{showErr("Presse-papiers indisponible sur ce navigateur.");}
+}
+async function comptaBalXlsx(cid){
+  var c=clients().find(function(x){return x.id===+cid;}); if(!c)return;
+  var rows=comptaBalanceRows(c); if(!rows.length){showErr("Aucune écriture.");return;}
+  try{
+    if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    var aoa=[["BALANCE COMPTABLE — "+c.dossier+" — Exercice "+S.year],[],["Compte","Intitulé","Mvt Débit","Mvt Crédit","Solde Débiteur","Solde Créditeur"]];
+    var tDeb=0,tCred=0,tSDeb=0,tSCred=0;
+    rows.forEach(function(r){tDeb+=r.mvDeb;tCred+=r.mvCred;tSDeb+=r.sDeb;tSCred+=r.sCred;aoa.push([r.c,r.lib,r.mvDeb,r.mvCred,r.sDeb,r.sCred]);});
+    aoa.push(["","TOTAUX",tDeb,tCred,tSDeb,tSCred]);
+    var ws=window.XLSX.utils.aoa_to_sheet(aoa);ws["!cols"]=[{wch:10},{wch:38},{wch:14},{wch:14},{wch:15},{wch:15}];
+    var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,"Balance "+S.year);
+    window.XLSX.writeFile(wb,"Balance_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+S.year+".xlsx");
+    showOk("Balance exportée en Excel.");
+  }catch(e){showErr("Export Excel impossible : "+(e&&e.message?e.message:e));}
 }
 // ===== Relevés bancaires =====
 var BANK_ACCOUNT="5141"; // Banques
@@ -2858,7 +3266,7 @@ function echRows(){
     if(S.echCat!=="all"&&d.cat!==S.echCat)return false;
     if(S.echUrg==="active"&&(d.u.key==="depose"||d.u.key==="planif"))return false;
     if(S.echUrg!=="active"&&S.echUrg!=="all"&&d.u.key!==S.echUrg)return false;
-    if(S.echq&&!d.client.dossier.toLowerCase().includes(S.echq.toLowerCase()))return false;
+    if(S.echq&&!smartMatch(S.echq,d.client.dossier))return false;
     return true;
   });
   if(!dls.length)return '<div class="empty">Aucune échéance pour ce filtre.</div>';
@@ -2894,7 +3302,7 @@ function vEch(){
 }
 
 function cliCards(){
-  const list=clients().filter(c=>c.dossier.toLowerCase().includes(S.cliq.toLowerCase()));
+  const list=clients().filter(c=>smartMatch(S.cliq,c.dossier));
   return list.map(c=>{
     const m=(c.forme||"").toLowerCase().includes("morale");
     return '<div class="card ccard" data-act="client" data-id="'+c.id+'"><div class="cav" style="background:'+(m?"#EEF1EF":"#F3EFE4")+';color:'+(m?"#44403c":"#92611a")+'">'+ic(m?"building":"user")+'</div><div style="min-width:0;flex:1"><div class="dossier" style="font-size:13.5px">'+esc(c.dossier)+'</div><div class="tel">'+ic("phone")+esc(c.tel||"—")+'</div></div>'+badge(STAT_COLORS[c.statut]||"#78716c","#F5F4EF",esc(c.statut||"—"))+'</div>';
@@ -2916,7 +3324,7 @@ function honTotals(){
 }
 function honRows(){
   const t=honTotals();
-  const list=clients().filter(c=>c.dossier.toLowerCase().includes(S.honq.toLowerCase())&&c.honTrim+c.honBilan>0);
+  const list=clients().filter(c=>smartMatch(S.honq,c.dossier)&&c.honTrim+c.honBilan>0);
   const cols="1fr 120px 120px 150px 120px";
   return list.map(c=>{
     const e=t.expected(c),col=t.coll(c),reste=e-col,pct=e?Math.min(100,Math.round(col/e*100)):0;
@@ -3040,7 +3448,7 @@ function modalJur(cid){
 
 function modalCEdit(id){
   const isNew=id==null;
-  const c=isNew?{dossier:"",forme:"personne morale",tel:"",honTrim:"",honBilan:"",pvDepot:"",reg:"trimestrielle",hasBilan:false,hasSal:true,hasDp:false,statut:"EN ATTENTE",comment:""}:clients().find(x=>x.id===id);
+  const c=isNew?{dossier:"",forme:"personne morale",tel:"",honTrim:"",honBilan:"",pvDepot:"",reg:"trimestrielle",regTva:"debit",hasBilan:false,hasSal:true,hasDp:false,statut:"EN ATTENTE",comment:""}:clients().find(x=>x.id===id);
   const opt=(arr,cur)=>arr.map(o=>'<option'+(o===cur?' selected':'')+'>'+esc(o||"—")+'</option>').join("");
   const num=(id2,lbl,v)=>'<div><div class="flbl">'+lbl+'</div><input class="ipt mono" type="number" id="'+id2+'" placeholder="0" value="'+(v||v===0?v:"")+'"></div>';
   const ck=(id2,lbl,on)=>'<label><input type="checkbox" id="'+id2+'"'+(on?" checked":"")+'>'+lbl+'</label>';
@@ -3050,7 +3458,8 @@ function modalCEdit(id){
       '<div class="mb3"><div class="flbl">Dénomination du dossier</div><input class="ipt" id="cf_dossier" placeholder="Nom de la société / du client" value="'+esc(c.dossier)+'"></div>'+
       '<div class="grid g2"><div><div class="flbl">Forme juridique</div><select class="ipt" id="cf_forme">'+opt(FORMES,c.forme)+'</select></div><div><div class="flbl">Téléphone</div><input class="ipt" id="cf_tel" value="'+esc(c.tel)+'"></div></div>'+
       '<div class="grid g3 mt3">'+num("cf_hontrim","Honoraire trim. (DH)",c.honTrim)+num("cf_honbilan","Honoraire bilan (DH)",c.honBilan)+num("cf_pv","PV de dépôt (DH)",c.pvDepot)+'</div>'+
-      '<div class="mt3"><div class="flbl">Régime TVA</div><select class="ipt" id="cf_reg">'+REGS.map(r=>'<option value="'+r[0]+'"'+(c.reg===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div>'+
+      '<div class="grid g2 mt3"><div><div class="flbl">Régime TVA (déclaration)</div><select class="ipt" id="cf_reg">'+REGS.map(r=>'<option value="'+r[0]+'"'+(c.reg===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div>'+
+      '<div><div class="flbl">Régime d\'exigibilité</div><select class="ipt" id="cf_regtva">'+REGS_TVA.map(r=>'<option value="'+r[0]+'"'+(regTvaOf(c)===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div></div>'+
       '<div class="mt3"><div class="flbl">Obligations (cochez ce qui s\'applique)</div><div class="cklist">'+ck("cf_bilan","Bilan",c.hasBilan)+ck("cf_sal","Salaires",c.hasSal)+ck("cf_dp","Acomptes IS",c.hasDp)+ck("cf_foncier","Revenus fonciers",c.hasFoncier)+ck("cf_cm","Cotisation min. (RNR)",c.hasCM)+'</div></div>'+
       '<div class="grid g2 mt3"><div><div class="flbl">Statut global</div><select class="ipt" id="cf_statut">'+opt(STATUTS,c.statut)+'</select></div><div><div class="flbl">Commentaire</div><input class="ipt" id="cf_comment" value="'+esc(c.comment)+'"></div></div>'+
       '<button class="btn-primary" data-act="csave" data-id="'+(isNew?"":id)+'">'+ic("plus","width:16px;height:16px")+' '+(isNew?"Créer le client":"Enregistrer")+'</button>'+
@@ -3523,9 +3932,17 @@ document.addEventListener("click",e=>{
   else if(a==="cellrcp"){var k=t.dataset.k;var m=S.pay[k]||0;if(!m)return;var id=+k.split("|")[1];S.modal={type:"receipt",id:id,prefill:{montant:m,motif:t.dataset.label}};renderModal();}
   else if(a==="payrythme"){var id=+t.dataset.id;S.flags[id]=Object.assign({},S.flags[id],{payRythme:t.dataset.v});save("flags");S.modal={type:"pay",id:id};renderModal();}
   else if(a==="tvaperiod"){S.tvaSel.period=t.dataset.v;renderView();}
+  else if(a==="tvareg"){
+    const id=+t.dataset.id;
+    S.flags[id]=Object.assign({},S.flags[id],{regTva:t.dataset.v});save("flags");
+    // purge les déclarations auto-remplies de l'année pour ce client → re-synchro selon le nouveau régime
+    Object.keys(S.tva).forEach(function(k){ if(k.indexOf(S.year+"|"+id+"|")===0 && S.tva[k] && S.tva[k]._auto) delete S.tva[k]; });
+    save("tva");renderView();
+  }
   else if(a==="tva_autofill"){tvaAutofill();}
   else if(a==="releve_excel"){releveExportExcel();}
   else if(a==="releve_xml"){releveExportXML();}
+  else if(a==="ventes_excel"){ventesDetailExportExcel();}
   else if(a==="delais_excel"){delaisExportExcel();}
   else if(a==="delais_pdf"){delaisExportPDF();}
   else if(a==="emp_add"){empAdd();}
@@ -3566,6 +3983,9 @@ document.addEventListener("click",e=>{
   else if(a==="docextract"){docExtract(t.dataset.id);}
   else if(a==="docreporttva"){docReportTVA(t.dataset.id);}
   else if(a==="comptaview"){S.comptaView=t.dataset.v;renderView();}
+  else if(a==="comptabal_inject"){comptaBalInject(t.dataset.id);}
+  else if(a==="comptabal_copy"){comptaBalCopy(t.dataset.id);}
+  else if(a==="comptabal_xlsx"){comptaBalXlsx(t.dataset.id);}
   else if(a==="comptaimport"){var inp=document.getElementById("compta_file_"+t.dataset.type);if(inp)inp.click();}
   else if(a==="comptavalidate"){comptaValidate(t.dataset.id);}
   else if(a==="comptavalidateall"){comptaValidateAll();}
@@ -3583,6 +4003,12 @@ document.addEventListener("click",e=>{
   else if(a==="comptaprint_one"){comptaPrintOne(t.dataset.id);}
   else if(a==="comptaprintall"){comptaPrintAll();}
   else if(a==="export_fec"){exportFEC();}
+  else if(a==="od_addline"){odAddLine();}
+  else if(a==="od_delline"){odDelLine(t.dataset.i);}
+  else if(a==="od_save"){odSave();}
+  else if(a==="od_reset"){odReset();}
+  else if(a==="od_edit"){odEdit(t.dataset.id);}
+  else if(a==="od_del"){odDel(t.dataset.id);}
   else if(a==="list_excel"){listExportExcel();}
   else if(a==="list_pdf"){listExportPDF();}
   else if(a==="comptaopenlist"){comptaOpenList(t.dataset.type);}
@@ -3623,6 +4049,7 @@ document.addEventListener("input",e=>{
   if(t.dataset.annex!=null){annexInput(t);return;}
   if(t.dataset.tbl!=null){tblInput(t);return;}
   if(t.dataset.cp!=null){comptaInput(t);return;}
+  if(t.dataset.od!=null||t.dataset.odl!=null){odInput(t);return;}
   if(t.dataset.ed!=null){edInput(t);return;}
   if(t.dataset.fl!=null){comptaListFilter(t);return;}
   if(t.id==="echq"){S.echq=t.value;document.getElementById("echlist").innerHTML=echRows();}
@@ -3644,7 +4071,9 @@ document.addEventListener("change",e=>{
   if(t.dataset.ed!=null){edInput(t);return;}
   if(t.dataset.edchk!=null){edCheck(t);return;}
   if(t.dataset.fl!=null){comptaListFilter(t);return;}
+  if(t.dataset.od!=null||t.dataset.odl!=null){odInput(t);return;}
   if(t.dataset.cp!=null){comptaInput(t);return;}
+  if(t.id==="tvaclient"){S.tvaSel.id=+t.value;S.tvaSel.period=null;S.curClient=+t.value;renderView();return;}
   if(t.id==="salclient"){S.salSel.id=+t.value;S.curClient=+t.value;renderView();return;}
   if(t.id==="liasseclient"){S.liasseSel.id=+t.value;S.curClient=+t.value;renderView();return;}
   if(t.id==="liassesection"){S.liasseView=t.value;renderView();return;}
@@ -3672,7 +4101,7 @@ function submitClient(id){
   if(!dossier){g("cf_dossier").focus();return;}
   const data={dossier:dossier,forme:g("cf_forme").value,tel:g("cf_tel").value.trim(),
     honTrim:parseFloat(g("cf_hontrim").value)||0,honBilan:parseFloat(g("cf_honbilan").value)||0,
-    pvDepot:parseFloat(g("cf_pv").value)||0,reg:g("cf_reg").value,
+    pvDepot:parseFloat(g("cf_pv").value)||0,reg:g("cf_reg").value,regTva:(g("cf_regtva")?g("cf_regtva").value:"debit"),
     hasBilan:g("cf_bilan").checked,hasSal:g("cf_sal").checked,hasDp:g("cf_dp").checked,
     hasFoncier:g("cf_foncier").checked,hasCM:g("cf_cm").checked,
     statut:g("cf_statut").value==="—"?"":g("cf_statut").value,comment:g("cf_comment").value.trim()};
