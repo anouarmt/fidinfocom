@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Espace client — Cabinet comptable</title>
+<style>
+:root{
+  --ink:#0E1A16; --paper:#F6F3EA; --card:#FFFFFF; --line:#E7E2D4;
+  --emerald:#14201C; --emerald2:#1C3329; --gold:#C8A24B; --gold-d:#A9842F;
+  --muted:#6B7670; --faint:#9AA39C; --ok:#0E7A5F; --okbg:#E3F1EB;
+  --warn:#B5530A; --warnbg:#FBF3E8; --info:#1D6FB8; --infobg:#E8F0FB;
+  --danger:#B42318;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--paper);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+.ff{font-family:"Fraunces","Georgia",serif}
+.mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+a{color:var(--gold-d)}
+button{font-family:inherit;cursor:pointer}
+.btn{border:none;border-radius:10px;padding:11px 18px;font-weight:600;font-size:14px;background:var(--emerald);color:#fff;display:inline-flex;align-items:center;gap:8px;transition:.15s}
+.btn:hover{background:var(--emerald2)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-gold{background:var(--gold);color:#1a1407}.btn-gold:hover{background:var(--gold-d);color:#fff}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.btn-ghost:hover{background:#fff;color:var(--ink)}
+.chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 12px;font-size:12.5px;font-weight:600;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.ipt{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;font-family:inherit;background:#fff;color:var(--ink)}
+.ipt:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,162,75,.18)}
+select.ipt{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7670' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 12px center}
+.flbl{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px rgba(20,32,28,.04),0 8px 24px -16px rgba(20,32,28,.18)}
+.sectit{font-size:13px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:var(--emerald);display:flex;align-items:center;gap:8px}
+.muted{color:var(--muted)}.faint{color:var(--faint)}
+.note{font-size:12.5px;color:var(--muted)}
+.hide{display:none!important}
+
+/* ---- Login ---- */
+#login{min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr}
+.login-art{background:radial-gradient(120% 120% at 0% 0%,#1C3329 0%,#14201C 55%,#0c1511 100%);color:#EAE5D6;padding:56px 56px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+.login-art:after{content:"";position:absolute;inset:0;background:radial-gradient(60% 50% at 85% 90%,rgba(200,162,75,.16),transparent 70%);pointer-events:none}
+.brandmark{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:.04em}
+.seal{width:42px;height:42px;border-radius:11px;border:1.5px solid var(--gold);display:grid;place-items:center;color:var(--gold);font-family:"Fraunces",serif;font-size:20px}
+.login-art h1{font-size:40px;line-height:1.08;margin:0 0 14px;font-weight:600;max-width:14ch}
+.login-art .lead{color:#B9C6BC;font-size:15px;max-width:34ch}
+.steps{list-style:none;padding:0;margin:22px 0 0;display:flex;flex-direction:column;gap:12px}
+.steps li{display:flex;gap:12px;align-items:flex-start;font-size:13.5px;color:#CDD7CD}
+.steps .n{flex:none;width:24px;height:24px;border-radius:7px;background:rgba(200,162,75,.16);color:var(--gold);display:grid;place-items:center;font-size:12px;font-weight:700;margin-top:1px}
+.login-foot{font-size:11.5px;color:#7E8C82;letter-spacing:.03em}
+.login-form{display:flex;align-items:center;justify-content:center;padding:40px 28px}
+.login-box{width:100%;max-width:380px}
+.login-box h2{font-size:24px;margin:0 0 4px}
+@media(max-width:860px){#login{grid-template-columns:1fr}.login-art{display:none}}
+
+/* ---- App ---- */
+.topbar{background:var(--emerald);color:#EDE8DA;position:sticky;top:0;z-index:5}
+.topwrap{max-width:1060px;margin:0 auto;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;gap:14px}
+.topbar .who{display:flex;align-items:center;gap:12px;min-width:0}
+.topbar .who .seal{width:38px;height:38px;font-size:18px}
+.topbar .who b{font-size:15px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar .who span{font-size:11.5px;color:#9DB0A4;display:block}
+.wrap{max-width:1060px;margin:0 auto;padding:26px 22px 60px}
+.greet{font-size:13px;color:var(--muted);margin:2px 0 18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+@media(max-width:820px){.grid2{grid-template-columns:1fr}.topbar .who span{display:none}}
+.pad{padding:22px}
+.row{border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:10px;background:#fff}
+.row .h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.st{border-radius:20px;padding:3px 11px;font-size:11px;font-weight:700;white-space:nowrap}
+.st-demande{background:var(--warnbg);color:var(--warn)}
+.st-encours{background:var(--infobg);color:var(--info)}
+.st-fourni{background:var(--okbg);color:var(--ok)}
+.doc{display:flex;gap:11px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:11px;margin-bottom:9px;background:#fff}
+.doc .ic{flex:none;width:34px;height:34px;border-radius:9px;background:var(--warnbg);color:var(--warn);display:grid;place-items:center}
+.doc .nm{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{font-size:13px;color:var(--muted);padding:14px;text-align:center;border:1px dashed var(--line);border-radius:12px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;background:var(--emerald);color:#fff;padding:12px 20px;border-radius:12px;font-size:13.5px;box-shadow:0 12px 30px -10px rgba(0,0,0,.4);z-index:50;max-width:90vw;display:flex;gap:10px;align-items:center}
+.toast.err{background:var(--danger)}
+.drop{border:1.5px dashed var(--line);border-radius:12px;padding:18px;text-align:center;color:var(--muted);font-size:13px;background:#FCFBF7;transition:.15s}
+.drop:hover{border-color:var(--gold);color:var(--ink)}
+.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+.linkbtn{background:none;border:none;color:var(--gold-d);font-size:12.5px;text-decoration:underline;padding:0}
+svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&display=swap');
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- ====================== CONNEXION ====================== -->
+<section id="login">
+  <div class="login-art">
+    <div class="brandmark"><span class="seal ff">C</span><span>CABINET COMPTABLE</span></div>
+    <div>
+      <h1 class="ff">Votre espace documents, en ligne.</h1>
+      <p class="lead">Demandez vos attestations, suivez l'avancement et déposez vos pièces — directement auprès de votre cabinet.</p>
+      <ul class="steps">
+        <li><span class="n">1</span><div>Demandez un document (modèle 7, attestation de régularité fiscale, bilan…).</div></li>
+        <li><span class="n">2</span><div>Suivez son statut : demandé, en traitement, fourni.</div></li>
+        <li><span class="n">3</span><div>Déposez vos pièces ; le cabinet les reçoit aussitôt.</div></li>
+      </ul>
+    </div>
+    <div class="login-foot">Accès sécurisé · Vos documents restent privés.</div>
+  </div>
+  <div class="login-form">
+    <div class="login-box">
+      <h2 class="ff">Connexion</h2>
+      <p class="note" style="margin:0 0 20px">Saisissez les identifiants fournis par votre cabinet.</p>
+      <label class="flbl">Adresse e-mail</label>
+      <input id="email" class="ipt" type="email" autocomplete="username" placeholder="vous@société.ma" style="margin-bottom:14px">
+      <label class="flbl">Mot de passe</label>
+      <input id="pass" class="ipt" type="password" autocomplete="current-password" placeholder="••••••••" style="margin-bottom:18px">
+      <button id="loginBtn" class="btn btn-gold" style="width:100%;justify-content:center">Se connecter</button>
+      <div style="text-align:center;margin-top:12px"><button id="magicBtn" class="linkbtn">Recevoir un lien de connexion par e-mail</button></div>
+      <p id="loginMsg" class="note hide" style="margin-top:14px;color:var(--danger)"></p>
+      <p class="note" style="margin-top:22px">Pas encore d'accès ? Contactez votre cabinet pour obtenir vos identifiants.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== DÉFINIR LE MOT DE PASSE (1ère connexion) ====================== -->
+<section id="setpw" class="hide" style="min-height:100vh;display:grid;place-items:center;padding:24px">
+  <div class="card pad" style="max-width:400px;width:100%">
+    <h2 class="ff" style="margin:0 0 4px;font-size:22px">Bienvenue 👋</h2>
+    <p class="note" style="margin:0 0 18px">Choisissez un mot de passe pour sécuriser votre espace. Vous l'utiliserez pour vos prochaines connexions.</p>
+    <label class="flbl">Nouveau mot de passe</label>
+    <input id="newpw" class="ipt" type="password" autocomplete="new-password" placeholder="8 caractères minimum" style="margin-bottom:14px">
+    <label class="flbl">Confirmer le mot de passe</label>
+    <input id="newpw2" class="ipt" type="password" autocomplete="new-password" placeholder="••••••••" style="margin-bottom:18px">
+    <button id="setpwBtn" class="btn btn-gold" style="width:100%;justify-content:center">Activer mon espace</button>
+    <p id="setpwMsg" class="note hide" style="margin-top:14px;color:var(--danger)"></p>
+  </div>
+</section>
+
+<!-- ====================== ESPACE CLIENT ====================== -->
+<div id="app" class="hide">
+  <div class="topbar">
+    <div class="topwrap">
+      <div class="who"><span class="seal ff">C</span><div style="min-width:0"><b id="clientName">—</b><span id="clientSub">Espace client</span></div></div>
+      <button id="logoutBtn" class="btn-ghost" style="border-radius:10px;padding:9px 14px;font-size:13px;background:rgba(255,255,255,.08);color:#EDE8DA;border-color:rgba(255,255,255,.16)">Se déconnecter</button>
+    </div>
+  </div>
+  <div class="wrap">
+    <p class="greet" id="greet"></p>
+    <div class="grid2">
+
+      <!-- Colonne gauche : demandes -->
+      <div>
+        <div class="card pad">
+          <div class="sectit" style="margin-bottom:14px"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Demander un document</div>
+          <label class="flbl">Type de document</label>
+          <select id="reqType" class="ipt" style="margin-bottom:12px"></select>
+          <label class="flbl">Précisions (facultatif)</label>
+          <input id="reqDesc" class="ipt" placeholder="ex. exemplaire original pour appel d'offres" style="margin-bottom:16px">
+          <button id="reqBtn" class="btn" style="width:100%;justify-content:center">Envoyer la demande</button>
+        </div>
+        <div class="card pad" style="margin-top:18px">
+          <div class="sectit" style="margin-bottom:14px"><svg class="i" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Mes demandes</div>
+          <div id="reqList"><div class="empty">Chargement…</div></div>
+        </div>
+      </div>
+
+      <!-- Colonne droite : documents -->
+      <div>
+        <div class="card pad">
+          <div class="sectit" style="margin-bottom:14px"><svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg> Déposer une pièce</div>
+          <label id="drop" class="drop" for="fileInput">
+            <div style="font-weight:600;color:var(--ink);margin-bottom:3px">Choisir un ou plusieurs fichiers</div>
+            PDF ou images · jusqu'à 25 Mo par fichier
+          </label>
+          <input id="fileInput" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" class="hide">
+          <p id="upMsg" class="note hide" style="margin-top:10px"></p>
+        </div>
+        <div class="card pad" style="margin-top:18px">
+          <div class="sectit" style="margin-bottom:14px"><svg class="i" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> Mes documents</div>
+          <div id="docList"><div class="empty">Chargement…</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ======================================================================
+   CONFIGURATION — collez ici l'URL et la clé "anon/publishable" de votre
+   projet Supabase (les mêmes que dans le logiciel du cabinet).
+   ====================================================================== */
+const SUPABASE_URL = "https://gwdhflpjyezadxapdvhf.supabase.co";
+const SUPABASE_KEY = "sb_publishable_UlzmEAuRWKEY7cZFchbnCA_UIb-v2jp";
+const BUCKET = "portail";
+
+const DOCTYPES = ["Modèle 7 (registre de commerce)","Attestation de régularité fiscale","Certificat de résidence fiscale","Attestation de chiffre d'affaires","Bilan / liasse fiscale","Relevé / déclaration de TVA","Statuts de la société","Procès-verbal (PV)","Attestation de salaire / CNSS","Autre document"];
+const ST = {demande:["Demandé","st-demande"],encours:["En traitement","st-encours"],fourni:["Fourni","st-fourni"]};
+
+let sb=null, me={client_id:null, name:""};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function when(iso){try{const d=new Date(iso),p=n=>(n<10?"0":"")+n;return p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear()+" "+p(d.getHours())+":"+p(d.getMinutes());}catch(e){return"";}}
+function kb(n){return !n?"":(n>1048576?(n/1048576).toFixed(1)+" Mo":Math.round(n/1024)+" Ko");}
+let toastT=null;
+function toast(msg,err){const old=document.querySelector(".toast");if(old)old.remove();const t=document.createElement("div");t.className="toast"+(err?" err":"");t.textContent=msg;document.body.appendChild(t);clearTimeout(toastT);toastT=setTimeout(()=>t.remove(),3800);}
+
+/* ---------- démarrage ---------- */
+let pendingType = (function(){ var h=location.hash||""; if(/type=invite/.test(h))return"invite"; if(/type=recovery/.test(h))return"recovery"; return null; })();
+(function init(){
+  if(!window.supabase){toast("Librairie de connexion indisponible (vérifiez votre accès Internet).",true);return;}
+  if(/COLLEZ_ICI|VOTRE_/.test(SUPABASE_URL+SUPABASE_KEY)){ $("loginMsg").textContent="Le portail n'est pas encore configuré (URL/clé Supabase).";$("loginMsg").classList.remove("hide");return; }
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  $("reqType").innerHTML=DOCTYPES.map(t=>'<option>'+esc(t)+'</option>').join("");
+  sb.auth.onAuthStateChange((event)=>{ if(event==="PASSWORD_RECOVERY"){ pendingType="recovery"; showSetPassword(); } });
+  sb.auth.getSession().then(({data})=>{ if(data.session){ if(pendingType) showSetPassword(); else enterApp(); } });
+  $("pass").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
+  $("email").addEventListener("keydown",e=>{if(e.key==="Enter")$("pass").focus();});
+  $("newpw2").addEventListener("keydown",e=>{if(e.key==="Enter")setPassword();});
+})();
+
+function showSetPassword(){ $("login").classList.add("hide"); $("app").classList.add("hide"); $("setpw").classList.remove("hide"); }
+$("setpwBtn") && $("setpwBtn").addEventListener("click",setPassword);
+async function setPassword(){
+  const p1=$("newpw").value, p2=$("newpw2").value, msg=$("setpwMsg");
+  msg.classList.add("hide");
+  if(p1.length<8){msg.textContent="Le mot de passe doit faire au moins 8 caractères.";msg.classList.remove("hide");return;}
+  if(p1!==p2){msg.textContent="Les deux mots de passe ne correspondent pas.";msg.classList.remove("hide");return;}
+  setBtn($("setpwBtn"),true,"Activation…");
+  const {error}=await sb.auth.updateUser({password:p1});
+  setBtn($("setpwBtn"),false,"Activer mon espace");
+  if(error){msg.textContent=error.message;msg.classList.remove("hide");return;}
+  pendingType=null; try{history.replaceState(null,"",location.pathname);}catch(e){}
+  $("setpw").classList.add("hide");
+  toast("Espace activé.");
+  enterApp();
+}
+
+$("magicBtn") && $("magicBtn").addEventListener("click",sendMagic);
+async function sendMagic(){
+  const email=$("email").value.trim();
+  if(!email){flash("Saisissez votre e-mail pour recevoir un lien.");return;}
+  setBtn($("magicBtn"),true,"Envoi…");
+  const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
+  setBtn($("magicBtn"),false,"Recevoir un lien de connexion par e-mail");
+  if(error){flash(error.message);return;}
+  toast("Lien de connexion envoyé. Consultez votre boîte e-mail.");
+}
+
+$("loginBtn").addEventListener("click",doLogin);
+async function doLogin(){
+  const email=$("email").value.trim(), pass=$("pass").value;
+  if(!email||!pass){flash("Saisissez votre e-mail et votre mot de passe.");return;}
+  setBtn($("loginBtn"),true,"Connexion…");
+  const {error}=await sb.auth.signInWithPassword({email,password:pass});
+  setBtn($("loginBtn"),false,"Se connecter");
+  if(error){flash(error.message==="Invalid login credentials"?"E-mail ou mot de passe incorrect.":error.message);return;}
+  enterApp();
+}
+function flash(m){const el=$("loginMsg");el.textContent=m;el.classList.remove("hide");}
+function setBtn(b,on,txt){b.disabled=on;b.innerHTML=on?'<span class="spin"></span> '+txt:txt;}
+
+$("logoutBtn").addEventListener("click",async()=>{await sb.auth.signOut();location.reload();});
+
+async function enterApp(){
+  // récupère le dossier lié au compte
+  const {data,error}=await sb.from("portal_clients").select("client_id,client_name").maybeSingle();
+  if(error||!data){
+    // compte connecté mais non rattaché à un dossier
+    $("login").classList.add("hide");$("app").classList.remove("hide");
+    $("clientName").textContent="Compte non rattaché";
+    document.querySelector(".grid2").innerHTML='<div class="card pad" style="grid-column:1/-1"><div class="empty">Votre compte n\'est associé à aucun dossier. Contactez votre cabinet pour finaliser l\'activation de votre espace.</div></div>';
+    return;
+  }
+  me.client_id=data.client_id; me.name=data.client_name;
+  $("clientName").textContent=data.client_name;
+  $("clientSub").textContent="Espace client";
+  $("greet").textContent="Bienvenue. Retrouvez ici vos demandes de documents et vos pièces partagées avec le cabinet.";
+  $("login").classList.add("hide");$("app").classList.remove("hide");
+  await Promise.all([loadRequests(),loadDocs()]);
+}
+
+/* ---------- demandes ---------- */
+$("reqBtn").addEventListener("click",addRequest);
+async function addRequest(){
+  const type=$("reqType").value, desc=$("reqDesc").value.trim();
+  setBtn($("reqBtn"),true,"Envoi…");
+  const {data:u}=await sb.auth.getUser();
+  const {error}=await sb.from("portal_requests").insert({client_id:me.client_id,user_id:u.user.id,type,description:desc,source:"client"});
+  setBtn($("reqBtn"),false,"Envoyer la demande");
+  if(error){toast("Échec de l'envoi : "+error.message,true);return;}
+  $("reqDesc").value="";
+  toast("Demande envoyée à votre cabinet.");
+  loadRequests();
+}
+async function loadRequests(){
+  const {data,error}=await sb.from("portal_requests").select("*").order("created_at",{ascending:false});
+  const box=$("reqList");
+  if(error){box.innerHTML='<div class="empty">Impossible de charger vos demandes.</div>';return;}
+  if(!data.length){box.innerHTML='<div class="empty">Vous n\'avez pas encore fait de demande.</div>';return;}
+  box.innerHTML=data.map(r=>{
+    const s=ST[r.statut]||ST.demande;
+    return '<div class="row"><div class="h"><div><div style="font-weight:600;font-size:13.5px">'+esc(r.type)+'</div>'
+      +(r.description?'<div class="note" style="margin-top:3px">'+esc(r.description)+'</div>':'')
+      +'<div class="faint" style="font-size:11px;margin-top:5px">Envoyée le '+when(r.created_at)+(r.source==="cabinet"?' · par le cabinet':'')+'</div></div>'
+      +'<span class="st '+s[1]+'">'+s[0]+'</span></div></div>';
+  }).join("");
+}
+
+/* ---------- documents ---------- */
+$("fileInput").addEventListener("change",e=>{ if(e.target.files.length) uploadFiles(e.target.files); e.target.value=""; });
+async function uploadFiles(files){
+  files=Array.prototype.slice.call(files);
+  const msg=$("upMsg"); msg.classList.remove("hide");
+  const {data:u}=await sb.auth.getUser();
+  let ok=0, fail=[];
+  for(let i=0;i<files.length;i++){
+    const f=files[i];
+    msg.style.color="var(--muted)"; msg.textContent="Envoi "+(i+1)+"/"+files.length+" : "+f.name+" …";
+    if(f.size>26214400){fail.push(f.name+" (>25 Mo)");continue;}
+    const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+    const path=me.client_id+"/"+Date.now()+"_"+i+"_"+safe;
+    const up=await sb.storage.from(BUCKET).upload(path,f,{contentType:f.type||undefined});
+    if(up.error){fail.push(f.name+" ("+up.error.message+")");continue;}
+    const ins=await sb.from("portal_documents").insert({client_id:me.client_id,user_id:u.user.id,name:f.name,mime:f.type||"",size:f.size,storage_path:path,source:"client"});
+    if(ins.error){fail.push(f.name+" ("+ins.error.message+")");continue;}
+    ok++;
+  }
+  msg.classList.add("hide");
+  if(ok) toast(ok+" document(s) déposé(s). Votre cabinet les reçoit.");
+  if(fail.length) toast("Échec : "+fail.join(" · "),true);
+  loadDocs();
+}
+async function loadDocs(){
+  const {data,error}=await sb.from("portal_documents").select("*").order("created_at",{ascending:false});
+  const box=$("docList");
+  if(error){box.innerHTML='<div class="empty">Impossible de charger vos documents.</div>';return;}
+  if(!data.length){box.innerHTML='<div class="empty">Aucun document partagé pour l\'instant.</div>';return;}
+  box.innerHTML=data.map(d=>'<div class="doc"><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>'
+    +'<div style="flex:1;min-width:0"><div class="nm">'+esc(d.name)+'</div><div class="faint" style="font-size:11px">'+kb(d.size)+' · '+when(d.created_at)+(d.source==="cabinet"?' · transmis par le cabinet':'')+'</div></div>'
+    +'<button class="chip" data-path="'+esc(d.storage_path)+'" onclick="viewDoc(this)"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg> Voir</button></div>').join("");
+}
+async function viewDoc(btn){
+  const path=btn.getAttribute("data-path");
+  const {data,error}=await sb.storage.from(BUCKET).createSignedUrl(path,3600);
+  if(error){toast("Ouverture impossible : "+error.message,true);return;}
+  window.open(data.signedUrl,"_blank");
+}
+window.viewDoc=viewDoc;
+</script>
+</body>
+</html>
