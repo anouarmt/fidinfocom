@@ -262,23 +262,36 @@ function setBtn(b,on,txt){b.disabled=on;b.innerHTML=on?'<span class="spin"></spa
 
 $("logoutBtn").addEventListener("click",async()=>{await sb.auth.signOut();location.reload();});
 
+let companies=[];
 async function enterApp(){
-  // récupère le dossier lié au compte
-  const {data,error}=await sb.from("portal_clients").select("client_id,client_name").maybeSingle();
-  if(error||!data){
-    // compte connecté mais non rattaché à un dossier
+  // récupère TOUS les dossiers liés au compte (un client peut avoir plusieurs sociétés)
+  const {data,error}=await sb.from("portal_clients").select("client_id,client_name").order("client_name");
+  if(error||!data||!data.length){
     $("login").classList.add("hide");$("app").classList.remove("hide");
     $("clientName").textContent="Compte non rattaché";
-    document.querySelector(".grid2").innerHTML='<div class="card pad" style="grid-column:1/-1"><div class="empty">Votre compte n\'est associé à aucun dossier. Contactez votre cabinet pour finaliser l\'activation de votre espace.</div></div>';
+    document.querySelector(".grid2").innerHTML='<div class="card pad" style="grid-column:1/-1"><div class="empty">Votre compte n\'est associé à aucune société. Contactez votre cabinet pour finaliser l\'activation de votre espace.</div></div>';
     return;
   }
-  me.client_id=data.client_id; me.name=data.client_name;
-  $("clientName").textContent=data.client_name;
-  $("clientSub").textContent="Espace client";
+  companies=data;
+  me.client_id=companies[0].client_id; me.name=companies[0].client_name;
+  renderCompanyHeader();
   $("greet").textContent="Bienvenue. Retrouvez ici vos demandes de documents et vos pièces partagées avec le cabinet.";
   $("login").classList.add("hide");$("app").classList.remove("hide");
-  await Promise.all([loadRequests(),loadDocs()]);
+  await refreshAll();
 }
+function renderCompanyHeader(){
+  $("clientName").textContent=me.name;
+  const sub=$("clientSub");
+  if(companies.length>1){
+    sub.innerHTML='Société : <select id="companySel" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:2px 8px;font-size:12px;margin-top:2px">'
+      +companies.map(c=>'<option value="'+c.client_id+'"'+(String(c.client_id)===String(me.client_id)?' selected':'')+'>'+esc(c.client_name)+'</option>').join('')+'</select>';
+    const sel=document.getElementById("companySel");
+    sel.addEventListener("change",()=>{ const c=companies.find(x=>String(x.client_id)===sel.value); if(c){ me.client_id=c.client_id; me.name=c.client_name; $("clientName").textContent=c.client_name; refreshAll(); } });
+  } else {
+    sub.textContent="Espace client";
+  }
+}
+async function refreshAll(){ await Promise.all([loadRequests(),loadDocs()]); }
 
 /* ---------- demandes ---------- */
 $("reqBtn").addEventListener("click",addRequest);
@@ -294,7 +307,7 @@ async function addRequest(){
   loadRequests();
 }
 async function loadRequests(){
-  const {data,error}=await sb.from("portal_requests").select("*").order("created_at",{ascending:false});
+  const {data,error}=await sb.from("portal_requests").select("*").eq("client_id",me.client_id).order("created_at",{ascending:false});
   const box=$("reqList");
   if(error){box.innerHTML='<div class="empty">Impossible de charger vos demandes.</div>';return;}
   if(!data.length){box.innerHTML='<div class="empty">Vous n\'avez pas encore fait de demande.</div>';return;}
@@ -332,7 +345,7 @@ async function uploadFiles(files){
   loadDocs();
 }
 async function loadDocs(){
-  const {data,error}=await sb.from("portal_documents").select("*").order("created_at",{ascending:false});
+  const {data,error}=await sb.from("portal_documents").select("*").eq("client_id",me.client_id).order("created_at",{ascending:false});
   const box=$("docList");
   if(error){box.innerHTML='<div class="empty">Impossible de charger vos documents.</div>';return;}
   if(!data.length){box.innerHTML='<div class="empty">Aucun document partagé pour l\'instant.</div>';return;}
