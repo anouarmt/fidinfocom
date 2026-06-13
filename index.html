@@ -3370,7 +3370,11 @@ async function portalInvite(cid){
   setSync&&setSync("saving");
   try{
     var r=await sb.functions.invoke("invite-client",{body:{email:email,client_id:cid,client_name:c.dossier}});
-    if(r.error) throw r.error;
+    if(r.error){
+      var msg=r.error.message||String(r.error);
+      try{ if(r.error.context&&typeof r.error.context.json==="function"){ var b=await r.error.context.json(); if(b&&b.error)msg=b.error; } }catch(_e){}
+      throw new Error(msg);
+    }
     if(r.data&&r.data.error) throw new Error(r.data.error);
     S.flags[cid]=Object.assign({},S.flags[cid]); S.flags[cid].societe=Object.assign({},S.flags[cid].societe);
     S.flags[cid].societe.portalInvited=new Date().toISOString(); S.flags[cid].societe.email=email; save("flags");
