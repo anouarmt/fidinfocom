@@ -82,6 +82,21 @@ select.ipt{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xm
 .spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
 @keyframes sp{to{transform:rotate(360deg)}}
 .linkbtn{background:none;border:none;color:var(--gold-d);font-size:12.5px;text-decoration:underline;padding:0}
+/* ---- Tableau de bord des sociétés ---- */
+.hub-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+.hub-head h1{font-size:30px;margin:0}
+.hubgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:18px;margin-top:22px}
+.hubcard{display:flex;flex-direction:column;align-items:flex-start;gap:12px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;cursor:pointer;transition:.15s;box-shadow:0 1px 2px rgba(20,32,28,.04),0 10px 30px -20px rgba(20,32,28,.25);font-family:inherit;color:inherit}
+.hubcard:hover{transform:translateY(-3px);border-color:var(--gold);box-shadow:0 1px 2px rgba(20,32,28,.05),0 18px 40px -22px rgba(20,32,28,.45)}
+.hubcard .hubicon{width:64px;height:64px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(140deg,#1C3329,#14201C);color:var(--gold)}
+.hubcard .hubicon svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hubcard .hubname{font-family:"Fraunces",serif;font-size:19px;font-weight:600;line-height:1.15;color:var(--ink)}
+.hubcard .hubmeta{font-size:12px;color:var(--muted);min-height:16px}
+.hubcard .hubgo{margin-top:4px;font-size:12.5px;font-weight:600;color:var(--gold-d);display:inline-flex;align-items:center;gap:6px}
+.hubcard .badge{display:inline-block;background:var(--warnbg);color:var(--warn);border-radius:20px;padding:1px 9px;font-size:11px;font-weight:700;margin-left:4px}
+.backbtn{display:inline-flex;align-items:center;gap:7px;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;background:rgba(255,255,255,.1);color:#EDE8DA;border:1px solid rgba(255,255,255,.18);cursor:pointer}
+.backbtn:hover{background:rgba(255,255,255,.18)}
+.linkbtn2{background:none;border:none;cursor:pointer}
 svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&display=swap');
 </style>
@@ -136,11 +151,27 @@ svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke
 </section>
 
 <!-- ====================== ESPACE CLIENT ====================== -->
+<!-- ====================== TABLEAU DE BORD DES SOCIÉTÉS ====================== -->
+<div id="hub" class="hide">
+  <div class="topbar"><div class="topwrap">
+    <div class="who"><span class="seal ff">C</span><div style="min-width:0"><b id="hubClient">—</b><span>Mes sociétés</span></div></div>
+    <button id="logoutBtn2" class="btn-ghost" style="border-radius:10px;padding:9px 14px;font-size:13px;background:rgba(255,255,255,.08);color:#EDE8DA;border-color:rgba(255,255,255,.16)">Se déconnecter</button>
+  </div></div>
+  <div class="wrap">
+    <div class="hub-head"><h1 class="ff">Vos sociétés</h1></div>
+    <p class="note">Choisissez la société dont vous voulez consulter l'espace.</p>
+    <div id="hubGrid" class="hubgrid"></div>
+  </div>
+</div>
+
 <div id="app" class="hide">
   <div class="topbar">
     <div class="topwrap">
       <div class="who"><span class="seal ff">C</span><div style="min-width:0"><b id="clientName">—</b><span id="clientSub">Espace client</span></div></div>
-      <button id="logoutBtn" class="btn-ghost" style="border-radius:10px;padding:9px 14px;font-size:13px;background:rgba(255,255,255,.08);color:#EDE8DA;border-color:rgba(255,255,255,.16)">Se déconnecter</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="backHub" class="backbtn hide"><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Mes sociétés</button>
+        <button id="logoutBtn" class="btn-ghost" style="border-radius:10px;padding:9px 14px;font-size:13px;background:rgba(255,255,255,.08);color:#EDE8DA;border-color:rgba(255,255,255,.16)">Se déconnecter</button>
+      </div>
     </div>
   </div>
   <div class="wrap">
@@ -261,10 +292,11 @@ function flash(m){const el=$("loginMsg");el.textContent=m;el.classList.remove("h
 function setBtn(b,on,txt){b.disabled=on;b.innerHTML=on?'<span class="spin"></span> '+txt:txt;}
 
 $("logoutBtn").addEventListener("click",async()=>{await sb.auth.signOut();location.reload();});
+$("logoutBtn2") && $("logoutBtn2").addEventListener("click",async()=>{await sb.auth.signOut();location.reload();});
+$("backHub") && $("backHub").addEventListener("click",()=>{ showHub(); });
 
 let companies=[];
 async function enterApp(){
-  // récupère TOUS les dossiers liés au compte (un client peut avoir plusieurs sociétés)
   const {data,error}=await sb.from("portal_clients").select("client_id,client_name").order("client_name");
   if(error||!data||!data.length){
     $("login").classList.add("hide");$("app").classList.remove("hide");
@@ -273,24 +305,47 @@ async function enterApp(){
     return;
   }
   companies=data;
-  me.client_id=companies[0].client_id; me.name=companies[0].client_name;
-  renderCompanyHeader();
+  if(companies.length>1) showHub();
+  else openCompany(companies[0]);
+}
+
+function showHub(){
+  $("login").classList.add("hide");$("setpw").classList.add("hide");$("app").classList.add("hide");
+  $("hub").classList.remove("hide");
+  $("hubClient").textContent = "Mes sociétés";
+  // cartes (rendu immédiat, puis on remplit les compteurs)
+  $("hubGrid").innerHTML = companies.map(function(c){
+    return '<button class="hubcard" onclick="openCompanyById(\''+String(c.client_id)+'\')">'
+      +'<span class="hubicon"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-3"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg></span>'
+      +'<span class="hubname">'+esc(c.client_name)+'</span>'
+      +'<span class="hubmeta" id="meta-'+esc(String(c.client_id))+'">&nbsp;</span>'
+      +'<span class="hubgo">Ouvrir mon espace <svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>'
+      +'</button>';
+  }).join("");
+  // compteurs par société (demandes en attente + documents)
+  companies.forEach(function(c){
+    Promise.all([
+      sb.from("portal_requests").select("id",{count:"exact",head:true}).eq("client_id",c.client_id).neq("statut","fourni"),
+      sb.from("portal_documents").select("id",{count:"exact",head:true}).eq("client_id",c.client_id)
+    ]).then(function(res){
+      var dem=res[0].count||0, doc=res[1].count||0, el=document.getElementById("meta-"+c.client_id);
+      if(el) el.innerHTML = (dem?('<span class="badge">'+dem+' en cours</span> '):'') + doc + ' document'+(doc>1?'s':'');
+    }).catch(function(){});
+  });
+}
+function openCompanyById(id){ var c=companies.find(function(x){return String(x.client_id)===String(id);}); if(c) openCompany(c); }
+window.openCompanyById=openCompanyById;
+function openCompany(c){
+  me.client_id=c.client_id; me.name=c.client_name;
+  $("hub").classList.add("hide");$("login").classList.add("hide");$("setpw").classList.add("hide");
+  $("app").classList.remove("hide");
+  $("clientName").textContent=c.client_name;
+  $("clientSub").textContent="Espace client";
   $("greet").textContent="Bienvenue. Retrouvez ici vos demandes de documents et vos pièces partagées avec le cabinet.";
-  $("login").classList.add("hide");$("app").classList.remove("hide");
-  await refreshAll();
+  $("backHub").classList.toggle("hide", companies.length<=1);
+  refreshAll();
 }
-function renderCompanyHeader(){
-  $("clientName").textContent=me.name;
-  const sub=$("clientSub");
-  if(companies.length>1){
-    sub.innerHTML='Société : <select id="companySel" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:2px 8px;font-size:12px;margin-top:2px">'
-      +companies.map(c=>'<option value="'+c.client_id+'"'+(String(c.client_id)===String(me.client_id)?' selected':'')+'>'+esc(c.client_name)+'</option>').join('')+'</select>';
-    const sel=document.getElementById("companySel");
-    sel.addEventListener("change",()=>{ const c=companies.find(x=>String(x.client_id)===sel.value); if(c){ me.client_id=c.client_id; me.name=c.client_name; $("clientName").textContent=c.client_name; refreshAll(); } });
-  } else {
-    sub.textContent="Espace client";
-  }
-}
+function renderCompanyHeader(){ /* remplacé par le tableau de bord */ }
 async function refreshAll(){ await Promise.all([loadRequests(),loadDocs()]); }
 
 /* ---------- demandes ---------- */
