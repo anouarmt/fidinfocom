@@ -297,7 +297,11 @@ $("backHub") && $("backHub").addEventListener("click",()=>{ showHub(); });
 
 let companies=[];
 async function enterApp(){
-  const {data,error}=await sb.from("portal_clients").select("client_id,client_name").order("client_name");
+  const {data:ud}=await sb.auth.getUser();
+  const uid=ud&&ud.user?ud.user.id:null;
+  let q=sb.from("portal_clients").select("client_id,client_name").order("client_name");
+  if(uid) q=q.eq("user_id",uid);
+  const {data,error}=await q;
   if(error||!data||!data.length){
     $("login").classList.add("hide");$("app").classList.remove("hide");
     $("clientName").textContent="Compte non rattaché";
