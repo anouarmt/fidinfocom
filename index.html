@@ -3304,8 +3304,80 @@ function portalReqAdd(){
   save("portal"); renderNav(); renderView();
   showOk(byClient?"Demande envoyée au cabinet.":"Demande enregistrée pour "+portalClientName(cid)+".");
 }
-function portalReqStatus(id,st){ var p=portalGet(),r=p.requests.find(function(x){return x.id===id;}); if(!r)return; r.statut=st; r.updated=new Date().toISOString(); save("portal"); renderView(); }
-function portalReqDel(id){ var p=portalGet(); p.requests=p.requests.filter(function(x){return x.id!==id;}); save("portal"); renderView(); }
+function portalReqStatus(id,st){ var p=portalGet(),r=p.requests.find(function(x){return x.id===id;}); if(!r)return; r.statut=st; r.updated=new Date().toISOString(); save("portal");
+  if(r.cloud&&r.rid&&sb){ try{ sb.from("portal_requests").update({statut:st,updated_at:new Date().toISOString()}).eq("id",r.rid).then(function(){}); }catch(e){} }
+  renderView(); }
+function portalReqDel(id){ var p=portalGet(),r=p.requests.find(function(x){return x.id===id;});
+  if(r&&r.cloud&&r.rid&&sb){ try{ sb.from("portal_requests").delete().eq("id",r.rid).then(function(){}); }catch(e){} }
+  p.requests=p.requests.filter(function(x){return x.id!==id;}); save("portal"); renderView(); }
+async function portalCloudSync(){
+  if(!(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session)){ showErr("Connectez-vous au cloud pour synchroniser le portail en ligne."); return; }
+  try{
+    setSync&&setSync("saving");
+    var p=portalGet(); p._seen=p._seen||{};
+    var rq=await sb.from("portal_requests").select("*").order("created_at",{ascending:false}); if(rq.error)throw rq.error;
+    var dc=await sb.from("portal_documents").select("*").order("created_at",{ascending:false}); if(dc.error)throw dc.error;
+    var nN=0;
+    (rq.data||[]).forEach(function(r){
+      var lid="CLOUD:"+r.id, ex=p.requests.find(function(x){return x.id===lid;});
+      var o={id:lid,rid:r.id,cloud:true,cid:r.client_id,type:r.type,desc:r.description||"",statut:r.statut||"demande",by:r.source||"client",created:r.created_at,updated:r.updated_at};
+      if(ex)Object.assign(ex,o); else p.requests.unshift(o);
+      if(r.source==="client"&&!p._seen["r"+r.id]){ portalNotify(r.client_id,"request","a demandé : "+r.type); p._seen["r"+r.id]=1; nN++; }
+    });
+    (dc.data||[]).forEach(function(d){
+      var lid="CLOUD:"+d.id, ex=p.docs.find(function(x){return x.id===lid;});
+      var o={id:lid,cloud:true,path:d.storage_path,cid:d.client_id,name:d.name,mime:d.mime||"",size:d.size||0,date:d.created_at,by:d.source||"client"};
+      if(ex)Object.assign(ex,o); else p.docs.push(o);
+      if(d.source==="client"&&!p._seen["d"+d.id]){ portalNotify(d.client_id,"upload","a déposé le document « "+d.name+" »"); p._seen["d"+d.id]=1; nN++; }
+    });
+    save("portal"); setSync&&setSync("synced"); renderNav(); renderView();
+    showOk("Portail synchronisé : "+(rq.data||[]).length+" demande(s), "+(dc.data||[]).length+" document(s)"+(nN?" · "+nN+" nouveauté(s).":"."));
+  }catch(e){ setSync&&setSync("synced"); showErr("Synchronisation impossible : "+(e.message||e)+". Vérifiez que les tables du portail sont créées (script SQL fourni)."); }
+}
+function portalCloudCard(){
+  var connected=(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session);
+  return '<div class="card mt4" style="padding:16px 20px"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
+    +'<div style="display:flex;gap:10px;align-items:center"><span style="width:9px;height:9px;border-radius:50%;background:'+(connected?"#0E7A5F":"#C0392B")+';flex:none"></span>'
+      +'<div><div style="font-weight:600;font-size:13px">Portail client en ligne'+(connected?'':' — hors ligne')+'</div>'
+      +'<div class="note" style="font-size:11.5px">'+(connected?"Récupérez les demandes et pièces envoyées par vos clients depuis le portail web (portail-client.html).":"Connectez-vous au cloud pour activer la récupération des demandes en ligne.")+'</div></div></div>'
+    +(connected?'<button class="btn-primary" data-act="portal_cloud_sync">'+ic("down","width:14px;height:14px;vertical-align:-2px")+' Synchroniser le portail</button>':'')
+    +'</div></div>';
+}
+// Section "Espace client en ligne" dans la fiche société (e-mail + invitation auto)
+function portalInviteSectionHtml(id,soc){
+  soc=soc||{};
+  var invited=soc.portalInvited, connected=(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session);
+  var dt=""; if(invited){try{dt=new Date(invited).toLocaleDateString("fr-FR");}catch(e){}}
+  var c=clients().find(function(x){return x.id===id;}); var nom=c?c.dossier:"";
+  var sql="insert into public.portal_clients(user_id, client_id, client_name)\nvalues ('UID-DU-CLIENT', "+id+", '"+String(nom).replace(/'/g,"''")+"');";
+  return '<div style="margin-top:22px"><div class="sectit mb3" style="color:var(--muted)">'+ic("user")+' ESPACE CLIENT EN LIGNE</div>'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">Société : <b style="color:var(--ink)">'+esc(nom)+'</b> · dossier n° <b class="mono">'+id+'</b></div>'
+    +'<div class="grid g2"><div><div class="flbl">E-mail du client (accès au portail)</div><input class="ipt" data-soc="email" type="email" value="'+esc(soc.email||"")+'" placeholder="client@societe.ma"></div>'
+    +'<div style="display:flex;align-items:flex-end"><button class="btn-primary" data-act="portal_invite" data-id="'+id+'" style="width:100%">'+ic("bell","width:15px;height:15px")+' '+(invited?"Renvoyer l'accès":"Inviter au portail")+'</button></div></div>'
+    +(invited
+        ? '<div class="note" style="font-size:11.5px;margin-top:8px;color:#0E7A5F">✓ Invitation envoyée'+(dt?" le "+dt:"")+'. Le compte est relié à cette société automatiquement. Le client reçoit un e-mail, clique le lien et arrive connecté pour choisir son mot de passe.</div>'
+        : '<div class="note" style="font-size:11.5px;margin-top:8px">Saisissez l\'e-mail puis cliquez : la liaison à <b>'+esc(nom)+'</b> se fait automatiquement et le client reçoit son invitation par e-mail. '+(connected?'':'<b style="color:#B42318">Connectez-vous au cloud pour activer l\'envoi.</b>')+'</div>')
+    +'<div style="margin-top:12px"><div class="flbl" style="margin-bottom:4px">Liaison manuelle dans Supabase (facultatif)</div>'
+      +'<div class="note" style="font-size:11px;margin-bottom:5px">Seulement si vous reliez à la main : copiez cette ligne dans l\'éditeur SQL et remplacez l\'UID par celui du compte du client (Authentication › Users).</div>'
+      +'<textarea class="ipt mono" readonly rows="2" onclick="this.select()" style="font-size:11px;background:#FBFAF5">'+esc(sql)+'</textarea></div>'
+    +'</div>';
+}
+async function portalInvite(cid){
+  var c=clients().find(function(x){return x.id===cid;}); if(!c)return;
+  var soc=(S.flags[cid]||{}).societe||{}, email=(soc.email||"").trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showErr("Saisissez d'abord un e-mail valide dans la fiche société."); return; }
+  if(!(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session)){ showErr("Connectez-vous au cloud pour envoyer l'invitation."); return; }
+  setSync&&setSync("saving");
+  try{
+    var r=await sb.functions.invoke("invite-client",{body:{email:email,client_id:cid,client_name:c.dossier}});
+    if(r.error) throw r.error;
+    if(r.data&&r.data.error) throw new Error(r.data.error);
+    S.flags[cid]=Object.assign({},S.flags[cid]); S.flags[cid].societe=Object.assign({},S.flags[cid].societe);
+    S.flags[cid].societe.portalInvited=new Date().toISOString(); S.flags[cid].societe.email=email; save("flags");
+    setSync&&setSync("synced"); render();
+    showOk("Invitation envoyée à "+email+". Le client recevra un e-mail pour activer son espace.");
+  }catch(e){ setSync&&setSync("synced"); showErr("Envoi impossible : "+(e.message||e)+". Vérifiez que la fonction « invite-client » est déployée (voir le guide)."); }
+}
 function portalUpload(files,cid,byClient){
   files=Array.prototype.slice.call(files||[]); if(!files.length)return;
   var p=portalGet(), MAX=2*1024*1024, added=0, skipped=[], queue=files.slice();
@@ -3324,7 +3396,12 @@ function portalUpload(files,cid,byClient){
   })();
 }
 function portalDocView(id){
-  var p=portalGet(),d=p.docs.find(function(x){return x.id===id;}); if(!d||!d.data){showErr("Aperçu indisponible.");return;}
+  var p=portalGet(),d=p.docs.find(function(x){return x.id===id;}); if(!d){showErr("Document introuvable.");return;}
+  if(d.cloud&&d.path){ if(!sb){showErr("Connectez-vous au cloud pour ouvrir ce document.");return;}
+    sb.storage.from("portail").createSignedUrl(d.path,3600).then(function(r){ if(r.error){showErr("Ouverture impossible : "+r.error.message);return;} window.open(r.data.signedUrl,"_blank"); });
+    return;
+  }
+  if(!d.data){showErr("Aperçu indisponible.");return;}
   var w=window.open("","_blank"); if(!w){showErr("Autorisez les pop-ups pour visualiser le document.");return;}
   var isPdf=/pdf/i.test(d.mime)||/^data:application\/pdf/i.test(d.data);
   w.document.write('<title>'+esc(d.name)+'</title><body style="margin:0;background:#222">'+(isPdf?'<iframe src="'+d.data+'" style="border:0;width:100vw;height:100vh"></iframe>':'<img src="'+d.data+'" style="max-width:100%;display:block;margin:auto">')+'</body>');
@@ -3444,7 +3521,7 @@ function vPortal(){
         : '<div class="note" style="font-size:12px;color:var(--muted);max-width:400px">Vue gestionnaire : suivez et traitez les demandes, consultez les pièces déposées par les clients. Choisissez un client ci-dessus pour ouvrir son espace.</div>')
     +'</div>';
   var body=p.acting!=null?portalClientHtml(p.acting):portalCabinetHtml();
-  return head+portalNotifsHtml()+modeCard+body;
+  return head+portalCloudCard()+portalNotifsHtml()+modeCard+body;
 }
 function vDocs(){
   var cs=clients();
@@ -6855,6 +6932,7 @@ function modalInfos(id){
      +'<option value="">— choisir le secteur —</option>'
      +SECTEURS.map(function(s){return '<option value="'+s[0]+'"'+((soc.secteur||"")===s[0]?" selected":"")+'>'+esc(s[1])+'</option>';}).join("")
      +'</select></div>'+fld("activite","Activité précise (ex. vente de pièces auto)")+'</div>'
+   +portalInviteSectionHtml(id,soc)
    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:22px" class="mb3"><div class="sectit" style="color:var(--muted)">'+ic("users")+' GÉRANTS / CO-GÉRANTS</div><button class="chip" data-act="geradd" data-id="'+id+'">'+ic("plus")+'Ajouter</button></div>'
    +(gers.length?gers.map(gRow).join(""):'<div style="font-size:12px;color:var(--faint)">Aucun gérant enregistré.</div>')
    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:22px" class="mb3"><div class="sectit" style="color:var(--muted)">'+ic("users")+' ASSOCIÉS</div><button class="chip" data-act="asoadd" data-id="'+id+'">'+ic("plus")+'Ajouter</button></div>'
@@ -7489,6 +7567,8 @@ document.addEventListener("click",e=>{
   else if(a==="portal_notif_read"){portalNotifRead(t.dataset.id);}
   else if(a==="portal_notif_readall"){portalNotifReadAll();}
   else if(a==="portal_notif_clear"){portalNotifClear();}
+  else if(a==="portal_cloud_sync"){portalCloudSync();}
+  else if(a==="portal_invite"){portalInvite(+t.dataset.id);}
   else if(a==="cgnccls"){S.cgncCls=t.dataset.c;renderView();}
   else if(a==="comptabal_inject"){comptaBalInject(t.dataset.id);}
   else if(a==="baln1"){S.balN1=(S.balN1===false);renderView();}
