@@ -3336,12 +3336,24 @@ async function portalCloudSync(){
 }
 function portalCloudCard(){
   var connected=(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session);
+  var acct="";
+  if(connected&&session&&session.user){
+    var uid=session.user.id||"", em=session.user.email||"";
+    var sql="insert into public.portal_admins(user_id) values ('"+uid+"') on conflict (user_id) do nothing;";
+    acct='<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">'
+      +'<div class="flbl" style="margin-bottom:4px">Votre compte connecté (à autoriser comme cabinet)</div>'
+      +'<div class="note" style="font-size:11.5px;margin-bottom:8px">'+esc(em)+' · UID <span class="mono">'+esc(uid)+'</span></div>'
+      +'<div class="flbl" style="margin-bottom:4px">Copiez cette ligne dans Supabase › SQL Editor, puis exécutez-la (une seule fois) :</div>'
+      +'<textarea class="ipt mono" readonly rows="2" onclick="this.select()" style="font-size:11px;background:#FBFAF5">'+esc(sql)+'</textarea>'
+      +'<div class="note" style="font-size:11px;margin-top:6px">Cela autorise ce compte à inviter les clients. Ensuite, le bouton « Inviter au portail » fonctionnera.</div>'
+      +'</div>';
+  }
   return '<div class="card mt4" style="padding:16px 20px"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
     +'<div style="display:flex;gap:10px;align-items:center"><span style="width:9px;height:9px;border-radius:50%;background:'+(connected?"#0E7A5F":"#C0392B")+';flex:none"></span>'
       +'<div><div style="font-weight:600;font-size:13px">Portail client en ligne'+(connected?'':' — hors ligne')+'</div>'
       +'<div class="note" style="font-size:11.5px">'+(connected?"Récupérez les demandes et pièces envoyées par vos clients depuis le portail web (portail-client.html).":"Connectez-vous au cloud pour activer la récupération des demandes en ligne.")+'</div></div></div>'
     +(connected?'<button class="btn-primary" data-act="portal_cloud_sync">'+ic("down","width:14px;height:14px;vertical-align:-2px")+' Synchroniser le portail</button>':'')
-    +'</div></div>';
+    +'</div>'+acct+'</div>';
 }
 // Section "Espace client en ligne" dans la fiche société (e-mail + invitation auto)
 function portalInviteSectionHtml(id,soc){
