@@ -3124,7 +3124,7 @@ function vPaie(){
   var clientOpts=cs.map(function(x){return '<option value="'+x.id+'"'+(x.id===c.id?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("");
   var mois=paieMoisCur(),d=paieGet();
   var moisChips=PAIE_MOIS.map(function(m){var has=d.bull[m]&&Object.keys(d.bull[m]).length;return '<button class="chip" data-act="paie_mois" data-v="'+m+'" style="padding:5px 9px;font-size:11.5px;'+(m===mois?"background:#0E7A5F;color:#fff;border-color:#0E7A5F":(has?"border-color:#0E7A5F;color:#0E7A5F":""))+'">'+MOIS_FULL[+m-1].slice(0,4)+'.</button>';}).join(" ");
-  var tabs=[["bulletins","Bulletins de paie"],["livre","Livre de paie"],["cnss","CNSS du mois"]].map(function(x){return '<button class="chip" data-act="paie_view" data-v="'+x[0]+'" style="'+(S.paieView===x[0]?"background:#14201C;color:#fff;border-color:#14201C":"")+'">'+x[1]+'</button>';}).join(" ");
+  var tabs=[["bulletins","Bulletins de paie"],["livre","Livre de paie"],["cnss","CNSS du mois"],["etat9421","État 9421 (annuel)"]].map(function(x){return '<button class="chip" data-act="paie_view" data-v="'+x[0]+'" style="'+(S.paieView===x[0]?"background:#14201C;color:#fff;border-color:#14201C":"")+'">'+x[1]+'</button>';}).join(" ");
   var top='<div class="card mt5" style="padding:16px">'
     +'<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div class="flbl">Dossier (employeur)</div><select class="ipt" id="paieclient">'+clientOpts+'</select></div>'
     +'<button class="btn-primary" data-act="paie_addemp">'+ic("plus")+'Ajouter un salarié</button>'
@@ -3132,8 +3132,93 @@ function vPaie(){
     +'<button class="chip" data-act="paie_copyprev" title="Recopier les variables du mois précédent">'+ic("book","width:14px;height:14px")+' Recopier mois préc.</button></div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;align-items:center"><span style="font-size:11px;color:var(--faint);margin-right:4px">MOIS :</span>'+moisChips+'</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+tabs+'</div></div>';
-  var body=S.paieView==="livre"?paieLivreBody(d,c):S.paieView==="cnss"?paieCnssBody(d,c):paieBulletinsBody(d,c);
+  var body=S.paieView==="livre"?paieLivreBody(d,c):S.paieView==="cnss"?paieCnssBody(d,c):S.paieView==="etat9421"?paie9421Body(d,c):paieBulletinsBody(d,c);
   return head+top+body+'</div>';
+}
+function paie9421Rows(d){
+  var rows=[];
+  (d.emps||[]).forEach(function(e){
+    var a={mois:0,sbg:0,exo:0,sbi:0,fp:0,ret:0,sni:0,ir:0,net:0};
+    PAIE_MOIS.forEach(function(m){
+      var saved=d.bull&&d.bull[m]&&d.bull[m][e.id];
+      if(!saved)return;                       // uniquement les mois réellement saisis
+      var cc=paieCalc(e,paieBullOf(d,e.id,m),m);
+      if(cc.sbg<=0)return;
+      a.mois++; a.sbg+=cc.sbg; a.exo+=cc.exo; a.sbi+=cc.sbi; a.fp+=cc.fp;
+      a.ret+=cc.cnss+cc.amo+cc.cimr+cc.ass; a.sni+=cc.sni; a.ir+=cc.ir; a.net+=cc.net;
+    });
+    if(a.mois<=0)return;
+    rows.push({e:e,mois:a.mois,sbg:a.sbg,exo:a.exo,sbi:a.sbi,fp:a.fp,ret:a.ret,sni:a.sni,ir:a.ir,net:a.net});
+  });
+  return rows;
+}
+function paie9421Periode(e){
+  var deb="01/01/"+S.year;
+  if(e.embauche){var p=e.embauche.split("-"); if(p[0]===String(S.year)&&p.length===3)deb=p[2]+"/"+p[1]+"/"+p[0];}
+  return deb+" → 31/12/"+S.year;
+}
+function paie9421Table(d){
+  var rows=paie9421Rows(d), T={sbg:0,exo:0,sbi:0,fp:0,ret:0,sni:0,ir:0,net:0};
+  rows.forEach(function(r){T.sbg+=r.sbg;T.exo+=r.exo;T.sbi+=r.sbi;T.fp+=r.fp;T.ret+=r.ret;T.sni+=r.sni;T.ir+=r.ir;T.net+=r.net;});
+  var head='<tr><th>N°</th><th>Nom &amp; prénom</th><th>CIN</th><th>N° CNSS</th><th>Matricule</th><th>Sit.</th><th class="n">Ch.</th><th>Période</th><th class="n">Mois</th><th class="n">Brut global</th><th class="n">Exonérés</th><th class="n">Brut imposable</th><th class="n">Frais pro.</th><th class="n">Retenues</th><th class="n">Net imposable</th><th class="n">IR retenu</th><th class="n">Net perçu</th></tr>';
+  var body=rows.map(function(r,i){var e=r.e;
+    return '<tr><td>'+(i+1)+'</td><td>'+esc(e.nom||"")+'</td><td>'+esc(e.cin||"")+'</td><td>'+esc(e.cnss||"")+'</td><td>'+esc(e.mat||"")+'</td><td>'+esc(e.sf||"")+'</td><td class="n">'+num(e.charges)+'</td><td>'+paie9421Periode(e)+'</td><td class="n">'+r.mois+'</td><td class="n">'+fmtDH2(r.sbg)+'</td><td class="n">'+fmtDH2(r.exo)+'</td><td class="n">'+fmtDH2(r.sbi)+'</td><td class="n">'+fmtDH2(r.fp)+'</td><td class="n">'+fmtDH2(r.ret)+'</td><td class="n">'+fmtDH2(r.sni)+'</td><td class="n">'+fmtDH2(r.ir)+'</td><td class="n">'+fmtDH2(r.net)+'</td></tr>';
+  }).join("");
+  var tot='<tr class="tot"><td></td><td>TOTAUX ('+rows.length+')</td><td colspan="6"></td><td class="n">'+fmtDH2(T.sbg)+'</td><td class="n">'+fmtDH2(T.exo)+'</td><td class="n">'+fmtDH2(T.sbi)+'</td><td class="n">'+fmtDH2(T.fp)+'</td><td class="n">'+fmtDH2(T.ret)+'</td><td class="n">'+fmtDH2(T.sni)+'</td><td class="n">'+fmtDH2(T.ir)+'</td><td class="n">'+fmtDH2(T.net)+'</td></tr>';
+  return {rows:rows,T:T,html:'<table class="t9421"><thead>'+head+'</thead><tbody>'+body+tot+'</tbody></table>'};
+}
+function paie9421Body(d,c){
+  var soc=((S.flags[c.id]||{}).societe)||{}, tb=paie9421Table(d);
+  if(!tb.rows.length)return '<div class="empty mt4">Aucun bulletin saisi pour '+esc(c.dossier)+' en '+S.year+'. Saisissez d\'abord des bulletins dans l\'onglet « Bulletins de paie ».</div>';
+  var ids=[]; if(soc.ice)ids.push("ICE : "+esc(soc.ice)); if(soc.if)ids.push("IF : "+esc(soc.if)); if(soc.cnss)ids.push("CNSS employeur : "+esc(soc.cnss));
+  return '<div class="card mt4" style="padding:16px"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">'
+    +'<div><div style="font-weight:700;color:#14201C;font-size:15px">ÉTAT 9421 — Déclaration des traitements et salaires</div>'
+    +'<div style="font-size:12px;color:var(--muted);margin-top:3px">Employeur : <b>'+esc(c.dossier)+'</b> · Exercice '+S.year+(ids.length?' · '+ids.join(" · "):'')+'</div>'
+    +'<div style="font-size:12px;color:var(--muted);margin-top:2px">Bénéficiaires : <b>'+tb.rows.length+'</b> · Total IR retenu : <b>'+fmtDH2(tb.T.ir)+' DH</b> · Total net : <b>'+fmtDH2(tb.T.net)+' DH</b></div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="paie_9421_print">'+ic("printer","width:14px;height:14px;vertical-align:-2px")+' Imprimer (PDF)</button><button class="chip" data-act="paie_9421_excel">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' Exporter Excel</button></div></div>'
+    +'<div style="overflow-x:auto;margin-top:14px">'+tb.html+'</div>'
+    +'<div class="note" style="font-size:11px;margin-top:12px">Cumul automatique de tous les mois saisis de l\'exercice '+S.year+'. « Retenues » = CNSS + AMO + CIMR + assurance. Vérifiez que tous les mois sont bien saisis avant de déclarer. Utilisez l\'export Excel ou recopiez les montants sur l\'imprimé 9421 / SIMPL-IR.</div></div>';
+}
+function paie9421Print(){
+  var d=paieGet(),c=clients().find(function(x){return x.id===S.paieSel.id;}); if(!c)return;
+  var soc=((S.flags[c.id]||{}).societe)||{}, tb=paie9421Table(d);
+  if(!tb.rows.length){showErr("Aucun bulletin saisi pour cet exercice.");return;}
+  var ids=[]; if(soc.ice)ids.push("ICE : "+esc(soc.ice)); if(soc.if)ids.push("IF : "+esc(soc.if)); if(soc.cnss)ids.push("CNSS : "+esc(soc.cnss));
+  var css="*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:0;padding:12px;font-size:10px}"
+    +"h1{font-size:14px;color:#14201C;margin:0 0 2px}.sub{font-size:10px;color:#555;margin-bottom:10px}"
+    +"table.t9421{width:100%;border-collapse:collapse;font-size:8.5px}"
+    +".t9421 th{background:#14201C;color:#fff;padding:4px 5px;text-align:left;font-size:7.5px;text-transform:uppercase}"
+    +".t9421 td{padding:3px 5px;border-bottom:1px solid #e2e0d8}.t9421 .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}"
+    +".t9421 .tot td{font-weight:700;background:#eceae1;border-top:1.5px solid #14201C}"
+    +"tr{page-break-inside:avoid}thead{display:table-header-group}@page{size:A4 landscape;margin:8mm}";
+  var w=window.open("","_blank"); if(!w){showErr("Autorisez les fenêtres pop-up pour imprimer.");return;}
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>État 9421 — '+esc(c.dossier)+' '+S.year+'</title><style>'+css+'</style></head><body>'
+    +'<h1>ÉTAT 9421 — DÉCLARATION DES TRAITEMENTS ET SALAIRES</h1>'
+    +'<div class="sub">Employeur : <b>'+esc(c.dossier)+'</b> · Exercice '+S.year+(ids.length?' · '+ids.join(" · "):'')+' · '+tb.rows.length+' bénéficiaire(s)</div>'
+    +tb.html
+    +'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},300);}</scr'+'ipt></body></html>');
+  w.document.close();
+}
+async function paie9421Export(){
+  var d=paieGet(),c=clients().find(function(x){return x.id===S.paieSel.id;}); if(!c)return;
+  var soc=((S.flags[c.id]||{}).societe)||{}, tb=paie9421Table(d), r2=function(x){return Math.round(x*100)/100;};
+  if(!tb.rows.length){showErr("Aucun bulletin saisi pour cet exercice.");return;}
+  try{
+    if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    var aoa=[];
+    aoa.push(["ÉTAT 9421 — DÉCLARATION DES TRAITEMENTS ET SALAIRES"]);
+    aoa.push(["Employeur",c.dossier,"","ICE",soc.ice||"","IF",soc.if||""]);
+    aoa.push(["Exercice",S.year,"","Nombre de bénéficiaires",tb.rows.length]);
+    aoa.push([]);
+    aoa.push(["N°","Nom & prénom","CIN","N° CNSS","Matricule","Sit.fam.","Pers. charge","Période","Mois","Brut global","Exonérés","Brut imposable","Frais pro.","Retenues","Net imposable","IR retenu","Net perçu"]);
+    tb.rows.forEach(function(r,i){var e=r.e;aoa.push([i+1,e.nom||"",e.cin||"",e.cnss||"",e.mat||"",e.sf||"",num(e.charges),paie9421Periode(e).replace(" → "," au "),r.mois,r2(r.sbg),r2(r.exo),r2(r.sbi),r2(r.fp),r2(r.ret),r2(r.sni),r2(r.ir),r2(r.net)]);});
+    aoa.push(["","TOTAUX ("+tb.rows.length+")","","","","","","","",r2(tb.T.sbg),r2(tb.T.exo),r2(tb.T.sbi),r2(tb.T.fp),r2(tb.T.ret),r2(tb.T.sni),r2(tb.T.ir),r2(tb.T.net)]);
+    var ws=window.XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=[{wch:4},{wch:24},{wch:13},{wch:13},{wch:11},{wch:7},{wch:10},{wch:20},{wch:6}].concat(Array(8).fill({wch:14}));
+    var wb=window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb,ws,"État 9421 "+S.year);
+    window.XLSX.writeFile(wb,"Etat9421_Paie_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+S.year+".xlsx");
+  }catch(e){showErr("Export Excel impossible (connexion requise) : "+(e.message||e));}
 }
 function paieBulletinsBody(d,c){
   if(!d.emps.length)return '<div class="empty mt4">Aucun salarié. Cliquez « Ajouter un salarié » ou « Importer du 9421 ».</div>';
@@ -3222,7 +3307,7 @@ function paieCnssBody(d,c){
 }
 /* ---- Cumul annuel (de janvier au mois courant) pour un salarié ---- */
 function paieCumul(d,e,mois){
-  var c={base:0,hs:0,anc:0,primes:0,exo:0,avn:0,sbg:0,sbi:0,cnss:0,amo:0,cimr:0,ass:0,ir:0,acompte:0,autres:0,net:0,af:0,ps:0,amoP:0,tfp:0,pat:0,cout:0,mois:0};
+  var c={base:0,hs:0,anc:0,primes:0,exo:0,avn:0,sbg:0,sbi:0,cnss:0,amo:0,cimr:0,ass:0,fp:0,sni:0,ir:0,acompte:0,autres:0,net:0,af:0,ps:0,amoP:0,tfp:0,pat:0,cout:0,mois:0};
   var idx=PAIE_MOIS.indexOf(mois); if(idx<0)idx=PAIE_MOIS.length-1;
   for(var i=0;i<=idx;i++){
     var m=PAIE_MOIS[i];
@@ -3232,7 +3317,7 @@ function paieCumul(d,e,mois){
     if(cc.sbg<=0) continue;
     c.mois++;
     c.base+=cc.base;c.hs+=cc.hs;c.anc+=cc.anc;c.primes+=cc.primes;c.exo+=cc.exo;c.avn+=cc.avn;
-    c.sbg+=cc.sbg;c.sbi+=cc.sbi;c.cnss+=cc.cnss;c.amo+=cc.amo;c.cimr+=cc.cimr;c.ass+=cc.ass;
+    c.sbg+=cc.sbg;c.sbi+=cc.sbi;c.cnss+=cc.cnss;c.amo+=cc.amo;c.cimr+=cc.cimr;c.ass+=cc.ass;c.fp+=cc.fp;c.sni+=cc.sni;
     c.ir+=cc.ir;c.acompte+=cc.acompte;c.autres+=cc.autres;c.net+=cc.net;
     c.af+=cc.af;c.ps+=cc.ps;c.amoP+=cc.amoP;c.tfp+=cc.tfp;c.pat+=cc.pat;c.cout+=cc.cout;
   }
@@ -3306,7 +3391,31 @@ function paiePrintBulletin(empId){
       +'<div class="bulp-foot">Conservez ce bulletin de paie sans limitation de durée. Bulletin généré le '+fmtDate(new Date())+' — '+esc(c.dossier)+'</div></div>';
   }).join("");
   var pa=document.getElementById("printArea");if(!pa){pa=document.createElement("div");pa.id="printArea";document.body.appendChild(pa);}
-  pa.innerHTML=html;window.print();
+  var bulpCss="*{box-sizing:border-box}body{margin:0;padding:14px;background:#fff}"
+    +".bulp{display:block;font-family:'Segoe UI',Arial,Helvetica,sans-serif;color:#222;max-width:780px;margin:0 auto 18px;padding:0;font-size:11px;page-break-after:always}"
+    +".bulp:last-child{page-break-after:auto;margin-bottom:0}"
+    +".bulp-head{display:flex;justify-content:space-between;align-items:stretch;border:1px solid #14201C;border-radius:8px 8px 0 0;overflow:hidden}"
+    +".bulp-head>div:first-child{padding:12px 16px;flex:1.5}.bulp-head>div:last-child{padding:12px 16px;background:#14201C;color:#fff;flex:1;text-align:right}"
+    +".bulp-cab{font-size:16px;font-weight:800;text-transform:uppercase;color:#14201C;letter-spacing:.3px}"
+    +".bulp-cabl{font-size:9.5px;color:#555;margin-top:5px;line-height:1.6}"
+    +".bulp-t{font-size:16px;font-weight:800;letter-spacing:1.5px}"
+    +".bulp-per{font-size:10px;margin-top:6px;line-height:1.7;color:#cfe0d8}.bulp-per b{color:#fff}"
+    +".bulp-emp{display:flex;gap:14px;border:1px solid #d9d6cc;border-top:none;padding:9px 14px;font-size:10px;line-height:1.6;margin-bottom:13px;border-radius:0 0 8px 8px}"
+    +".bulp-emp .nm{font-size:13px;font-weight:800;color:#14201C}"
+    +"table.bulp-tb{width:100%;border-collapse:collapse;font-size:10.5px}"
+    +".bulp-tb th{background:#14201C;color:#fff;padding:6px 8px;text-align:left;font-size:9px;letter-spacing:.04em;text-transform:uppercase}"
+    +".bulp-tb td{padding:4px 8px;border-bottom:1px solid #efeee8}.bulp-tb .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}"
+    +".bulp-tb .tot td{font-weight:700;background:#eceae1;border-top:1.5px solid #14201C}"
+    +".bulp-net{display:flex;justify-content:space-between;align-items:center;background:#14201C;color:#fff;border-radius:8px;padding:11px 18px;margin-top:14px;font-weight:800;letter-spacing:.5px}"
+    +".bulp-bottom{display:flex;gap:14px;margin-top:14px;flex-wrap:wrap}.bulp-col{flex:1;min-width:300px}"
+    +".bulp-sec{font-size:10px;font-weight:700;color:#14201C;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}"
+    +".bulp-note{font-size:9px;color:#0a5f4a;margin-top:4px;line-height:1.5}"
+    +".bulp-foot{margin-top:14px;font-size:8.5px;color:#999;line-height:1.6;border-top:1px solid #e4e2da;padding-top:6px;text-align:center}"
+    +"tr{page-break-inside:avoid}thead{display:table-header-group}@page{margin:9mm}";
+  var w=window.open("","_blank");
+  if(!w){ showErr("Autorisez les fenêtres pop-up pour imprimer le bulletin."); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Bulletin de paie — '+esc(c.dossier)+' '+MOIS_FULL[+mois-1]+' '+S.year+'</title><style>'+bulpCss+'</style></head><body>'+html+'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},300);}</scr'+'ipt></body></html>');
+  w.document.close();
 }
 /* ---- Exports Excel ---- */
 function paieLoadXLSX(){return window.XLSX?Promise.resolve():new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
@@ -7741,6 +7850,8 @@ document.addEventListener("click",e=>{
   else if(a==="saldel"){var k=salKey();var d=Object.assign({},S.sal[k]||{});d.salaries=(d.salaries||[]).filter(function(_,i){return i!==+t.dataset.i;});S.sal[k]=d;save("sal");renderView();}
   else if(a==="salexport"){salExport();}
   else if(a==="paie_view"){S.paieView=t.dataset.v;renderView();}
+  else if(a==="paie_9421_print"){paie9421Print();}
+  else if(a==="paie_9421_excel"){paie9421Export();}
   else if(a==="paie_mois"){S.paieSel.mois=t.dataset.v;renderView();}
   else if(a==="paie_addemp"){var dP=paieGet();dP.emps=dP.emps.concat([paieEmpNew()]);paieSet(dP);S.paieSel.emp=dP.emps[dP.emps.length-1].id;S.paieView="bulletins";renderView();}
   else if(a==="paie_selemp"){S.paieSel.emp=t.dataset.id;renderView();}
