@@ -3836,6 +3836,60 @@ function teamTaskCard(k,showStaff){
       +'<button class="iconbtn" data-act="team_task_del" data-id="'+k.id+'" style="color:#C0392B;margin-left:auto" title="Supprimer">'+ic("trash","width:13px;height:13px")+'</button>'
     +'</div></div>';
 }
+function teamInviteHtml(s){
+  var connected=(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session);
+  var dt=""; if(s.invited){try{dt=new Date(s.invited).toLocaleDateString("fr-FR");}catch(e){}}
+  return '<div style="margin-top:12px;border:1px solid #E7E3D8;border-radius:10px;padding:12px;background:#FBFAF5">'
+    +'<div class="flbl" style="margin:0 0 7px">'+ic("user","width:14px;height:14px;vertical-align:-2px")+' Accès au portail collaborateur</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+      +'<button class="btn-primary" data-act="team_invite" data-id="'+s.id+'">'+ic("bell","width:14px;height:14px")+' '+(s.invited?"Renvoyer l\'accès":"Inviter par e-mail")+'</button>'
+      +(s.invited?'<button class="chip" data-act="team_push" data-id="'+s.id+'">'+ic("down","width:13px;height:13px")+' Mettre à jour ses dossiers/tâches</button>':'')
+    +'</div>'
+    +(s.invited
+        ?'<div class="note" style="font-size:11.5px;margin-top:8px;color:#0E7A5F">✓ Invité'+(dt?" le "+dt:"")+'. Le collaborateur reçoit un e-mail, choisit son mot de passe, puis voit ses dossiers et tâches. Après chaque changement d\'affectation, cliquez « Mettre à jour ».</div>'
+        :'<div class="note" style="font-size:11.5px;margin-top:8px">Renseignez l\'e-mail ci-dessus, puis invitez : le collaborateur reçoit un lien pour créer son mot de passe et accéder à ses dossiers/tâches. '+(connected?'':'<b style="color:#B42318">Connectez-vous au cloud pour activer l\'envoi.</b>')+'</div>')
+    +'</div>';
+}
+function teamBuildPayload(s){
+  var t=teamGet();
+  var tasks=t.tasks.filter(function(k){return String(k.staffId)===String(s.id);}).map(function(k){
+    return {id:k.id,label:k.label,dossier:(k.dossierId!=null?teamClientName(k.dossierId):""),echeance:k.echeance||"",prio:k.prio||"normale",statut:k.statut||"todo",acces:k.acces||"tache"};
+  });
+  var dset={};
+  (s.dossiers||[]).forEach(function(cid){dset[cid]=teamClientName(cid);});
+  t.tasks.forEach(function(k){ if(String(k.staffId)===String(s.id)&&k.acces==="global"&&k.dossierId!=null)dset[k.dossierId]=teamClientName(k.dossierId); });
+  var dossiers=Object.keys(dset).map(function(cid){return {id:cid,name:dset[cid]};});
+  return {dossiers:dossiers,tasks:tasks};
+}
+async function teamPushCloud(s){
+  if(!(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session))return false;
+  var email=(s.email||"").trim().toLowerCase(); if(!email)return false;
+  var r=await sb.from("staff_data").upsert({email:email,name:s.name||"",role:s.role||"",payload:teamBuildPayload(s),updated_at:new Date().toISOString()},{onConflict:"email"});
+  return !r.error;
+}
+async function teamInvite(id){
+  var s=teamStaff(id); if(!s)return;
+  var email=(s.email||"").trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showErr("Saisissez d'abord un e-mail valide dans le profil du collaborateur."); return; }
+  if(!(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session)){ showErr("Connectez-vous au cloud pour envoyer l'invitation."); return; }
+  setSync&&setSync("saving");
+  try{
+    var r=await sb.functions.invoke("invite-collaborateur",{body:{email:email,name:s.name||"",role:s.role||""}});
+    if(r.error){ var msg=r.error.message||String(r.error); try{ if(r.error.context&&typeof r.error.context.json==="function"){ var b=await r.error.context.json(); if(b&&b.error)msg=b.error; } }catch(_e){} throw new Error(msg); }
+    if(r.data&&r.data.error) throw new Error(r.data.error);
+    await teamPushCloud(s);
+    s.invited=new Date().toISOString(); save("team");
+    setSync&&setSync("synced"); renderView();
+    showOk("Invitation envoyée à "+email+". Le collaborateur recevra un e-mail pour activer son espace.");
+  }catch(e){ setSync&&setSync("synced"); showErr("Envoi impossible : "+(e.message||e)+". Vérifiez que la fonction « invite-collaborateur » est déployée."); }
+}
+async function teamPush(id){
+  var s=teamStaff(id); if(!s)return;
+  if(!(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session)){ showErr("Connectez-vous au cloud."); return; }
+  setSync&&setSync("saving");
+  var ok=await teamPushCloud(s); setSync&&setSync("synced");
+  if(ok)showOk("Accès mis à jour : "+(s.name||"le collaborateur")+" verra ses dossiers et tâches à jour."); else showErr("Mise à jour impossible (e-mail manquant ou cloud déconnecté).");
+}
 function teamStaffDetail(s){
   var t=teamGet(), tasks=t.tasks.filter(function(k){return String(k.staffId)===String(s.id);});
   var pend=tasks.filter(function(k){return k.statut!=="done";}).length;
@@ -3850,7 +3904,7 @@ function teamStaffDetail(s){
     +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div class="sectit" style="margin:0">'+ic("user")+' Profil</div><button class="iconbtn" data-act="team_staff_del" data-id="'+s.id+'" style="color:#C0392B" title="Supprimer le collaborateur">'+ic("trash","width:15px;height:15px")+'</button></div>'
     +'<div class="grid g2 mt3"><div><div class="flbl">Nom &amp; prénom</div><input class="ipt" data-tf="'+s.id+':name" value="'+esc(s.name)+'"></div><div><div class="flbl">Rôle</div><select class="ipt" data-tf="'+s.id+':role">'+roleOpts+'</select></div></div>'
     +'<div class="grid g2 mt3"><div><div class="flbl">E-mail (accès au portail)</div><input class="ipt" type="email" data-tf="'+s.id+':email" value="'+esc(s.email||"")+'" placeholder="collaborateur@cabinet.ma"></div><div><div class="flbl">Téléphone</div><input class="ipt" data-tf="'+s.id+':tel" value="'+esc(s.tel||"")+'"></div></div>'
-    +'<div style="margin-top:10px;background:#F4F1E9;border-radius:10px;padding:9px 12px;font-size:11.5px;color:var(--muted)">'+ic("bell","width:13px;height:13px;vertical-align:-2px")+' Connexion par e-mail du collaborateur : disponible à l\'activation du <b>portail collaborateur</b> (prochaine étape — même principe que les clients).</div>'
+    +teamInviteHtml(s)
     +'<div style="border-top:1px solid #EFECE3;margin:16px 0 12px"></div>'
     +'<div class="sectit mb3">'+ic("folder")+' Dossiers affectés ('+(s.dossiers||[]).length+')</div>'
     +'<div style="margin-bottom:8px">'+dosChips+'</div>'
@@ -7954,6 +8008,8 @@ document.addEventListener("click",e=>{
   else if(a==="team_task_add"){teamTaskAdd(t.dataset.id);}
   else if(a==="team_task_st"){teamTaskStatus(t.dataset.id,t.dataset.st);}
   else if(a==="team_task_del"){teamTaskDel(t.dataset.id);}
+  else if(a==="team_invite"){teamInvite(t.dataset.id);}
+  else if(a==="team_push"){teamPush(t.dataset.id);}
   else if(a==="cgnccls"){S.cgncCls=t.dataset.c;renderView();}
   else if(a==="comptabal_inject"){comptaBalInject(t.dataset.id);}
   else if(a==="baln1"){S.balN1=(S.balN1===false);renderView();}
