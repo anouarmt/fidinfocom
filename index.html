@@ -3141,13 +3141,22 @@ function vPaie(){
   return head+top+body+'</div>';
 }
 function paie9421Rows(d){
-  var rows=[];
+  var rows=[], now=new Date();
   (d.emps||[]).forEach(function(e){
+    // Période d'activité : de l'embauche (ou janvier) jusqu'au mois courant (année en cours) ou décembre (année passée)
+    var start=1, end=12;
+    if(S.year<now.getFullYear())end=12;
+    else if(S.year===now.getFullYear())end=now.getMonth()+1;
+    else end=0; // année future : aucun mois auto (sauf bulletins saisis)
+    if(e.embauche){var p=e.embauche.split("-"); if(p.length===3){ if(+p[0]===S.year)start=+p[1]; else if(+p[0]>S.year)start=13; }}
+    var set={};
+    for(var mm=start;mm<=end;mm++)set[("0"+mm).slice(-2)]=1;
+    PAIE_MOIS.forEach(function(m){ if(d.bull&&d.bull[m]&&d.bull[m][e.id])set[m]=1; }); // inclure aussi tout mois déjà saisi
+    var months=Object.keys(set).sort();
+    if(!months.length)return;
     var a={mois:0,sbg:0,exo:0,sbi:0,fp:0,ret:0,sni:0,ir:0,net:0};
-    PAIE_MOIS.forEach(function(m){
-      var saved=d.bull&&d.bull[m]&&d.bull[m][e.id];
-      if(!saved)return;                       // uniquement les mois réellement saisis
-      var cc=paieCalc(e,paieBullOf(d,e.id,m),m);
+    months.forEach(function(m){
+      var cc=paieCalc(e,paieBullOf(d,e.id,m),m);   // bulletin saisi s'il existe, sinon calculé d'après le salaire de base
       if(cc.sbg<=0)return;
       a.mois++; a.sbg+=cc.sbg; a.exo+=cc.exo; a.sbi+=cc.sbi; a.fp+=cc.fp;
       a.ret+=cc.cnss+cc.amo+cc.cimr+cc.ass; a.sni+=cc.sni; a.ir+=cc.ir; a.net+=cc.net;
@@ -3182,7 +3191,7 @@ function paie9421Body(d,c){
     +'<div style="font-size:12px;color:var(--muted);margin-top:2px">Bénéficiaires : <b>'+tb.rows.length+'</b> · Total IR retenu : <b>'+fmtDH2(tb.T.ir)+' DH</b> · Total net : <b>'+fmtDH2(tb.T.net)+' DH</b></div></div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="paie_9421_print">'+ic("printer","width:14px;height:14px;vertical-align:-2px")+' Imprimer (PDF)</button><button class="chip" data-act="paie_9421_excel">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' Exporter Excel</button></div></div>'
     +'<div style="overflow-x:auto;margin-top:14px">'+tb.html+'</div>'
-    +'<div class="note" style="font-size:11px;margin-top:12px">Cumul automatique de tous les mois saisis de l\'exercice '+S.year+'. « Retenues » = CNSS + AMO + CIMR + assurance. Vérifiez que tous les mois sont bien saisis avant de déclarer. Utilisez l\'export Excel ou recopiez les montants sur l\'imprimé 9421 / SIMPL-IR.</div></div>';
+    +'<div class="note" style="font-size:11px;margin-top:12px">Rempli automatiquement à partir du <b>salaire de base</b> de chaque salarié (et des bulletins saisis quand ils existent), pour chaque mois de la période d\'activité : de l\'embauche — ou de janvier — jusqu\'au mois en cours pour '+S.year+' (ou décembre pour une année passée). « Retenues » = CNSS + AMO + CIMR + assurance. Pour ajuster un mois précis (prime, absence…), saisissez son bulletin dans l\'onglet « Bulletins de paie ».</div></div>';
 }
 function paie9421Print(){
   var d=paieGet(),c=clients().find(function(x){return x.id===S.paieSel.id;}); if(!c)return;
