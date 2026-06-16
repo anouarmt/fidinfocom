@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Portail collaborateur — FID INFO COM</title>
+<style>
+:root{--ink:#14201C;--gold:#C8A24B;--line:#E7E3D8;--bg:#F4F2EC;--muted:#6B7670;--green:#0E7A5F;--blue:#1D6FB8;--amber:#B5530A;--red:#B42318}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px}
+.wrap{max-width:920px;margin:0 auto;padding:18px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.brand h1{font-size:18px;margin:0;letter-spacing:.5px}
+.brand .sub{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 1px 2px rgba(20,32,28,.04)}
+.btn{background:var(--ink);color:#fff;border:none;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.btn:disabled{opacity:.5}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.ipt{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:15px;background:#FBFAF5;font-family:inherit}
+.lbl{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 5px}
+.hide{display:none!important}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 11px;font-size:12.5px;cursor:pointer;font-weight:600}
+.pill{border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;white-space:nowrap}
+.st-todo{background:#FBF3E8;color:var(--amber)} .st-doing{background:#E8F0FB;color:var(--blue)} .st-done{background:#E3F1EB;color:var(--green)}
+.muted{color:var(--muted)} .sec{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.dcard{border:1px solid var(--line);border-radius:12px;padding:13px;background:#FBFAF5}
+.dcard .nm{font-weight:700;font-size:14px}
+.task{border:1px solid var(--line);border-radius:12px;padding:13px;margin-bottom:10px}
+.task .ti{font-weight:600;font-size:14px}
+.task.done .ti{text-decoration:line-through;color:var(--muted)}
+.task .meta{font-size:12px;color:var(--muted);margin-top:5px;display:flex;gap:12px;flex-wrap:wrap}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;align-items:center}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;border-radius:10px;font-size:14px;z-index:99;max-width:90%}
+.toast.err{background:var(--red)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.over{font-size:11px;color:var(--red);font-weight:600}
+a.link{color:var(--blue);cursor:pointer;text-decoration:underline;font-size:13px;background:none;border:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div>
+      <h1>FID INFO COM</h1>
+      <div class="sub">Portail collaborateur</div>
+    </div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="login" class="card">
+    <div class="sec">Connexion collaborateur</div>
+    <div class="lbl">Votre e-mail</div>
+    <input id="email" class="ipt" type="email" placeholder="vous@cabinet.ma" style="margin-bottom:11px">
+    <div class="lbl">Mot de passe</div>
+    <input id="pwd" class="ipt" type="password" placeholder="••••••••" style="margin-bottom:13px">
+    <button id="btnLogin" class="btn" style="width:100%;justify-content:center">Se connecter</button>
+    <div style="margin-top:12px;text-align:center">
+      <button id="btnMagic" class="link">Première connexion / mot de passe oublié</button>
+    </div>
+    <div id="loginMsg" class="hide" style="margin-top:11px;font-size:13px;color:var(--red)"></div>
+  </div>
+
+  <!-- SET PASSWORD (après lien d'invitation) -->
+  <div id="setpw" class="card hide">
+    <div class="sec">Choisissez votre mot de passe</div>
+    <p class="muted" style="font-size:13px;margin-top:0">Vous êtes connecté. Définissez un mot de passe pour vos prochaines connexions.</p>
+    <div class="lbl">Nouveau mot de passe (8 caractères minimum)</div>
+    <input id="newpw" class="ipt" type="password" placeholder="••••••••" style="margin-bottom:13px">
+    <button id="btnSavePw" class="btn" style="width:100%;justify-content:center">Enregistrer et continuer</button>
+  </div>
+
+  <!-- APP -->
+  <div id="app" class="hide">
+    <div class="card">
+      <div class="top">
+        <div>
+          <div style="font-weight:700;font-size:17px" id="meName">—</div>
+          <div class="muted" style="font-size:13px" id="meRole"></div>
+        </div>
+        <button id="btnLogout" class="btn ghost">Se déconnecter</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec">📁 Mes dossiers</div>
+      <div id="dossiers" class="dgrid"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec">✓ Mes tâches</div>
+      <div id="tasks"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = "https://gwdhflpjyezadxapdvhf.supabase.co";
+const SUPABASE_KEY = "sb_publishable_UlzmEAuRWKEY7cZFchbnCA_UIb-v2jp";
+const ST={todo:["À faire","st-todo"],doing:["En cours","st-doing"],done:["Terminé","st-done"]};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let sb=null, me={email:"",name:"",role:"",dossiers:[],tasks:[]}, statusMap={};
+let toastT=null;
+function toast(msg,err){const o=document.querySelector(".toast");if(o)o.remove();const t=document.createElement("div");t.className="toast"+(err?" err":"");t.textContent=msg;document.body.appendChild(t);clearTimeout(toastT);toastT=setTimeout(()=>t.remove(),3800);}
+function when(iso){try{const d=new Date(iso),p=n=>(n<10?"0":"")+n;return p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear();}catch(e){return"";}}
+function overdue(t){if(!t.echeance||cur(t)==="done")return false;try{return new Date(t.echeance)<new Date(new Date().toDateString());}catch(e){return false;}}
+function cur(t){return statusMap[t.id]||t.statut||"todo";}
+
+let pendingType=(function(){var h=location.hash||"";if(/type=invite/.test(h))return"invite";if(/type=recovery/.test(h))return"recovery";return null;})();
+
+(function init(){
+  if(!window.supabase){$("loginMsg").textContent="Librairie de connexion indisponible (vérifiez Internet).";$("loginMsg").classList.remove("hide");return;}
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  sb.auth.onAuthStateChange((event)=>{ if(event==="PASSWORD_RECOVERY"){pendingType="recovery";showSetPassword();} });
+  sb.auth.getSession().then(({data})=>{
+    if(data.session){ if(pendingType==="invite"||pendingType==="recovery"){showSetPassword();} else {enter();} }
+  });
+})();
+
+function showSetPassword(){ $("login").classList.add("hide"); $("setpw").classList.remove("hide"); $("app").classList.add("hide"); }
+
+$("btnLogin").onclick=async()=>{
+  const email=$("email").value.trim(), pwd=$("pwd").value;
+  if(!email||!pwd){toast("E-mail et mot de passe requis.",true);return;}
+  $("btnLogin").disabled=true;
+  const {error}=await sb.auth.signInWithPassword({email,password:pwd});
+  $("btnLogin").disabled=false;
+  if(error){$("loginMsg").textContent="Connexion impossible : "+error.message;$("loginMsg").classList.remove("hide");return;}
+  enter();
+};
+$("btnMagic").onclick=async()=>{
+  const email=$("email").value.trim();
+  if(!email){toast("Saisissez d'abord votre e-mail.",true);return;}
+  const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.href.split("#")[0]}});
+  if(error){toast(error.message,true);return;}
+  toast("Lien envoyé. Consultez votre boîte mail (et les spams).");
+};
+$("btnSavePw").onclick=async()=>{
+  const np=$("newpw").value;
+  if(!np||np.length<8){toast("8 caractères minimum.",true);return;}
+  $("btnSavePw").disabled=true;
+  const {error}=await sb.auth.updateUser({password:np});
+  $("btnSavePw").disabled=false;
+  if(error){toast(error.message,true);return;}
+  history.replaceState(null,"",location.pathname);
+  toast("Mot de passe enregistré.");
+  enter();
+};
+$("btnLogout").onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
+
+async function enter(){
+  const {data}=await sb.auth.getUser();
+  if(!data||!data.user){toast("Session expirée, reconnectez-vous.",true);return;}
+  me.email=(data.user.email||"").toLowerCase();
+  $("login").classList.add("hide"); $("setpw").classList.add("hide"); $("app").classList.remove("hide");
+  await loadData();
+}
+
+async function loadData(){
+  // données du collaborateur (RLS = uniquement sa ligne)
+  const sd=await sb.from("staff_data").select("name,role,payload");
+  if(sd.error){toast("Erreur de chargement : "+sd.error.message,true);return;}
+  const row=(sd.data&&sd.data[0])||null;
+  if(!row){
+    $("meName").textContent=me.email;
+    $("dossiers").innerHTML='<div class="muted" style="font-size:13px">Aucun accès n\'a encore été configuré pour votre compte. Contactez le cabinet.</div>';
+    $("tasks").innerHTML="";
+    return;
+  }
+  me.name=row.name||me.email; me.role=row.role||"";
+  const pl=row.payload||{}; me.dossiers=pl.dossiers||[]; me.tasks=pl.tasks||[];
+  // statuts mis à jour par le collaborateur
+  const st=await sb.from("staff_task_status").select("task_id,statut");
+  statusMap={}; if(!st.error&&st.data){st.data.forEach(r=>{statusMap[r.task_id]=r.statut;});}
+  render();
+}
+
+function render(){
+  $("meName").textContent=me.name;
+  $("meRole").textContent=me.role||"";
+  // dossiers
+  $("dossiers").innerHTML = me.dossiers.length
+    ? me.dossiers.map(d=>'<div class="dcard"><div class="nm">'+esc(d.name||("Dossier #"+d.id))+'</div><div class="muted" style="font-size:11.5px;margin-top:3px">Accès dossier complet</div></div>').join("")
+    : '<div class="muted" style="font-size:13px">Aucun dossier en accès complet. Vos tâches ci-dessous indiquent le dossier concerné.</div>';
+  // tâches
+  $("tasks").innerHTML = me.tasks.length
+    ? me.tasks.map(taskCard).join("")
+    : '<div class="muted" style="font-size:13px">Aucune tâche pour le moment.</div>';
+  document.querySelectorAll("[data-st]").forEach(b=>{ b.onclick=()=>setStatus(b.dataset.id,b.dataset.st); });
+}
+
+function taskCard(t){
+  const c=cur(t), st=ST[c]||ST.todo, od=overdue(t);
+  const meta=[];
+  if(t.dossier)meta.push("📁 "+esc(t.dossier));
+  if(t.echeance)meta.push('<span style="'+(od?"color:#B42318":"")+'">📅 '+when(t.echeance)+(od?" (en retard)":"")+'</span>');
+  if(t.prio)meta.push("● "+esc(t.prio));
+  return '<div class="task'+(c==="done"?" done":"")+'">'
+    +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">'
+      +'<div class="ti">'+esc(t.label||"Tâche")+'</div>'
+      +'<span class="pill '+st[1]+'">'+st[0]+'</span></div>'
+    +(meta.length?'<div class="meta">'+meta.join("")+'</div>':'')
+    +'<div class="row">'
+      +(c!=="doing"?'<button class="chip" data-id="'+esc(t.id)+'" data-st="doing">En cours</button>':'')
+      +(c!=="done"?'<button class="chip" data-id="'+esc(t.id)+'" data-st="done" style="border-color:#0E7A5F;color:#0E7A5F">Marquer terminé</button>':'')
+      +(c!=="todo"?'<button class="chip" data-id="'+esc(t.id)+'" data-st="todo">Rouvrir</button>':'')
+    +'</div></div>';
+}
+
+async function setStatus(taskId,statut){
+  statusMap[taskId]=statut; render();
+  const {error}=await sb.from("staff_task_status").upsert(
+    {email:me.email,task_id:taskId,statut:statut,updated_at:new Date().toISOString()},
+    {onConflict:"email,task_id"}
+  );
+  if(error){toast("Échec de l'enregistrement : "+error.message,true);}
+  else{toast("Statut mis à jour.");}
+}
+</script>
+</body>
+</html>
