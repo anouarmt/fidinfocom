@@ -412,7 +412,8 @@ function syncBadge(){
 }
 function setSync(st){syncState=st;const el=document.getElementById("sync");if(el)el.outerHTML=syncBadge();}
 function loadSDK(){return new Promise((res,rej)=>{if(window.supabase)return res();const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";s.onload=function(){res();};s.onerror=function(){rej(new Error("SDK"));};document.head.appendChild(s);});}
-function cloudUpsert(k,v){setSync("saving");sb.from("app_data").upsert({k:k,v:v,updated_at:new Date().toISOString()}).then(function(r){setSync(r.error?"error":"synced");});}
+var _lastWrite={};
+function cloudUpsert(k,v){_lastWrite[k]=Date.now();setSync("saving");sb.from("app_data").upsert({k:k,v:v,updated_at:new Date().toISOString()}).then(function(r){_lastWrite[k]=Date.now();setSync(r.error?"error":"synced");});}
 async function pullAll(){
   const res=await sb.from("app_data").select("k,v");
   if(res.error)throw res.error;
@@ -425,7 +426,13 @@ let _sub=null;
 function subscribeRealtime(){
   if(_sub)return;
   try{_sub=sb.channel("app_data_rt").on("postgres_changes",{event:"*",schema:"public",table:"app_data"},function(p){
-    var r=p.new;if(r&&r.k&&KEYS.indexOf(r.k)>=0){S[r.k]=r.v;try{localStorage.setItem(LS[r.k],JSON.stringify(r.v))}catch(e){}ensureYears();if(!S.modal)render();}
+    var r=p.new;if(r&&r.k&&KEYS.indexOf(r.k)>=0){
+      S[r.k]=r.v;try{localStorage.setItem(LS[r.k],JSON.stringify(r.v))}catch(e){}ensureYears();
+      var own=_lastWrite[r.k]&&(Date.now()-_lastWrite[r.k]<5000);                       // écho de notre propre sauvegarde
+      var ae=document.activeElement,editing=ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||"");// l'utilisateur saisit : ne pas recréer le champ
+      if(own||editing||S.modal)return;                                                  // sinon perte de focus / clavier fermé
+      render();
+    }
   }).subscribe();}catch(e){}
 }
 async function boot(){
