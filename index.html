@@ -2907,29 +2907,33 @@ function paieTotMois(d,mois){
   });
   return t;
 }
+var _paieRefreshT=null;
+function paieRefresh(id,mois){
+  clearTimeout(_paieRefreshT);
+  _paieRefreshT=setTimeout(function(){
+    var d=paieGet(),e=d.emps.find(function(x){return String(x.id)===String(id);});
+    var el=document.getElementById("pbreak_"+id); if(el&&e)el.innerHTML=paieBreakdown(d,e);
+    var tot=document.getElementById("paieTotaux"); if(tot)tot.innerHTML=paieTotHtml(paieTotMois(d,mois||paieMoisCur()));
+  },400);
+}
 function paieEmpInput(t){
   var d=paieGet(),p=t.dataset.pemp.split(":"),id=p[0],f=p[1];
   var e=d.emps.find(function(x){return String(x.id)===String(id);}); if(!e)return;
   e[f]=t.value; paieSet(d);
   if(f==="contrat"){renderView();return;}
-  var el=document.getElementById("pbreak_"+id); if(el)el.innerHTML=paieBreakdown(d,e);
-  var tot=document.getElementById("paieTotaux"); if(tot)tot.innerHTML=paieTotHtml(paieTotMois(d,paieMoisCur()));
+  paieRefresh(id);
 }
 function paieBullInput(t){
   var d=paieGet(),p=t.dataset.pbul.split(":"),id=p[0],f=p[1],mois=paieMoisCur();
   var b=Object.assign({},paieBullOf(d,id,mois)); b[f]=t.value; paieBullSet(d,id,mois,b); paieSet(d);
-  var e=d.emps.find(function(x){return String(x.id)===String(id);});
-  var el=document.getElementById("pbreak_"+id); if(el&&e)el.innerHTML=paieBreakdown(d,e);
-  var tot=document.getElementById("paieTotaux"); if(tot)tot.innerHTML=paieTotHtml(paieTotMois(d,mois));
+  paieRefresh(id,mois);
 }
 function paieItemInput(t){
   var d=paieGet(),p=t.dataset.pitem.split(":"),id=p[0],i=+p[1],f=p[2],mois=paieMoisCur();
   var b=Object.assign({},paieBullOf(d,id,mois)); b.items=(b.items||[]).slice();
   if(!b.items[i])b.items[i]={label:"",montant:"",imp:true}; else b.items[i]=Object.assign({},b.items[i]);
   b.items[i][f]=t.value; paieBullSet(d,id,mois,b); paieSet(d);
-  var e=d.emps.find(function(x){return String(x.id)===String(id);});
-  var el=document.getElementById("pbreak_"+id); if(el&&e)el.innerHTML=paieBreakdown(d,e);
-  var tot=document.getElementById("paieTotaux"); if(tot)tot.innerHTML=paieTotHtml(paieTotMois(d,mois));
+  paieRefresh(id,mois);
 }
 function paieItemAdd(id){
   var d=paieGet(),mois=paieMoisCur(),b=Object.assign({},paieBullOf(d,id,mois)); b.items=(b.items||[]).slice();
