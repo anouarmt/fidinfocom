@@ -348,7 +348,7 @@ const pad=x=>String(x).padStart(2,"0");
 const fmtDate=d=>pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear();
 const daysBetween=d=>Math.ceil((d-today)/86400000);
 const STAT_COLORS={"DÉPOSÉ ✓":"#0E7A5F","EN ATTENTE":"#C8941A","MANQUE DOC":"#B5530A","NÉANT":"#8A8F99","EXONÉRÉ":"#5C6B66","SORTANT":"#B42318"};
-const CAT_LABEL={tva:"TVA",sal:"Salaires",bilan:"Bilan",is:"Acomptes IS",jur:"Juridique",foncier:"Revenus fonciers",cm:"Cotisation min."};
+const CAT_LABEL={tva:"TVA",sal:"Salaires",bilan:"Bilan",is:"Acomptes IS",jur:"Juridique",foncier:"Revenus fonciers",cm:"Cotisation min.",ir:"Revenu global (IR)",tiers:"Rém. tiers",tp:"Taxe pro.",ras:"Retenue source"};
 const JUR_TYPES=["Constitution","Modification statutaire","AGO — approbation des comptes","AGE","Cession de parts","Changement de gérant","Augmentation de capital","Transfert de siège","Dissolution / Radiation","Dépôt au Registre de Commerce","Demande Modèle 7","Demande Modèle J","Attestation / Certificat","Travaux temporaires","Autre"];
 const JUR_STATUTS=["À FAIRE","EN COURS","TERMINÉ"];
 const FORMES=["personne morale","personne physique","cpu","particulier"];
@@ -573,6 +573,10 @@ function buildDeadlines(c){
   if(c.hasCMpm) add("CMPM","Cotisation minimale (sociétés)",""+Y,new Date(Y,2,31),"cm");
   if(c.hasCMpp) add("CMPP","Cotisation minimale (P. physique)",""+Y,new Date(Y,0,31),"cm");
   if(c.hasFoncier) add("FONCIER","Revenus fonciers",""+Y,new Date(Y,2,0),"foncier");   // avant fin février
+  if(c.hasIR) add("IR","Déclaration revenu global (IR)",""+Y,new Date(Y,4,0),"ir");        // avant le 1er mai
+  if(c.hasTiers) add("TIERS","Rémunérations versées à des tiers",""+Y,new Date(Y,2,31),"tiers"); // avec les résultats (à confirmer)
+  if(c.hasTP) add("TP","Taxe professionnelle / TSC (selon avis)",""+Y,new Date(Y,5,30),"tp");     // selon rôle/avis d'imposition
+  if(c.hasRAS) add("RAS","Retenue à la source (à vérifier)",""+Y,new Date(Y,2,31),"ras");          // déclaration annuelle (à confirmer)
   if(c.hasBilan){
     var pp=(c.forme||"").toLowerCase().includes("physique");
     add("BILAN",pp?"Dépôt du bilan (P. physique)":"Dépôt du bilan",""+(Y-1),pp?new Date(Y,3,30):new Date(Y,2,31),"bilan");
@@ -7540,7 +7544,7 @@ function vEch(){
   const dls=allDeadlines();
   const c=k=>dls.filter(d=>d.u.key===k).length;
   const urgs=[["active","À traiter"],["retard","En retard ("+c("retard")+")"],["urgent","Urgent ("+c("urgent")+")"],["venir","À venir ("+c("venir")+")"],["depose","Déposé ("+c("depose")+")"],["all","Tout"]];
-  const cats=[["all","Tous"],["tva","TVA"],["sal","Salaires"],["bilan","Bilan"],["is","Acomptes IS"],["foncier","Fonciers"],["cm","Cot. min."],["jur","Juridique"]];
+  const cats=[["all","Tous"],["tva","TVA"],["sal","Salaires"],["bilan","Bilan"],["is","Acomptes IS"],["foncier","Fonciers"],["cm","Cot. min."],["ir","Rev. IR"],["tiers","Rém. tiers"],["tp","Taxe pro."],["ras","Ret. source"],["jur","Juridique"]];
   const seg=(arr,act,cur,onc)=>'<div class="seg">'+arr.map(a=>'<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:'+onc+';color:#fff':'')+'">'+a[1]+'</button>').join("")+'</div>';
   const cols="1fr 170px 120px 90px 140px 92px";
   return '<div class="wrap">'+header("Échéances &amp; Notifications","Calculées automatiquement selon les règles du cabinet")+
@@ -7714,7 +7718,7 @@ function modalCEdit(id){
       '<div class="grid g3 mt3">'+num("cf_hontrim","Honoraire trim. (DH)",c.honTrim)+num("cf_honbilan","Honoraire bilan (DH)",c.honBilan)+num("cf_pv","PV de dépôt (DH)",c.pvDepot)+'</div>'+
       '<div class="grid g2 mt3"><div><div class="flbl">Régime TVA (déclaration)</div><select class="ipt" id="cf_reg">'+REGS.map(r=>'<option value="'+r[0]+'"'+(c.reg===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div>'+
       '<div><div class="flbl">Régime d\'exigibilité</div><select class="ipt" id="cf_regtva">'+REGS_TVA.map(r=>'<option value="'+r[0]+'"'+(regTvaOf(c)===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div></div>'+
-      '<div class="mt3"><div class="flbl">Obligations (cochez ce qui s\'applique)</div><div class="cklist">'+ck("cf_bilan","Bilan",c.hasBilan)+ck("cf_sal","Salaires",c.hasSal)+ck("cf_dp","Acomptes IS",c.hasDp)+ck("cf_foncier","Revenus fonciers",c.hasFoncier)+ck("cf_cmpm","Cotis. min. sociétés (mois 3)",c.hasCMpm)+ck("cf_cmpp","Cotis. min. P. physique (mois 1)",c.hasCMpp)+'</div></div>'+
+      '<div class="mt3"><div class="flbl">Obligations (cochez ce qui s\'applique)</div><div class="cklist">'+ck("cf_bilan","Bilan",c.hasBilan)+ck("cf_sal","Salaires",c.hasSal)+ck("cf_dp","Acomptes IS",c.hasDp)+ck("cf_foncier","Revenus fonciers",c.hasFoncier)+ck("cf_cmpm","Cotis. min. sociétés (mois 3)",c.hasCMpm)+ck("cf_cmpp","Cotis. min. P. physique (mois 1)",c.hasCMpp)+ck("cf_ir","Revenu global IR (30 avr)",c.hasIR)+ck("cf_tiers","Rémunérations à des tiers (31 mars)",c.hasTiers)+ck("cf_tp","Taxe pro. / TSC (selon avis)",c.hasTP)+ck("cf_ras","Retenue à la source (à vérifier)",c.hasRAS)+'</div></div>'+
       '<div class="grid g2 mt3"><div><div class="flbl">Statut global</div><select class="ipt" id="cf_statut">'+opt(STATUTS,c.statut)+'</select></div><div><div class="flbl">Commentaire</div><input class="ipt" id="cf_comment" value="'+esc(c.comment)+'"></div></div>'+
       '<button class="btn-primary" data-act="csave" data-id="'+(isNew?"":id)+'">'+ic("plus","width:16px;height:16px")+' '+(isNew?"Créer le client":"Enregistrer")+'</button>'+
     '</div></div></div>';
@@ -8687,6 +8691,7 @@ function submitClient(id){
     pvDepot:parseFloat(g("cf_pv").value)||0,reg:g("cf_reg").value,regTva:(g("cf_regtva")?g("cf_regtva").value:"debit"),
     hasBilan:g("cf_bilan").checked,hasSal:g("cf_sal").checked,hasDp:g("cf_dp").checked,
     hasFoncier:g("cf_foncier").checked,hasCMpm:(g("cf_cmpm")?g("cf_cmpm").checked:false),hasCMpp:(g("cf_cmpp")?g("cf_cmpp").checked:false),
+    hasIR:(g("cf_ir")?g("cf_ir").checked:false),hasTiers:(g("cf_tiers")?g("cf_tiers").checked:false),hasTP:(g("cf_tp")?g("cf_tp").checked:false),hasRAS:(g("cf_ras")?g("cf_ras").checked:false),
     statut:g("cf_statut").value==="—"?"":g("cf_statut").value,comment:g("cf_comment").value.trim()};
   if(id==null){
     const nid=Date.now();S.custom.push(Object.assign({id:nid},data));save("custom");
