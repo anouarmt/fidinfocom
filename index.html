@@ -465,6 +465,44 @@ async function doAuth(mode){
   }catch(e){err.style.color="#B42318";err.textContent="Erreur : "+e.message;}
 }
 async function logout(){try{await sb.auth.signOut();}catch(e){}session=null;if(_sub){try{sb.removeChannel(_sub);}catch(e){}_sub=null;}renderLogin();}
+
+/* ---------- CREATION DE COMPTE DIRECTE DANS LE CLOUD (sans e-mail) ---------- */
+// Génère un mot de passe simple à transmettre (sans caractères ambigus).
+function genPass(n){n=n||10;var cs="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";var s="";for(var i=0;i<n;i++)s+=cs.charAt(Math.floor(Math.random()*cs.length));return s;}
+// Client Supabase TEMPORAIRE : crée le compte sans remplacer votre session admin.
+function tempAuthClient(){
+  if(!window.supabase)return null;
+  return window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-fid-signup-tmp"}});
+}
+// Crée un compte Supabase (e-mail + mot de passe) via le client temporaire et renvoie {uid, needsConfirm}.
+async function cloudCreateAccount(email,pass){
+  var tmp=tempAuthClient();
+  if(!tmp)throw new Error("SDK cloud non chargé.");
+  var r=await tmp.auth.signUp({email:email,password:pass});
+  if(r.error)throw new Error(r.error.message);
+  var uid=(r.data&&r.data.user&&r.data.user.id)||"";
+  var needsConfirm=!(r.data&&r.data.session); // session absente = confirmation e-mail probablement activée
+  return {uid:uid,needsConfirm:needsConfirm};
+}
+// Modale affichant les identifiants créés, à transmettre au client/collaborateur.
+function modalCreds(){
+  var d=(S.modal&&S.modal.creds)||{};
+  var uidRow=d.uid?'<div style="margin-top:12px"><div class="flbl" style="margin-bottom:4px">Identifiant interne (UID Supabase)</div><textarea class="ipt mono" readonly rows="1" onclick="this.select()" style="font-size:11px;background:#FBFAF5;resize:none">'+esc(d.uid)+'</textarea><div class="note" style="font-size:10.5px;color:var(--muted);margin-top:4px">À utiliser uniquement si la liaison du dossier doit être faite à la main (zone « Liaison manuelle » de la fiche).</div></div>':'';
+  return '<div class="ov"><div class="modal" data-stop style="max-width:460px"><div class="mh"><h3 class="ff">✓ '+esc(d.title||"Compte créé")+'</h3><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+   +'<div class="mb" style="padding:22px">'
+   +'<div class="note" style="font-size:12.5px;color:#0E7A5F;margin-bottom:14px">Le compte a été créé directement dans le cloud. Transmettez ces identifiants à '+esc(d.qui||"la personne concernée")+' (WhatsApp, en main propre…).</div>'
+   +'<div class="flbl" style="margin-bottom:4px">Adresse e-mail (identifiant de connexion)</div><textarea class="ipt mono" readonly rows="1" onclick="this.select()" style="font-size:12.5px;background:#FBFAF5;resize:none">'+esc(d.email||"")+'</textarea>'
+   +'<div class="flbl" style="margin:12px 0 4px">Mot de passe</div><textarea class="ipt mono" readonly rows="1" onclick="this.select()" style="font-size:12.5px;background:#FBFAF5;resize:none">'+esc(d.pass||"")+'</textarea>'
+   +'<button class="btn-primary" data-act="creds_copy" style="width:100%;justify-content:center;margin-top:14px">'+ic("receipt","width:15px;height:15px")+' Copier les identifiants</button>'
+   +uidRow
+   +(d.needsConfirm?'<div class="note" style="font-size:11px;color:#9A7610;margin-top:12px;line-height:1.6">⚠ La confirmation par e-mail semble activée dans Supabase : la personne devra cliquer le lien reçu par e-mail avant de pouvoir se connecter. Pour une connexion immédiate avec ce mot de passe, désactivez « Confirm email » dans Authentication → Settings.</div>':'')
+   +'</div></div></div>';
+}
+function showCreds(title,qui,email,pass,uid,needsConfirm){
+  S.modal={type:"creds",creds:{title:title,qui:qui,email:email,pass:pass,uid:uid||"",needsConfirm:!!needsConfirm}};
+  renderModal();
+}
+
 function renderLogin(){
   syncState="login";
   document.querySelector(".app").style.display="none";
@@ -3612,11 +3650,22 @@ function portalInviteSectionHtml(id,soc){
   var sql="insert into public.portal_clients(user_id, client_id, client_name)\nvalues ('UID-DU-CLIENT', "+id+", '"+String(nom).replace(/'/g,"''")+"');";
   return '<div style="margin-top:22px"><div class="sectit mb3" style="color:var(--muted)">'+ic("user")+' ESPACE CLIENT EN LIGNE</div>'
     +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">Société : <b style="color:var(--ink)">'+esc(nom)+'</b> · dossier n° <b class="mono">'+id+'</b></div>'
-    +'<div class="grid g2"><div><div class="flbl">E-mail du client (accès au portail)</div><input class="ipt" data-soc="email" type="email" value="'+esc(soc.email||"")+'" placeholder="client@societe.ma"></div>'
-    +'<div style="display:flex;align-items:flex-end"><button class="btn-primary" data-act="portal_invite" data-id="'+id+'" style="width:100%">'+ic("bell","width:15px;height:15px")+' '+(invited?"Renvoyer l'accès":"Inviter au portail")+'</button></div></div>'
-    +(invited
-        ? '<div class="note" style="font-size:11.5px;margin-top:8px;color:#0E7A5F">✓ Invitation envoyée'+(dt?" le "+dt:"")+'. Le compte est relié à cette société automatiquement. Le client reçoit un e-mail, clique le lien et arrive connecté pour choisir son mot de passe.</div>'
-        : '<div class="note" style="font-size:11.5px;margin-top:8px">Saisissez l\'e-mail puis cliquez : la liaison à <b>'+esc(nom)+'</b> se fait automatiquement et le client reçoit son invitation par e-mail. '+(connected?'':'<b style="color:#B42318">Connectez-vous au cloud pour activer l\'envoi.</b>')+'</div>')
+    +'<div class="flbl">E-mail du client (accès au portail)</div><input class="ipt" data-soc="email" type="email" value="'+esc(soc.email||"")+'" placeholder="client@societe.ma">'
+    // ── Méthode 1 : création directe du compte dans le cloud ──
+    +'<div style="margin-top:14px;border:1px solid #E7E3D8;border-radius:10px;padding:12px;background:#FBFAF5">'
+      +'<div class="flbl" style="margin:0 0 7px">'+ic("user","width:14px;height:14px;vertical-align:-2px")+' ① Créer le compte directement (cloud)</div>'
+      +'<div class="grid g2"><div><div class="flbl">Mot de passe (laisser vide = généré automatiquement)</div><input class="ipt mono" id="portal_pass_'+id+'" placeholder="auto" autocomplete="off"></div>'
+      +'<div style="display:flex;align-items:flex-end"><button class="btn-primary" data-act="portal_create_acct" data-id="'+id+'" style="width:100%">'+ic("check","width:15px;height:15px")+' Créer le compte</button></div></div>'
+      +'<div class="note" style="font-size:11px;margin-top:8px">'+(connected?'Le compte est créé tout de suite et la société y est reliée. Les identifiants (e-mail + mot de passe) s\'affichent pour que vous les transmettiez au client.':'<b style="color:#B42318">Connectez-vous au cloud pour créer le compte.</b>')+'</div>'
+    +'</div>'
+    // ── Méthode 2 : invitation par e-mail (conservée) ──
+    +'<div style="margin-top:12px;border:1px solid #E7E3D8;border-radius:10px;padding:12px">'
+      +'<div class="flbl" style="margin:0 0 7px">'+ic("bell","width:14px;height:14px;vertical-align:-2px")+' ② Envoyer une invitation par e-mail</div>'
+      +'<button class="btn-primary" data-act="portal_invite" data-id="'+id+'" style="width:100%">'+ic("bell","width:15px;height:15px")+' '+(invited?"Renvoyer l'accès":"Inviter au portail")+'</button>'
+      +(invited
+          ? '<div class="note" style="font-size:11.5px;margin-top:8px;color:#0E7A5F">✓ Invitation envoyée'+(dt?" le "+dt:"")+'. Le compte est relié à cette société automatiquement. Le client reçoit un e-mail, clique le lien et arrive connecté pour choisir son mot de passe.</div>'
+          : '<div class="note" style="font-size:11.5px;margin-top:8px">Le client reçoit un e-mail avec un lien pour activer son espace et choisir son mot de passe. '+(connected?'':'<b style="color:#B42318">Connectez-vous au cloud pour activer l\'envoi.</b>')+'</div>')
+    +'</div>'
     +'<div style="margin-top:12px"><div class="flbl" style="margin-bottom:4px">Liaison manuelle dans Supabase (facultatif)</div>'
       +'<div class="note" style="font-size:11px;margin-bottom:5px">Seulement si vous reliez à la main : copiez cette ligne dans l\'éditeur SQL et remplacez l\'UID par celui du compte du client (Authentication › Users).</div>'
       +'<textarea class="ipt mono" readonly rows="2" onclick="this.select()" style="font-size:11px;background:#FBFAF5">'+esc(sql)+'</textarea></div>'
@@ -3641,6 +3690,31 @@ async function portalInvite(cid){
     setSync&&setSync("synced"); render();
     showOk("Invitation envoyée à "+email+". Le client recevra un e-mail pour activer son espace.");
   }catch(e){ setSync&&setSync("synced"); showErr("Envoi impossible : "+(e.message||e)+". Vérifiez que la fonction « invite-client » est déployée (voir le guide)."); }
+}
+// Création DIRECTE du compte client dans le cloud (méthode ①) — affiche les identifiants à transmettre.
+async function portalCreateAccount(cid){
+  var c=clients().find(function(x){return x.id===cid;}); if(!c)return;
+  var soc=(S.flags[cid]||{}).societe||{}, email=(soc.email||"").trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showErr("Saisissez d'abord un e-mail valide dans la fiche société."); return; }
+  if(!(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session)){ showErr("Connectez-vous au cloud pour créer le compte."); return; }
+  var pf=document.getElementById("portal_pass_"+cid);
+  var pass=(pf&&pf.value.trim())||genPass(10);
+  if(pass.length<6){ showErr("Le mot de passe doit comporter au moins 6 caractères."); return; }
+  setSync&&setSync("saving");
+  try{
+    var res=await cloudCreateAccount(email,pass);
+    // Liaison automatique dossier <-> compte (peut être bloquée par RLS ; sinon, liaison manuelle via l'UID affiché)
+    if(res.uid){ try{ await sb.from("portal_clients").insert({user_id:res.uid,client_id:cid,client_name:c.dossier}); }catch(_e){} }
+    S.flags[cid]=Object.assign({},S.flags[cid]); S.flags[cid].societe=Object.assign({},S.flags[cid].societe);
+    S.flags[cid].societe.portalInvited=new Date().toISOString(); S.flags[cid].societe.email=email; save("flags");
+    setSync&&setSync("synced"); render();
+    showCreds("Compte client créé","ce client",email,pass,res.uid,res.needsConfirm);
+  }catch(e){
+    setSync&&setSync("synced");
+    var m=(e.message||String(e));
+    if(/already.*regist|already.*exist|User already/i.test(m)){ showErr("Un compte existe déjà pour "+email+". Utilisez plutôt l'invitation par e-mail (méthode ②) ou un autre e-mail."); }
+    else showErr("Création impossible : "+m);
+  }
 }
 function portalUpload(files,cid,byClient){
   files=Array.prototype.slice.call(files||[]); if(!files.length)return;
@@ -3841,13 +3915,22 @@ function teamInviteHtml(s){
   var dt=""; if(s.invited){try{dt=new Date(s.invited).toLocaleDateString("fr-FR");}catch(e){}}
   return '<div style="margin-top:12px;border:1px solid #E7E3D8;border-radius:10px;padding:12px;background:#FBFAF5">'
     +'<div class="flbl" style="margin:0 0 7px">'+ic("user","width:14px;height:14px;vertical-align:-2px")+' Accès au portail collaborateur</div>'
+    // ── Méthode 1 : création directe du compte dans le cloud ──
+    +'<div style="border:1px solid #E7E3D8;border-radius:10px;padding:10px 11px;background:#fff;margin-bottom:10px">'
+      +'<div class="flbl" style="margin:0 0 6px">① Créer le compte directement (cloud)</div>'
+      +'<div class="grid g2"><div><div class="flbl">Mot de passe (laisser vide = généré automatiquement)</div><input class="ipt mono" id="team_pass_'+s.id+'" placeholder="auto" autocomplete="off"></div>'
+      +'<div style="display:flex;align-items:flex-end"><button class="btn-primary" data-act="team_create_acct" data-id="'+s.id+'" style="width:100%">'+ic("check","width:14px;height:14px")+' Créer le compte</button></div></div>'
+      +'<div class="note" style="font-size:11px;margin-top:7px">'+(connected?'Le compte est créé tout de suite ; ses dossiers/tâches sont reliés et les identifiants s\'affichent pour que vous les transmettiez.':'<b style="color:#B42318">Connectez-vous au cloud pour créer le compte.</b>')+'</div>'
+    +'</div>'
+    // ── Méthode 2 : invitation par e-mail (conservée) ──
+    +'<div class="flbl" style="margin:0 0 6px">② Envoyer une invitation par e-mail</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
       +'<button class="btn-primary" data-act="team_invite" data-id="'+s.id+'">'+ic("bell","width:14px;height:14px")+' '+(s.invited?"Renvoyer l\'accès":"Inviter par e-mail")+'</button>'
       +(s.invited?'<button class="chip" data-act="team_push" data-id="'+s.id+'">'+ic("down","width:13px;height:13px")+' Mettre à jour ses dossiers/tâches</button>':'')
     +'</div>'
     +(s.invited
         ?'<div class="note" style="font-size:11.5px;margin-top:8px;color:#0E7A5F">✓ Invité'+(dt?" le "+dt:"")+'. Le collaborateur reçoit un e-mail, choisit son mot de passe, puis voit ses dossiers et tâches. Après chaque changement d\'affectation, cliquez « Mettre à jour ».</div>'
-        :'<div class="note" style="font-size:11.5px;margin-top:8px">Renseignez l\'e-mail ci-dessus, puis invitez : le collaborateur reçoit un lien pour créer son mot de passe et accéder à ses dossiers/tâches. '+(connected?'':'<b style="color:#B42318">Connectez-vous au cloud pour activer l\'envoi.</b>')+'</div>')
+        :'<div class="note" style="font-size:11.5px;margin-top:8px">Le collaborateur reçoit un e-mail avec un lien pour créer son mot de passe et accéder à ses dossiers/tâches. '+(connected?'':'<b style="color:#B42318">Connectez-vous au cloud pour activer l\'envoi.</b>')+'</div>')
     +'</div>';
 }
 function teamBuildPayload(s){
@@ -3882,6 +3965,30 @@ async function teamInvite(id){
     setSync&&setSync("synced"); renderView();
     showOk("Invitation envoyée à "+email+". Le collaborateur recevra un e-mail pour activer son espace.");
   }catch(e){ setSync&&setSync("synced"); showErr("Envoi impossible : "+(e.message||e)+". Vérifiez que la fonction « invite-collaborateur » est déployée."); }
+}
+// Création DIRECTE du compte collaborateur dans le cloud (méthode ①) — affiche les identifiants à transmettre.
+async function teamCreateAccount(id){
+  var s=teamStaff(id); if(!s)return;
+  var email=(s.email||"").trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showErr("Saisissez d'abord un e-mail valide dans le profil du collaborateur."); return; }
+  if(!(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session)){ showErr("Connectez-vous au cloud pour créer le compte."); return; }
+  var pf=document.getElementById("team_pass_"+id);
+  var pass=(pf&&pf.value.trim())||genPass(10);
+  if(pass.length<6){ showErr("Le mot de passe doit comporter au moins 6 caractères."); return; }
+  setSync&&setSync("saving");
+  try{
+    var res=await cloudCreateAccount(email,pass);
+    // Relie ses dossiers/tâches (table staff_data, par e-mail)
+    await teamPushCloud(s);
+    s.invited=new Date().toISOString(); save("team");
+    setSync&&setSync("synced"); renderView();
+    showCreds("Compte collaborateur créé",(s.name||"ce collaborateur"),email,pass,res.uid,res.needsConfirm);
+  }catch(e){
+    setSync&&setSync("synced");
+    var m=(e.message||String(e));
+    if(/already.*regist|already.*exist|User already/i.test(m)){ showErr("Un compte existe déjà pour "+email+". Utilisez plutôt l'invitation par e-mail (méthode ②) ou un autre e-mail."); }
+    else showErr("Création impossible : "+m);
+  }
 }
 async function teamPush(id){
   var s=teamStaff(id); if(!s)return;
@@ -7849,6 +7956,7 @@ function renderModal(){
   if(S.modal.type==="receipt"){o.innerHTML=modalReceipt(S.modal.id,S.modal.prefill);return;}
   if(S.modal.type==="suivi"){o.innerHTML=modalSuivi(S.modal.cid,S.modal.eid);return;}
   if(S.modal.type==="balgl"){o.innerHTML=modalBalGL(S.modal.cid,S.modal.compte);return;}
+  if(S.modal.type==="creds"){o.innerHTML=modalCreds();return;}
   const c=S.modal.id==null?null:clients().find(x=>x.id===S.modal.id);
   if(S.modal.type==="client")o.innerHTML=modalClient(c);
   else if(S.modal.type==="pay")o.innerHTML=modalPay(c);
@@ -8001,6 +8109,7 @@ document.addEventListener("click",e=>{
   else if(a==="portal_notif_clear"){portalNotifClear();}
   else if(a==="portal_cloud_sync"){portalCloudSync();}
   else if(a==="portal_invite"){portalInvite(+t.dataset.id);}
+  else if(a==="portal_create_acct"){portalCreateAccount(+t.dataset.id);}
   else if(a==="team_staff_add"){teamStaffCreate();}
   else if(a==="team_sel"){teamSelect(t.dataset.id);}
   else if(a==="team_staff_del"){teamStaffDel(t.dataset.id);}
@@ -8009,6 +8118,8 @@ document.addEventListener("click",e=>{
   else if(a==="team_task_st"){teamTaskStatus(t.dataset.id,t.dataset.st);}
   else if(a==="team_task_del"){teamTaskDel(t.dataset.id);}
   else if(a==="team_invite"){teamInvite(t.dataset.id);}
+  else if(a==="team_create_acct"){teamCreateAccount(t.dataset.id);}
+  else if(a==="creds_copy"){var cd=(S.modal&&S.modal.creds)||{};var txt="E-mail : "+(cd.email||"")+"\nMot de passe : "+(cd.pass||"");try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt);}else{var ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}}catch(_e){}showOk("Identifiants copiés.");}
   else if(a==="team_push"){teamPush(t.dataset.id);}
   else if(a==="cgnccls"){S.cgncCls=t.dataset.c;renderView();}
   else if(a==="comptabal_inject"){comptaBalInject(t.dataset.id);}
