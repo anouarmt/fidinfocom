@@ -4746,7 +4746,7 @@ function vCompta(){
   var head='<div class="wrap">'+header("Comptabilité","Saisie, journal et grand livre · Exercice "+S.year);
   if(!cs.length)return head+'<div class="empty">Aucun client.</div></div>';
   var clientOpts=cs.map(function(x){return '<option value="'+x.id+'"'+(x.id===S.curClient?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("");
-  var tabs=[["saisie","Saisie / Import"],["manuel","Saisie manuelle"],["anouveau","À-nouveaux N-1"],["immos","Amortissements"],["journal","Journal général"],["gl","Grand livre"],["balance","Balance"],["plan","Plan comptable"],["recap","Toutes sociétés"]];
+  var tabs=[["saisie","Saisie / Import"],["manuel","Saisie manuelle"],["anouveau","À-nouveaux N-1"],["immos","Amortissements"],["emprunts","Emprunts"],["journal","Journal général"],["gl","Grand livre"],["balance","Balance"],["plan","Plan comptable"],["recap","Toutes sociétés"]];
   var toggle='<div style="display:flex;gap:6px;background:#EDEAE0;border-radius:10px;padding:3px;flex-wrap:wrap">'+tabs.map(function(t){return '<button data-act="comptaview" data-v="'+t[0]+'" class="chip" style="border:0;'+(S.comptaView===t[0]?"background:#14201C;color:#fff":"background:transparent")+'">'+t[1]+'</button>';}).join("")+'</div>';
   var bar='<div class="card mt5" style="padding:16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div class="flbl">Société</div><select class="ipt" id="comptaclient">'+clientOpts+'</select></div>'+toggle+'</div>';
   // hidden file inputs
@@ -4759,6 +4759,7 @@ function vCompta(){
   else if(S.comptaView==="plan") body=comptaPlanBody();
   else if(S.comptaView==="anouveau") body=comptaANBody(c);
   else if(S.comptaView==="immos") body=comptaImmosBody(c);
+  else if(S.comptaView==="emprunts") body=comptaEmpruntsBody(c);
   else if(S.comptaView==="recap") body=comptaRecapBody();
   else if(S.comptaView==="list") body=comptaListBody(c);
   else body=comptaSaisieBody(c);
@@ -7589,7 +7590,7 @@ function facEditor(){var f=S.facDraft;var copts=clients().map(function(c){return
 function vFac(){if(S.facDraft)return header("Facturation","STE FIDUCIAIRE FID INFO COM SARL AU — édition de facture")+'<div class="wrap">'+facEditor()+'</div>';var list=facList(),cab=cabinetGet();var tHT=0,tTTC=0,tImp=0,tEnc=0;list.forEach(function(f){var t=facTotals(f);tHT+=t.ht;tTTC+=t.ttc;if(f.statut==="payee")tEnc+=t.ttc;else tImp+=t.ttc;});var kpis='<div class="grid g4 mt5">'+facKpi("receipt","#0E7A5F","#e6f4ef",list.length,"Factures "+S.year)+facKpi("wallet","#14201C","#eef0ee",fmtDH2(tHT),"Total H.T.")+facKpi("bank","#C8941A","#fbf3e2",fmtDH2(tImp),"Restant à encaisser")+facKpi("check","#0E7A5F","#e6f4ef",fmtDH2(tEnc),"Encaissé")+'</div>';var cabFields=[["raison","Raison sociale"],["forme","Forme juridique"],["capital","Capital (DH)"],["activite","Activité"],["adresse","Adresse"],["ville","Ville"],["ice","ICE"],["if","Identifiant fiscal (IF)"],["rc","Registre du commerce (RC)"],["patente","Taxe professionnelle"],["cnss","N° CNSS"],["tel","Téléphone"],["email","E-mail"],["rib","RIB"],["banque","Banque"]];var cabInputs=cabFields.map(function(fl){return '<div><div class="flbl">'+fl[1]+'</div><input class="ipt" data-cab="'+fl[0]+'" value="'+esc(cab[fl[0]]||"")+'"></div>';}).join("");var cabBox='<details class="card mt4" style="padding:0"><summary style="padding:16px 20px;cursor:pointer;font-weight:600;color:#44423c;display:flex;align-items:center;gap:8px">'+ic("settings")+' Coordonnées du cabinet (émetteur) — reprises sur chaque facture</summary><div style="padding:0 20px 20px"><div class="grid g3">'+cabInputs+'</div><div style="margin-top:12px;font-size:11.5px;color:var(--muted)">Renseignez ICE / IF / RC / patente une seule fois : ces mentions légales obligatoires apparaîtront automatiquement sur toutes les factures.</div></div></details>';var cols="grid-template-columns:36px 118px 84px 1fr 110px 96px 196px";var allSel=list.length>0&&facSelIds().length===list.length;var head='<div class="thead" style="'+cols+'"><div><input type="checkbox" id="fac_checkall" class="fac-cb"'+(allSel?' checked':'')+' title="Tout sélectionner"></div>'+['N°','Date','Client','TTC','Statut','Actions'].map(function(h){return '<div>'+h+'</div>';}).join("")+'</div>';var body=list.map(function(f){var t=facTotals(f),st=FAC_ST[f.statut]||FAC_ST.emise;var ck=(S.facCheck&&S.facCheck[String(f.id)])?' checked':'';return '<div class="trow" style="'+cols+'"><div><input type="checkbox" class="fac-cb" data-faccheck="'+f.id+'"'+ck+'></div><div class="mono" style="font-weight:600">'+esc(f.num)+'</div><div class="mono" style="font-size:12px">'+esc((f.date||"").split("-").reverse().join("/"))+'</div><div class="dossier">'+esc(f.dossier)+(f.objet?'<div style="font-size:11px;color:var(--faint);font-weight:400">'+esc(f.objet)+'</div>':'')+'</div><div class="mono" style="font-weight:700;text-align:right">'+fmtDH2(t.ttc)+'</div><div><span class="fac-st" style="color:'+st[0]+';background:'+st[1]+'">'+st[2]+'</span>'+(f.comptaPieceId?' <span title="Comptabilisée" style="color:#0E7A5F">●</span>':'')+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="chip" data-act="fac_edit" data-id="'+f.id+'" style="padding:5px 8px" title="Modifier la facture">'+ic("pencil")+'</button><button class="chip" data-act="fac_print" data-id="'+f.id+'" style="padding:5px 8px" title="Imprimer / PDF">'+ic("printer")+'</button><button class="chip" data-act="fac_compta" data-id="'+f.id+'" style="padding:5px 8px" title="Comptabiliser">'+ic("book")+'</button><button class="chip" data-act="fac_del" data-id="'+f.id+'" style="padding:5px 8px;color:#B42318;border-color:#f0c9c4" title="Supprimer la facture">'+ic("trash")+'</button></div></div>';}).join("")||'<div class="trow" style="display:block;text-align:center;color:var(--muted);padding:34px">Aucune facture pour '+S.year+'. Cliquez sur « Nouvelle facture » pour commencer.</div>';return header("Facturation","STE FIDUCIAIRE FID INFO COM SARL AU — factures d'honoraires")+'<div class="wrap"><div style="display:flex;justify-content:flex-end"><button class="btn-add" data-act="fac_new">'+ic("plus")+' Nouvelle facture</button></div>'+kpis+cabBox+'<div id="fac_bulkwrap">'+facBulkBar()+'</div><div class="card mt4">'+head+'<div class="scroll">'+body+'</div></div></div>';}
 
 
-const NAV=[["dash","Tableau de bord","dash"],["compta","Comptabilité","book"],["delais","Délais paiement","clock"],["emprunts","Emprunts","bank"],["ech","Échéances","bell"],["cli","Clients","users"],["portal","Espace client","user"],["team","Équipe / Tâches","check"],["hon","Honoraires","wallet"],["fac","Facturation","receipt"],["tva","TVA","bank"],["paie","Paie · Bulletins","users"],["liasse","Liasse / IS","gavel"],["docs","Documents","folder"],["jur","Juridique","scale"]];
+const NAV=[["dash","Tableau de bord","dash"],["compta","Comptabilité","book"],["delais","Délais paiement","clock"],["ech","Échéances","bell"],["cli","Clients","users"],["portal","Espace client","user"],["team","Équipe / Tâches","check"],["hon","Honoraires","wallet"],["fac","Facturation","receipt"],["tva","TVA","bank"],["paie","Paie · Bulletins","users"],["liasse","Liasse / IS","gavel"],["docs","Documents","folder"],["jur","Juridique","scale"]];
 function renderNav(){
   document.getElementById("nav").innerHTML=NAV.map(n=>{var badge="";if(n[0]==="portal"){try{var u=portalGet().notifs.filter(function(x){return !x.read;}).length;if(u)badge='<span style="background:#B42318;color:#fff;border-radius:20px;padding:0 6px;font-size:10px;margin-left:auto;font-weight:700">'+u+'</span>';}catch(e){}}return '<button class="'+(S.tab===n[0]?"on":"")+'" data-act="tab" data-tab="'+n[0]+'">'+ic(n[2])+'<span>'+n[1]+'</span>'+badge+'</button>';}).join("");
   document.getElementById("foot").innerHTML='Exercice <b class="mono">'+S.year+'</b><br>'+clients().length+' dossiers suivis'+syncBadge()+(CLOUD?'':'<button data-act="cloudinfo" style="display:block;margin-top:8px;font-size:11px;color:var(--gold);text-decoration:underline">☁ Configurer la synchronisation</button>')+'<div style="margin-top:8px;font-size:10px;color:rgba(167,206,190,.5);letter-spacing:.04em">'+VERSION+'</div>';
@@ -7859,11 +7860,10 @@ async function empScan(empId,files){
     showErr("Lecture impossible : "+(e.message||e)+". Avez-vous bien créé la fonction extract-amortissement ?");
   }
 }
-function vEmprunts(){
-  var cs=clients();
-  if(!S.curClient)S.curClient=(cs[0]||{}).id||null;
-  var c=cs.find(function(x){return x.id===S.curClient;});
-  if(!c)return header()+'<div class="wrap"><div class="card" style="padding:30px;text-align:center">Aucun dossier sélectionné.</div></div>';
+// Contenu du module Emprunts, intégré comme sous-onglet de la Comptabilité.
+// (Réutilise les mêmes fonctions emp* ; pas d'en-tête ni de sélecteur de société : la Comptabilité fournit déjà le sien.)
+function comptaEmpruntsBody(c){
+  if(!c)return '<div class="card mt4" style="padding:30px;text-align:center">Aucun dossier sélectionné.</div>';
   var arr=empList(c.id);
   var emp=arr.find(function(e){return String(e.id)===String(S.empSel.id);})||arr[0];
   if(emp)S.empSel.id=emp.id;
@@ -7920,11 +7920,19 @@ function vEmprunts(){
       +'</div>';
   }
 
+  return '<div class="card mt4" style="padding:14px;margin-bottom:14px"><div class="sectit mb3">Emprunts du dossier '+esc(c.dossier)+' · '+S.year+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+listHtml+'<button class="chip" data-act="emp_add" style="background:#0E7A5F;color:#fff;border-color:#0E7A5F">'+ic("plus")+' Nouvel emprunt</button></div></div>'
+    +detail;
+}
+// Conservé pour compatibilité (le module est désormais accessible via Comptabilité → Emprunts).
+function vEmprunts(){
+  var cs=clients();
+  if(!S.curClient)S.curClient=(cs[0]||{}).id||null;
+  var c=cs.find(function(x){return x.id===S.curClient;});
   return header()+'<div class="wrap">'
-    +'<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:14px"><div><div class="ptitle">Emprunts</div><div class="psub">'+esc(c.dossier)+' · '+S.year+' — crédits bancaires & tableaux d\'amortissement</div></div>'
-    +'<div style="flex:1;min-width:200px;max-width:360px"><div class="flbl">Société</div><select class="ipt" id="empruntsclient">'+cs.map(function(x){return '<option value="'+x.id+'"'+(x.id===c.id?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("")+'</select></div></div>'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+listHtml+'<button class="chip" data-act="emp_add" style="background:#0E7A5F;color:#fff;border-color:#0E7A5F">'+ic("plus")+' Nouvel emprunt</button></div>'
-    +detail
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:14px"><div><div class="ptitle">Emprunts</div><div class="psub">'+(c?esc(c.dossier):"")+' · '+S.year+' — crédits bancaires & tableaux d\'amortissement</div></div>'
+    +'<div style="flex:1;min-width:200px;max-width:360px"><div class="flbl">Société</div><select class="ipt" id="empruntsclient">'+cs.map(function(x){return '<option value="'+x.id+'"'+(c&&x.id===c.id?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("")+'</select></div></div>'
+    +comptaEmpruntsBody(c)
     +'</div>';
 }
 /* ===== Filtre de recherche au-dessus des sélecteurs de dossier (taper nom ou initiales) ===== */
@@ -7963,6 +7971,7 @@ function enhanceClientSelects(){
 }
 function renderView(){
   if(S.tab==="sal")S.tab="paie";   // ancien module Salaires 9421 fusionné dans Paie
+  if(S.tab==="emprunts"){S.tab="compta";S.comptaView="emprunts";}   // module Emprunts intégré dans la Comptabilité
   try{if(S.curClient!=null)localStorage.setItem("fid_curclient",String(S.curClient));}catch(e){}
   const v={dash:vDash,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,jur:vJur,delais:vDelais,emprunts:vEmprunts,portal:vPortal,team:vTeam}[S.tab]();
   document.getElementById("view").innerHTML=v;
