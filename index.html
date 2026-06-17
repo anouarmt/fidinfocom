@@ -351,7 +351,7 @@ const JUR_TYPES=["Constitution","Modification statutaire","AGO — approbation d
 const JUR_STATUTS=["À FAIRE","EN COURS","TERMINÉ"];
 const FORMES=["personne morale","personne physique","cpu","particulier"];
 const STATUTS=["EN ATTENTE","DÉPOSÉ ✓","MANQUE DOC","NÉANT","EXONÉRÉ","SORTANT",""];
-const REGS=[["trimestrielle","TVA trimestrielle"],["mensuelle","TVA mensuelle"],["neant","TVA néant / exonéré"]];
+const REGS=[["trimestrielle","TVA trimestrielle"],["mensuelle","TVA mensuelle"],["neant","Hors champ TVA"]];
 const REGS_TVA=[["debit","Régime des débits (à la facturation)"],["encaissement","Régime de l'encaissement"]];
 const REG_TVA_LABEL={debit:"Régime des débits",encaissement:"Régime de l'encaissement"};
 const PAY_MODES=["Espèces","Chèque","Virement","Carte bancaire","Effet"];
@@ -1009,7 +1009,7 @@ function vTVA(){
   var clientOpts=cs.map(function(x){return '<option value="'+x.id+'"'+(x.id===c.id?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("");
   var head='<div class="wrap">'+header("TVA","Calcul, contrôle et déclaration · Exercice "+S.year);
   if(c.reg==="neant"){
-    return head+'<div class="card mt5" style="padding:20px"><div style="margin-bottom:12px"><span class="flbl">Dossier</span><select class="ipt" id="tvaclient" style="max-width:360px">'+clientOpts+'</select></div><div class="note">Ce client est en régime <b>TVA néant / exonéré</b>. Modifiez son régime (fiche client → Éditer) pour saisir une déclaration, ou choisissez un autre dossier.</div></div></div>';
+    return head+'<div class="card mt5" style="padding:20px"><div style="margin-bottom:12px"><span class="flbl">Dossier</span><select class="ipt" id="tvaclient" style="max-width:360px">'+clientOpts+'</select></div><div class="note">Ce client est <b>hors champ d\'application de la TVA</b> : aucune déclaration de TVA à déposer. Modifiez son régime (fiche client → Éditer) pour saisir une déclaration, ou choisissez un autre dossier.</div></div></div>';
   }
   tvaEnsureAuto();
   var d=tvaGet(),calc=tvaCalc(d);
@@ -7426,10 +7426,10 @@ function vJur(){
 function modalClient(c){
   const m=(c.forme||"").toLowerCase().includes("morale");
   const dls=buildDeadlines(c).map(dl=>Object.assign({},dl,{u:urgency(dl,!!S.done[dl.key])}));
-  const regs=[["trimestrielle","TVA trimestrielle"],["mensuelle","TVA mensuelle"],["neant","TVA néant / exonéré"]];
+  const regs=[["trimestrielle","TVA trimestrielle"],["mensuelle","TVA mensuelle"],["neant","Hors champ TVA"]];
   const regBtns=regs.map(r=>'<button class="chip" data-act="reg" data-id="'+c.id+'" data-v="'+r[0]+'" style="'+(c.reg===r[0]?'background:#0E7A5F;color:#fff;border-color:#0E7A5F':'')+'">'+r[1]+'</button>').join("");
   const flags=[["hasBilan","Bilan"],["hasSal","Salaires"],["hasDp","Acomptes IS"]].map(f=>'<button class="chip" data-act="flag" data-id="'+c.id+'" data-k="'+f[0]+'" style="'+(c[f[0]]?'background:#E3F1EB;color:#0E7A5F;border-color:#bfe0d2':'color:#a8a299')+'">'+ic(c[f[0]]?"check":"dashed")+f[1]+'</button>').join("");
-  const echo=dls.length?dls.map(d=>{const done=!!S.done[d.key];return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #faf8f1;font-size:13px"><div style="display:flex;gap:8px;align-items:center"><span>'+d.u.dot+'</span><span style="color:#44403c">'+esc(d.label)+'</span></div><div style="display:flex;gap:12px;align-items:center"><span class="mono" style="font-size:12px;color:var(--muted)">'+fmtDate(d.date)+'</span><button class="iconbtn" data-act="toggle" data-key="'+d.key+'" data-stay="client" data-cid="'+c.id+'" style="color:'+(done?"#0E7A5F":"#d6d3c8")+'">'+ic(done?"check":"dashed")+'</button></div></div>';}).join(""):'<div class="empty" style="padding:24px">Aucune obligation (régime néant).</div>';
+  const echo=dls.length?dls.map(d=>{const done=!!S.done[d.key];return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #faf8f1;font-size:13px"><div style="display:flex;gap:8px;align-items:center"><span>'+d.u.dot+'</span><span style="color:#44403c">'+esc(d.label)+'</span></div><div style="display:flex;gap:12px;align-items:center"><span class="mono" style="font-size:12px;color:var(--muted)">'+fmtDate(d.date)+'</span><button class="iconbtn" data-act="toggle" data-key="'+d.key+'" data-stay="client" data-cid="'+c.id+'" style="color:'+(done?"#0E7A5F":"#d6d3c8")+'">'+ic(done?"check":"dashed")+'</button></div></div>';}).join(""):'<div class="empty" style="padding:24px">Aucune obligation TVA (hors champ).</div>';
   return '<div class="ov"><div class="modal" data-stop>'+
     '<div class="mh"><div><h3 class="ff">'+esc(c.dossier)+'</h3><div class="meta"><span>'+ic(m?"building":"user")+esc(c.forme||"—")+'</span><span>'+ic("phone")+esc(c.tel||"—")+'</span></div></div><div class="mh-actions"><button class="btn-edit" data-act="infos" data-id="'+c.id+'">'+ic("building")+'Société</button><button class="btn-edit" data-act="receipt" data-id="'+c.id+'">'+ic("receipt")+'Reçu</button><button class="btn-edit" data-act="cedit" data-id="'+c.id+'">'+ic("settings")+'Éditer</button><button class="btn-del" data-act="cdel" data-id="'+c.id+'">'+ic("trash")+'</button><button class="xbtn" data-act="close">'+ic("x")+'</button></div></div>'+
     '<div class="mb">'+
@@ -8652,7 +8652,7 @@ var ACT={
    "Saisissez le montant et la période. Le solde dû se met à jour. Comptablement : Débit 5141/5161 / Crédit 7124 + TVA 4455.",
    ECR.honoraire),
  reg:F("Régime de TVA",
-   "Définit si le dossier est en TVA mensuelle, trimestrielle ou néant/exonéré.",
+   "Définit si le dossier est en TVA mensuelle, trimestrielle ou hors champ d'application de la TVA.",
    "Choisissez le régime exact : il détermine les périodes de déclaration et les écritures de TVA générées."),
  comptaview:F("Vues de la comptabilité",
    "Bascule entre Saisie/Import, Saisie manuelle, Journal, Grand livre, Balance et récap toutes sociétés.",
