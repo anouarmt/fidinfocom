@@ -568,7 +568,8 @@ function buildDeadlines(c){
     for(let m=0;m<12;m++) add("TVA","TVA "+MONTHS[m],"M"+(m+1),new Date(Y,m+1,20),"tva");
   }
   if(c.hasSal) add("SALAIRES","Déclaration des salaires",""+Y,new Date(Y,1,28),"sal");
-  if(c.hasCM) add("CM","Cotisation minimale (RNR)",""+Y,new Date(Y,0,31),"cm");
+  if(c.hasCMpm) add("CMPM","Cotisation minimale (sociétés)",""+Y,new Date(Y,2,31),"cm");
+  if(c.hasCMpp) add("CMPP","Cotisation minimale (P. physique)",""+Y,new Date(Y,0,31),"cm");
   if(c.hasFoncier) add("FONCIER","Revenus fonciers",""+Y,new Date(Y,1,28),"foncier");
   if(c.hasBilan){
     var pp=(c.forme||"").toLowerCase().includes("physique");
@@ -7485,7 +7486,7 @@ function modalCEdit(id){
       '<div class="grid g3 mt3">'+num("cf_hontrim","Honoraire trim. (DH)",c.honTrim)+num("cf_honbilan","Honoraire bilan (DH)",c.honBilan)+num("cf_pv","PV de dépôt (DH)",c.pvDepot)+'</div>'+
       '<div class="grid g2 mt3"><div><div class="flbl">Régime TVA (déclaration)</div><select class="ipt" id="cf_reg">'+REGS.map(r=>'<option value="'+r[0]+'"'+(c.reg===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div>'+
       '<div><div class="flbl">Régime d\'exigibilité</div><select class="ipt" id="cf_regtva">'+REGS_TVA.map(r=>'<option value="'+r[0]+'"'+(regTvaOf(c)===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div></div>'+
-      '<div class="mt3"><div class="flbl">Obligations (cochez ce qui s\'applique)</div><div class="cklist">'+ck("cf_bilan","Bilan",c.hasBilan)+ck("cf_sal","Salaires",c.hasSal)+ck("cf_dp","Acomptes IS",c.hasDp)+ck("cf_foncier","Revenus fonciers",c.hasFoncier)+ck("cf_cm","Cotisation min. (RNR)",c.hasCM)+'</div></div>'+
+      '<div class="mt3"><div class="flbl">Obligations (cochez ce qui s\'applique)</div><div class="cklist">'+ck("cf_bilan","Bilan",c.hasBilan)+ck("cf_sal","Salaires",c.hasSal)+ck("cf_dp","Acomptes IS",c.hasDp)+ck("cf_foncier","Revenus fonciers",c.hasFoncier)+ck("cf_cmpm","Cotis. min. sociétés (mois 3)",c.hasCMpm)+ck("cf_cmpp","Cotis. min. P. physique (mois 1)",c.hasCMpp)+'</div></div>'+
       '<div class="grid g2 mt3"><div><div class="flbl">Statut global</div><select class="ipt" id="cf_statut">'+opt(STATUTS,c.statut)+'</select></div><div><div class="flbl">Commentaire</div><input class="ipt" id="cf_comment" value="'+esc(c.comment)+'"></div></div>'+
       '<button class="btn-primary" data-act="csave" data-id="'+(isNew?"":id)+'">'+ic("plus","width:16px;height:16px")+' '+(isNew?"Créer le client":"Enregistrer")+'</button>'+
     '</div></div></div>';
@@ -8401,7 +8402,7 @@ function submitClient(id){
     honTrim:parseFloat(g("cf_hontrim").value)||0,honBilan:parseFloat(g("cf_honbilan").value)||0,
     pvDepot:parseFloat(g("cf_pv").value)||0,reg:g("cf_reg").value,regTva:(g("cf_regtva")?g("cf_regtva").value:"debit"),
     hasBilan:g("cf_bilan").checked,hasSal:g("cf_sal").checked,hasDp:g("cf_dp").checked,
-    hasFoncier:g("cf_foncier").checked,hasCM:g("cf_cm").checked,
+    hasFoncier:g("cf_foncier").checked,hasCMpm:(g("cf_cmpm")?g("cf_cmpm").checked:false),hasCMpp:(g("cf_cmpp")?g("cf_cmpp").checked:false),
     statut:g("cf_statut").value==="—"?"":g("cf_statut").value,comment:g("cf_comment").value.trim()};
   if(id==null){
     const nid=Date.now();S.custom.push(Object.assign({id:nid},data));save("custom");
