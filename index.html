@@ -7576,6 +7576,24 @@ function simplFor(cat){
   if(cat==="ir"||cat==="foncier"||cat==="cm")return {u:SIMPL_LINKS.ir,n:"SIMPL-IR"};
   return {u:SIMPL_LINKS.hub,n:"Téléservices"};
 }
+// Dérive les données IS depuis la balance de la Liasse ou, à défaut, directement depuis les écritures comptables.
+// Priorité absolue à une saisie manuelle du résultat comptable dans la Liasse.
+function isPrefillData(c){
+  var dL=S.liasse[S.year+"|"+c.id]||{};
+  var manualRc=(dL.rc!==undefined&&dL.rc!==""&&dL.rc!==null&&!isNaN(parseFloat(dL.rc))&&parseFloat(dL.rc)!==0);
+  if(manualRc)return {d:dL,src:"liasse",detail:""};
+  var fromBalText=!!(dL.balText&&String(dL.balText).trim());
+  var rows=fromBalText?parseBalance(dL.balText):parseBalance(balanceToText(comptaBalanceRows(c)));
+  if(!rows.length)return {d:dL,src:"none",detail:""};
+  var b=bilanBuild(rows);
+  if(!b.hasCPC)return {d:dL,src:"none",detail:""};
+  var pe=(b.produits||[]).filter(function(x){return /exploitation/i.test(x.m);}).reduce(function(s,x){return s+x.v;},0);
+  var pf=(b.produits||[]).filter(function(x){return /financiers/i.test(x.m);}).reduce(function(s,x){return s+x.v;},0);
+  var dEff=Object.assign({},dL,{rc:b.resultat});
+  if(dL.ca===undefined||dL.ca==="") dEff.ca=Math.round(pe*100)/100;   // base cotisation min. ≈ produits d'exploitation
+  if(dL.pf===undefined||dL.pf==="") dEff.pf=Math.round(pf*100)/100;
+  return {d:dEff,src:(fromBalText?"balance":"compta"),detail:b.nbComptes+" comptes · produits "+fmtDH(b.tPr)+" − charges "+fmtDH(b.tCh)};
+}
 function vTeledec(){
   var cs=clients();
   var cid=S.curClient;var c=cs.find(function(x){return x.id===cid;});
@@ -7629,11 +7647,23 @@ function vTeledec(){
         prefill=typeBtns+'<div class="note" style="font-size:12px">Ce dossier n\'a pas de régime TVA (mensuel/trimestriel) défini. Réglez-le dans la fiche du dossier pour générer la déclaration TVA.</div>';
       }else{
         var per=S.tsPeriod&&periods.some(function(p){return p[0]===S.tsPeriod;})?S.tsPeriod:periods[0][0];
-        var dd=S.tva[S.year+"|"+c.id+"|"+per];
+        var key=S.year+"|"+c.id+"|"+per;
+        var saved=S.tva[key];
+        var dd,srcAuto=false,hasCompta=false,srcDetail="";
+        if(saved&&saved._auto===false){ dd=saved; }                 // saisie manuelle dans l'onglet TVA : prioritaire
+        else {
+          var au=tvaAuto(c.id,per);                                  // calcul direct depuis les écritures comptables
+          hasCompta=(au.ventes||[]).some(function(v){return (+v.base||0)>0;})||(+au.rc>0)||(+au.ri>0);
+          if(hasCompta){ dd={ventes:au.ventes,rc:au.rc,ri:au.ri,credit:(saved&&saved.credit)||""}; srcAuto=true;
+            var nv=(au.detail&&au.detail.ventes||[]).length,na=(au.detail&&au.detail.achats||[]).length,ni=(au.detail&&au.detail.immo||[]).length;
+            srcDetail=" ("+nv+" vente(s), "+na+" achat(s)"+(ni?", "+ni+" immo":"")+(au.regime==="encaissement"?" · régime encaissement":" · régime débit")+")";
+          }
+          else { dd=saved||null; }
+        }
         var calc=tvaCalc(dd);var f=calc.form||{};
         var l205due=f["_205_dueP"]||0,l205cred=f["_205_creditP"]||0;
         var periodSel='<select class="ipt" id="tsperiod" style="max-width:240px;margin-bottom:12px">'+periods.map(function(p){return '<option value="'+p[0]+'"'+(p[0]===per?" selected":"")+'>'+p[1]+'</option>';}).join("")+'</select>';
-        var auto=dd?(dd._auto?' · pré-rempli automatiquement depuis la comptabilité':' · saisi dans l\'onglet TVA'):' · aucune donnée saisie (zéros)';
+        var auto=srcAuto?(' · calculé en direct depuis les écritures comptables'+srcDetail):(saved&&saved._auto===false)?' · saisi/ajusté dans l\'onglet TVA':' · aucune écriture comptable pour cette période (zéros)';
         var rows=caseRow("060","CA imposable (HT)",f["60"])
           +caseRow("130","Total TVA exigible",f["130"])
           +caseRow("132","TVA exigible (après retenue à la source)",f["132"],true)
@@ -7655,8 +7685,8 @@ function vTeledec(){
           +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-add" data-act="copytxt" data-copy="'+esc(allTxt)+'">'+ic("copy")+' Copier toutes les cases</button><button class="chip" data-act="tab" data-tab="tva">'+ic("pencil")+' Modifier dans l\'onglet TVA</button></div>';
       }
     }else{
-      var dL=S.liasse[S.year+"|"+c.id]||{};
-      var lc=liasseCalc(dL);
+      var isp=isPrefillData(c);
+      var lc=liasseCalc(isp.d);
       var rowsIS=caseRow("","Résultat comptable",lc.rc)
         +caseRow("","+ Réintégrations fiscales",lc.sumR)
         +caseRow("","− Déductions fiscales",lc.sumD)
@@ -7665,7 +7695,10 @@ function vTeledec(){
         +caseRow("","Cotisation minimale",lc.cm)
         +caseRow("","IS DÛ (le plus élevé)",lc.isDu,true)
         +caseRow("","Acompte provisionnel (¼)",lc.acompte);
-      var hasData=(lc.rc||lc.sumR||lc.sumD||lc.cmBase)?'':' · aucune donnée saisie (zéros)';
+      var hasData=isp.src==="compta"?(' · calculé en direct depuis les écritures comptables ('+isp.detail+')')
+        :isp.src==="balance"?(' · calculé depuis la balance de la Liasse ('+isp.detail+')')
+        :isp.src==="liasse"?' · résultat comptable saisi dans la Liasse'
+        :' · aucune écriture ni balance — saisissez la balance ou le résultat dans la Liasse';
       var allIS="Résultat fiscal / IS — "+c.dossier+" — Exercice "+S.year+"\n"
         +"Résultat comptable : "+Math.round(lc.rc*100)/100+"\n"
         +"Réintégrations : "+Math.round(lc.sumR*100)/100+"\n"
