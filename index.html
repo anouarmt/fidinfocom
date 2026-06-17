@@ -369,6 +369,7 @@ if(!S.years.length){S.years=[YEAR-1,YEAR,YEAR+1];}
 S.years.sort((a,b)=>a-b);
 if(S.years.indexOf(S.year)<0)S.year=S.years[S.years.length-1];
 function save(k){
+  if(k==="compta")comptaCanonAll();
   try{localStorage.setItem(LS[k],JSON.stringify(S[k]))}catch(e){}
   if(CLOUD&&sb&&session) cloudUpsert(k,S[k]);
 }
@@ -958,7 +959,7 @@ function tvaGenReg(){
   if(!L.length){showErr("Déclaration néant : aucun montant à régulariser pour cette période.");return;}
   var g=comptaGet(c.id), id=tvaRegId(c.id,S.tvaSel.period), ix=tvaRegIndex(g,id);
   var perLabel=(tvaPeriods(c).find(function(p){return p.k===S.tvaSel.period;})||{}).label||S.tvaSel.period;
-  var ecr={id:id,date:tvaPeriodEndDate(S.tvaSel.period),journal:"OD",piece:"Régularisation TVA "+perLabel+" "+S.year,lignes:L,manuel:true,tvaReg:true,period:S.tvaSel.period};
+  var ecr={id:id,date:tvaPeriodEndDate(S.tvaSel.period),journal:"OD",piece:"Régularisation TVA "+perLabel+" "+S.year,lignes:canonArr(L),manuel:true,tvaReg:true,period:S.tvaSel.period};
   if(ix>=0)g.ecritures[ix]=ecr; else g.ecritures.push(ecr);
   save("compta"); renderView();
   showOk("Écriture de régularisation de la TVA "+(ix>=0?"mise à jour":"générée")+" (journal OD, "+ecr.date+"). Visible dans Comptabilité → Journal général.");
@@ -1357,11 +1358,11 @@ async function tvaCodesExportExcel(){
   setSync("saving");
   try{
     if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
-    function sheet(list){var aoa=[["Code","Nature d'opération","Taux (%)","Droit à déduction","Article CGI","Compte CGNC","En vigueur 2026"]];list.forEach(function(c){aoa.push([c.code,c.lib,c.taux,c.dd?"Oui":"Non",c.art,c.cpt?c.cpt.slice(0,5):"",c.actuel?"Oui":"Non"]);});return window.XLSX.utils.aoa_to_sheet(aoa);}
+    function sheet(list){var aoa=[["Code","Nature d'opération","Taux (%)","Droit à déduction","Article CGI","Compte CGNC","En vigueur 2026"]];list.forEach(function(c){aoa.push([c.code,c.lib,c.taux,c.dd?"Oui":"Non",c.art,c.cpt?comptaCanon(c.cpt):"",c.actuel?"Oui":"Non"]);});return window.XLSX.utils.aoa_to_sheet(aoa);}
     var wb=window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb,sheet(TVA_CODES.collectee),"TVA collectee");
     window.XLSX.utils.book_append_sheet(wb,sheet(TVA_CODES.deductible),"TVA deductible");
-    var aoaA=[["Code","Designation (case 3122)","Cadre / type","Article CGI","Compte CGNC"]];TVA_CODES.autres.forEach(function(c){aoaA.push([c.code,c.lib,c.cadre,c.art,c.cpt?c.cpt.slice(0,5):""]);});
+    var aoaA=[["Code","Designation (case 3122)","Cadre / type","Article CGI","Compte CGNC"]];TVA_CODES.autres.forEach(function(c){aoaA.push([c.code,c.lib,c.cadre,c.art,c.cpt?comptaCanon(c.cpt):""]);});
     window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.aoa_to_sheet(aoaA),"Autres cases 3122");
     var aoaC=[["Compte CGNC","Intitule"]];TVA_CODES.comptes.forEach(function(c){aoaC.push([c.cpt,c.lib]);});
     window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.aoa_to_sheet(aoaC),"Comptes CGNC");
@@ -1370,7 +1371,7 @@ async function tvaCodesExportExcel(){
   }catch(e){ setSync("synced");showErr("Export impossible : "+(e.message||e)); }
 }
 function tvaCodesRefHtml(){
-  function cpt(c){return c?('<span class="mono" style="color:#14201C">'+c.slice(0,5)+'</span>'):'<span style="color:var(--faint)">—</span>';}
+  function cpt(c){return c?('<span class="mono" style="color:#14201C">'+comptaCanon(c)+'</span>'):'<span style="color:var(--faint)">—</span>';}
   function dd(b){return b?'<span style="color:#0E7A5F">Oui</span>':'<span style="color:#B5530A">Non</span>';}
   function rows(list){return list.map(function(c){
     return '<tr style="border-bottom:1px solid #F0EDE3'+(c.actuel?'':';opacity:.6')+'">'
@@ -1423,7 +1424,7 @@ function ventesDetailHtml(c){
       +'<td style="padding:4px 6px;text-align:center">'+r.taux+'%</td><td style="padding:4px 6px;text-align:center">'+esc(r.code)+'</td>'
       +'<td style="padding:4px 6px;text-align:right;color:#0a5f4a;font-weight:600" class="mono">'+fmtDH2(r.tva)+'</td>'
       +'<td style="padding:4px 6px;color:'+(r.regDate?"#14201C":"#C0392B")+'" class="mono">'+(r.regDate||"non réglé")+'</td>'
-      +'<td style="padding:4px 6px">'+esc(r.regMode)+'</td><td style="padding:4px 6px">'+esc(r.cr)+'</td><td style="padding:4px 6px" class="mono">'+esc(r.compteTva)+'</td></tr>';
+      +'<td style="padding:4px 6px">'+esc(r.regMode)+'</td><td style="padding:4px 6px">'+esc(r.cr)+'</td><td style="padding:4px 6px" class="mono">'+esc(comptaCanon(r.compteTva))+'</td></tr>';
   }).join("");
   var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tHT=rows.reduce(function(a,r){return a+r.ht;},0),tTVA=rows.reduce(function(a,r){return a+r.tva;},0);
   var foot='<tr style="border-top:2px solid #0E7A5F;font-weight:700;background:#E3F1EB"><td colspan="8" style="padding:7px 6px">TOTAUX ('+rows.length+')</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTTC)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tHT)+'</td><td colspan="2"></td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTVA)+'</td><td colspan="4"></td></tr>';
@@ -1528,7 +1529,7 @@ function releveDeductionsHtml(c){
       +'<td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.tva)+'</td><td style="padding:4px 6px;text-align:center">'+r.prorata+'%</td>'
       +'<td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.recup)+'</td>'
       +'<td style="padding:4px 6px;color:'+(r.regDate?"#14201C":"#C0392B")+'" class="mono">'+(r.regDate||"non réglé")+'</td>'
-      +'<td style="padding:4px 6px">'+esc(r.regMode)+'</td><td style="padding:4px 6px">'+esc(r.cr)+'</td><td style="padding:4px 6px" class="mono">'+esc(r.compteTva)+'</td></tr>';
+      +'<td style="padding:4px 6px">'+esc(r.regMode)+'</td><td style="padding:4px 6px">'+esc(r.cr)+'</td><td style="padding:4px 6px" class="mono">'+esc(comptaCanon(r.compteTva))+'</td></tr>';
   }).join("");
   var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tHT=rows.reduce(function(a,r){return a+r.ht;},0),tTVA=rows.reduce(function(a,r){return a+r.tva;},0),tRec=rows.reduce(function(a,r){return a+r.recup;},0);
   var foot='<tr style="border-top:2px solid #14201C;font-weight:700;background:#F7F4EC"><td colspan="8" style="padding:7px 6px">TOTAUX ('+rows.length+')</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTTC)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tHT)+'</td><td colspan="2"></td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTVA)+'</td><td></td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tRec)+'</td><td colspan="4"></td></tr>';
@@ -2200,9 +2201,9 @@ function liasseRegCalc(d){
 function liasseRegLignes(d){
   var r=liasseRegCalc(d),L=[];
   if(r.isDu<=0)return L;
-  L.push({compte:"6701",libelle:"Impôts sur les bénéfices "+S.year,debit:r.isDu,credit:0});
-  if(r.imput>0)L.push({compte:"3453",libelle:"Acomptes IS imputés "+S.year,debit:0,credit:r.imput});
-  if(r.resteAPayer>0)L.push({compte:"4453",libelle:"État - IS, reliquat à payer",debit:0,credit:r.resteAPayer});
+  L.push({compte:"6701000000",libelle:"Impôts sur les bénéfices "+S.year,debit:r.isDu,credit:0});
+  if(r.imput>0)L.push({compte:"3453000000",libelle:"Acomptes IS imputés "+S.year,debit:0,credit:r.imput});
+  if(r.resteAPayer>0)L.push({compte:"4453000000",libelle:"État - IS, reliquat à payer",debit:0,credit:r.resteAPayer});
   return L;
 }
 function liasseRegId(cid,year){ return "ISREG|"+year+"|"+cid; }
@@ -3581,7 +3582,7 @@ function paieComptabiliser(){
     g.ecritures=g.ecritures.filter(function(x){return String(x.id)!==String(old);});
   }
   var lastDay=new Date(S.year,+mois,0).getDate();
-  var ecriture={id:"PAIE"+Date.now(),date:S.year+"-"+mois+"-"+("0"+lastDay).slice(-2),journal:"PAIE",piece:"Paie "+MOIS_FULL[+mois-1]+" "+S.year,lignes:lignes,manuel:true};
+  var ecriture={id:"PAIE"+Date.now(),date:S.year+"-"+mois+"-"+("0"+lastDay).slice(-2),journal:"PAIE",piece:"Paie "+MOIS_FULL[+mois-1]+" "+S.year,lignes:canonArr(lignes),manuel:true};
   g.ecritures.push(ecriture);save("compta");
   d.bull["_ecr_"+mois]=ecriture.id;paieSet(d);
   renderView();showOk("Paie de "+MOIS_FULL[+mois-1]+" comptabilisée (journal PAIE) : brut "+fmtDH2(brutCash)+", patronal "+fmtDH2(pat)+", net dû "+fmtDH2(t.net)+".");
@@ -4495,7 +4496,25 @@ function cgncOptgroup(filtre,sel){ // filtre = regex sur le code (ex: /^[26]/), 
   return out+'</optgroup>';
 }
 
-function comptaGet(cid){ var k=String(cid); if(!S.compta[k])S.compta[k]={pieces:[],ecritures:[],operations:[]}; if(!S.compta[k].pieces)S.compta[k].pieces=[]; if(!S.compta[k].ecritures)S.compta[k].ecritures=[]; if(!S.compta[k].operations)S.compta[k].operations=[]; if(!S.compta[k].immos)S.compta[k].immos=[]; return S.compta[k]; }
+var _CANON_DONE={}; // dossiers déjà normalisés (comptes à 10 chiffres) pour cette session
+// Normalise tous les comptes des écritures d'un dossier au format CGNC 10 chiffres (complétés par des zéros à droite).
+function comptaCanonEcr(g){
+  var ch=false;
+  if(g&&g.ecritures)g.ecritures.forEach(function(e){
+    if(e&&e.lignes)e.lignes.forEach(function(l){
+      if(l&&l.compte!=null){
+        var raw=(""+l.compte).trim();
+        if(/^\d/.test(raw)&&!/^\d{10}$/.test(raw)){
+          var k=comptaCanon(raw);
+          if(k&&k!==l.compte){ l.compte=k; ch=true; }
+        }
+      }
+    });
+  });
+  return ch;
+}
+function comptaCanonAll(){ var ch=false,cp=S.compta||{}; Object.keys(cp).forEach(function(k){ if(comptaCanonEcr(cp[k]))ch=true; }); return ch; }
+function comptaGet(cid){ var k=String(cid); if(!S.compta[k])S.compta[k]={pieces:[],ecritures:[],operations:[]}; if(!S.compta[k].pieces)S.compta[k].pieces=[]; if(!S.compta[k].ecritures)S.compta[k].ecritures=[]; if(!S.compta[k].operations)S.compta[k].operations=[]; if(!S.compta[k].immos)S.compta[k].immos=[]; if(!_CANON_DONE[k]){_CANON_DONE[k]=1;comptaCanonEcr(S.compta[k]);} return S.compta[k]; }
 function pieceYear(p){ return (p.date&&/^\d{4}/.test(p.date))?+p.date.slice(0,4):S.year; }
 // message de répartition par exercice après un import (les factures sont classées selon leur date)
 function importYearNote(yr){
@@ -4653,7 +4672,7 @@ function immoPostDotations(){
   });
   if(!lignes.length){showErr("Aucune dotation à comptabiliser pour l'exercice "+S.year+".");return;}
   var id=immoRegId(c.id,S.year),ix=immoRegIndex(g,id);
-  var ecr={id:id,date:S.year+"-12-31",journal:"OD",piece:"Dotations aux amortissements "+S.year,lignes:lignes,manuel:true,amort:true};
+  var ecr={id:id,date:S.year+"-12-31",journal:"OD",piece:"Dotations aux amortissements "+S.year,lignes:canonArr(lignes),manuel:true,amort:true};
   if(ix>=0)g.ecritures[ix]=ecr; else g.ecritures.push(ecr);
   save("compta"); renderView();
   showOk("Dotations aux amortissements "+S.year+" comptabilisées (journal OD, 31/12). Visibles dans le Journal général.");
@@ -4695,7 +4714,7 @@ function comptaImmosBody(c){
     var open=S.immoSel===im.id;
     var main='<tr style="border-bottom:1px solid #F0EDE3;font-size:12px">'
       +'<td style="padding:6px 8px;font-weight:600">'+esc(im.libelle||"")+'</td>'
-      +'<td style="padding:6px 8px" class="mono">'+esc(im.compte||"")+'</td>'
+      +'<td style="padding:6px 8px" class="mono">'+esc(comptaCanon(im.compte||""))+'</td>'
       +'<td style="padding:6px 8px" class="mono">'+esc(im.dateAcq||"")+'</td>'
       +'<td style="padding:6px 8px;text-align:center">'+(+im.taux||0)+'%</td>'
       +'<td style="padding:6px 8px;text-align:right" class="mono">'+fmtDH2(im.base)+'</td>'
@@ -5477,7 +5496,7 @@ function ecritureVente(p){
   if(tva>0)lignes.push({compte:"4455",libelle:"TVA facturée",debit:0,credit:tva});
   return {journal:"VE",lignes:lignes};
 }
-function ecritureFor(p){ return p.type==="vente"?ecritureVente(p):ecritureAchat(p); }
+function ecritureFor(p){ return canonLignes(p.type==="vente"?ecritureVente(p):ecritureAchat(p)); }
 /* ===== LIAISON AUTOMATIQUE : pièce (facture scannée ou saisie) -> écriture -> Journal / Grand Livre / Balance =====
    Fonction idempotente. Elle reconstruit UNIQUEMENT les écritures issues des pièces (e.pieceId),
    sans jamais toucher aux écritures manuelles (e.manuel), bancaires ni d'emprunt (qui n'ont pas de pieceId).
@@ -6189,6 +6208,9 @@ var COMPTE_LABELS={
 };
 // Forme canonique d'affichage : racine du compte ramenée à 10 chiffres (court ET 10 chiffres -> même code)
 function comptaCanon(c){ c=(""+(c==null?"":c)).replace(/\s/g,""); if(!/^\d/.test(c))return c; var r=cgncTrim(c); if(r.length>=10)return r.slice(0,10); return (r+"0000000000").slice(0,10); }
+// Complète tous les comptes d'une liste de lignes à 10 chiffres (ajoute les zéros).
+function canonArr(lignes){ if(lignes&&lignes.forEach)lignes.forEach(function(l){ if(l&&l.compte!=null)l.compte=comptaCanon(l.compte); }); return lignes; }
+function canonLignes(ecr){ if(ecr&&ecr.lignes)canonArr(ecr.lignes); return ecr; }
 // Normalise tous les comptes des écritures au format 10 chiffres (stockage uniforme)
 function comptaNormalizeEcritures(g){ (g&&g.ecritures||[]).forEach(function(e){ (e.lignes||[]).forEach(function(l){ if(l&&l.compte!=null&&l.compte!=="") l.compte=comptaCanon(l.compte); }); }); }
 function libCompte(cp){
@@ -6343,8 +6365,8 @@ function modalBalGL(cid,compte){
     +'</div></div></div>';
 }
 // ===== Relevés bancaires =====
-var BANK_ACCOUNT="5141"; // Banques
-var BANK_WAIT="4711";    // compte d'attente (contrepartie provisoire avant rapprochement)
+var BANK_ACCOUNT="5141000000"; // Banques
+var BANK_WAIT="4711000000";    // compte d'attente (contrepartie provisoire avant rapprochement)
 function ecritureBanque(o,g){
   var debit=+o.debit||0,credit=+o.credit||0;
   var isSortie=debit>0,montant=isSortie?debit:credit;
@@ -6360,7 +6382,7 @@ function ecritureBanque(o,g){
       lignes.push({compte:"34552",libelle:"TVA/commission",debit:+o.tvaComm,credit:0});
       lignes.push({compte:BANK_ACCOUNT,libelle:baseLib,debit:0,credit:montant});
     }
-    return {journal:"BQ",lignes:lignes};
+    return canonLignes({journal:"BQ",lignes:lignes});
   }
   if(isSortie){
     lignes.push({compte:BANK_ACCOUNT,libelle:baseLib,debit:0,credit:montant});
@@ -6373,7 +6395,7 @@ function ecritureBanque(o,g){
     var reste2=Math.round((montant-affTot)*100)/100;
     if(reste2>0.01)lignes.push({compte:(affs.length?BANK_WAIT:(o.contrepartie||BANK_WAIT)),libelle:baseLib+(affs.length?" (non affecté)":""),debit:0,credit:reste2});
   }
-  return {journal:"BQ",lignes:lignes};
+  return canonLignes({journal:"BQ",lignes:lignes});
 }
 // ----- moteur de rapprochement op ↔ facture (avec restant dû) -----
 function pieceTTCb(p){ return +p.ttc||((+p.ht||0)+(+p.tva||0)); }
@@ -7762,9 +7784,9 @@ function delaisExportPDF(){
   showOk("PDF des délais prêt.");
 }
 /* ===== MODULE EMPRUNTS (tableau d'amortissement → écritures) ===== */
-var EMP_CAPITAL="1481";  // Emprunts auprès des établissements de crédit
-var EMP_INTERET="6311";  // Intérêts des emprunts et dettes
-var EMP_TVA="34552";     // État TVA récupérable sur charges
+var EMP_CAPITAL="1481000000";  // Emprunts auprès des établissements de crédit
+var EMP_INTERET="6311000000";  // Intérêts des emprunts et dettes
+var EMP_TVA="3455200000";     // État TVA récupérable sur charges
 function empList(cid){ return (S.emprunts[cid]||[]).slice(); }
 function empSave(cid,arr){ S.emprunts[cid]=arr; save("emprunts"); }
 function empAddMonths(dateStr,n){
@@ -7801,7 +7823,7 @@ function empEcriture(row,emp){
   ];
   if(row.tva>0)lignes.push({compte:emp.cptTva||EMP_TVA,libelle:"TVA/intérêts",debit:row.tva,credit:0});
   lignes.push({compte:BANK_ACCOUNT,libelle:"Échéance "+(emp.organisme||"")+" n°"+row.n,debit:0,credit:row.total});
-  return {journal:"BQ",lignes:lignes};
+  return canonLignes({journal:"BQ",lignes:lignes});
 }
 function empValiderEcheance(empId,n){
   var cid=String(S.curClient),arr=empList(cid),emp=arr.find(function(e){return String(e.id)===String(empId);});if(!emp)return;
@@ -7915,7 +7937,7 @@ function comptaEmpruntsBody(c){
       +'<label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" data-empchk="'+emp.id+':tvaInteret"'+(emp.tvaInteret?" checked":"")+' style="width:16px;height:16px;accent-color:#0E7A5F"> TVA 10% sur intérêts (récupérable)</label>'
       +'<div style="display:flex;gap:6px"><button class="chip" data-act="emp_mode" data-id="'+emp.id+'" data-v="auto" style="'+(!isManuel?"background:#14201C;color:#fff":"")+'">Calcul auto</button><button class="chip" data-act="emp_mode" data-id="'+emp.id+'" data-v="manuel" style="'+(isManuel?"background:#14201C;color:#fff":"")+'">Saisie manuelle</button></div>'
       +'</div>'
-      +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><div style="flex:1;min-width:110px"><div class="flbl">Compte capital</div><input class="ipt mono" data-emp="'+emp.id+':cptCapital" value="'+esc(emp.cptCapital||EMP_CAPITAL)+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte intérêts</div><input class="ipt mono" data-emp="'+emp.id+':cptInteret" value="'+esc(emp.cptInteret||EMP_INTERET)+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte TVA</div><input class="ipt mono" data-emp="'+emp.id+':cptTva" value="'+esc(emp.cptTva||EMP_TVA)+'"></div></div>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><div style="flex:1;min-width:110px"><div class="flbl">Compte capital</div><input class="ipt mono" data-emp="'+emp.id+':cptCapital" value="'+esc(comptaCanon(emp.cptCapital||EMP_CAPITAL))+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte intérêts</div><input class="ipt mono" data-emp="'+emp.id+':cptInteret" value="'+esc(comptaCanon(emp.cptInteret||EMP_INTERET))+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte TVA</div><input class="ipt mono" data-emp="'+emp.id+':cptTva" value="'+esc(comptaCanon(emp.cptTva||EMP_TVA))+'"></div></div>'
       +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn-primary" data-act="emp_scan_click" data-id="'+emp.id+'">'+ic("down","width:14px;height:14px;vertical-align:-2px")+' Scanner le tableau d\'amortissement</button><input type="file" id="emp_file_'+emp.id+'" accept="application/pdf,image/*" style="display:none"><button class="chip" data-act="emp_del" data-id="'+emp.id+'" style="color:#C0392B;border-color:#f0c9c4">'+ic("trash","width:14px;height:14px")+' Supprimer cet emprunt</button>'+(isManuel?'<button class="chip" data-act="emp_ech_add" data-id="'+emp.id+'">'+ic("plus")+' Ajouter une échéance</button>':'')+'</div>'
       +'</div>';
 
