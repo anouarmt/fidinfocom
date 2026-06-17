@@ -366,7 +366,7 @@ function ld(k){try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){retur
 function lda(k){try{const v=JSON.parse(localStorage.getItem(k));return Array.isArray(v)?v:[]}catch(e){return []}}
 const S={tab:"dash",flags:ld(LS.flags),done:ld(LS.done),pay:ld(LS.pay),jur:ld(LS.jur),
   custom:lda(LS.custom),deleted:ld(LS.deleted),years:lda(LS.years),receipts:lda(LS.receipts),tva:ld(LS.tva),sal:ld(LS.sal),liasse:ld(LS.liasse),docs:ld(LS.docs),compta:ld(LS.compta),emprunts:ld(LS.emprunts),factures:lda(LS.factures),cabinet:ld(LS.cabinet),paie:ld(LS.paie),portal:ld(LS.portal),team:ld(LS.team),paieSel:{id:null,mois:null,emp:null},paieView:"bulletins",facSel:{id:null},facDraft:null,year:YEAR,curClient:(function(){try{var v=localStorage.getItem("fid_curclient");return v?+v:null;}catch(e){return null;}})(),comptaView:"saisie",comptaList:{type:null,statut:"",q:"",dmin:"",dmax:"",mmin:"",mmax:""},tvaSel:{id:null,period:null},salSel:{id:null},liasseSel:{id:null},liasseView:"is",docsSel:{id:null},empSel:{id:null},
-  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",modal:null,jurForm:null,grpSel:{},grpTpl:null,notiflog:lda(LS.notiflog)};
+  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",modal:null,jurForm:null,grpSel:{},grpTpl:null,notiflog:lda(LS.notiflog),tsType:"tva",tsPeriod:null};
 if(!S.years.length){S.years=[YEAR-1,YEAR,YEAR+1];}
 S.years.sort((a,b)=>a-b);
 if(S.years.indexOf(S.year)<0)S.year=S.years[S.years.length-1];
@@ -7606,6 +7606,81 @@ function vTeledec(){
       +'<a href="'+sp.u+'" target="_blank" rel="noopener" class="chip" style="text-decoration:none;color:#0E7A5F">'+ic("bank")+sp.n+'</a></div>';}).join("")
     :'<div class="empty" style="padding:24px">Aucune déclaration en attente pour les filtres courants.</div>';
 
+  // ===== Déclaration pré-remplie =====
+  var tsType=(S.tsType==="is")?"is":"tva";
+  var prefill="";
+  if(!c){
+    prefill='<div style="font-size:12.5px;color:var(--faint)">Choisissez un dossier ci-dessus pour générer une déclaration pré-remplie à partir de sa comptabilité.</div>';
+  }else{
+    var typeBtns='<div class="seg" style="margin-bottom:12px">'
+      +'<button data-act="tstype" data-v="tva" style="'+(tsType==="tva"?"background:#0E7A5F;color:#fff":"")+'">Déclaration TVA (3122)</button>'
+      +'<button data-act="tstype" data-v="is" style="'+(tsType==="is"?"background:#0E7A5F;color:#fff":"")+'">IS / Résultat fiscal</button>'
+      +'</div>';
+    // ligne de case : libellé + valeur + bouton copier (copie le nombre brut)
+    var caseRow=function(code,lib,val,strong){var n=Math.round((+val||0)*100)/100;return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #faf8f1">'
+      +(code?'<span class="mono" style="color:#a8a499;min-width:42px">'+code+'</span>':'')
+      +'<span style="flex:1;font-size:12.5px;color:'+(strong?"#14201C":"#57534e")+';font-weight:'+(strong?600:400)+'">'+lib+'</span>'
+      +'<span class="mono" style="font-weight:'+(strong?700:600)+';color:#33312c">'+fmtDH(n)+'</span>'
+      +'<button class="iconbtn" data-act="copytxt" data-copy="'+n+'" title="Copier la valeur" style="color:#0E7A5F">'+ic("copy")+'</button>'
+      +'</div>';};
+    if(tsType==="tva"){
+      var periods=(c.reg==="mensuelle")?MONTHS.map(function(m,i){return ["M"+(i+1),"TVA "+m];}):[["T1","T1 (Jan-Mar)"],["T2","T2 (Avr-Jun)"],["T3","T3 (Jul-Sep)"],["T4","T4 (Oct-Déc)"]];
+      if(c.reg!=="mensuelle"&&c.reg!=="trimestrielle"){
+        prefill=typeBtns+'<div class="note" style="font-size:12px">Ce dossier n\'a pas de régime TVA (mensuel/trimestriel) défini. Réglez-le dans la fiche du dossier pour générer la déclaration TVA.</div>';
+      }else{
+        var per=S.tsPeriod&&periods.some(function(p){return p[0]===S.tsPeriod;})?S.tsPeriod:periods[0][0];
+        var dd=S.tva[S.year+"|"+c.id+"|"+per];
+        var calc=tvaCalc(dd);var f=calc.form||{};
+        var l205due=f["_205_dueP"]||0,l205cred=f["_205_creditP"]||0;
+        var periodSel='<select class="ipt" id="tsperiod" style="max-width:240px;margin-bottom:12px">'+periods.map(function(p){return '<option value="'+p[0]+'"'+(p[0]===per?" selected":"")+'>'+p[1]+'</option>';}).join("")+'</select>';
+        var auto=dd?(dd._auto?' · pré-rempli automatiquement depuis la comptabilité':' · saisi dans l\'onglet TVA'):' · aucune donnée saisie (zéros)';
+        var rows=caseRow("060","CA imposable (HT)",f["60"])
+          +caseRow("130","Total TVA exigible",f["130"])
+          +caseRow("132","TVA exigible (après retenue à la source)",f["132"],true)
+          +caseRow("182","Total des déductions de la période",f["182"])
+          +caseRow("190","Total TVA déductible (crédit reporté inclus)",f["190"],true)
+          +caseRow("200","TVA due (190 − 132)",f["200"])
+          +caseRow("201","Crédit de TVA (190 − 132)",f["201"])
+          +caseRow("205",(l205due>0?"TVA due de la période":"Crédit de la période"),(l205due>0?l205due:l205cred),true);
+        // texte « tout copier »
+        var allTxt="Déclaration TVA 3122 — "+c.dossier+" — "+per+" "+S.year+"\n"
+          +"060 CA imposable : "+(Math.round((f["60"]||0)*100)/100)+"\n"
+          +"130 TVA exigible : "+(Math.round((f["130"]||0)*100)/100)+"\n"
+          +"132 TVA exigible nette : "+(Math.round((f["132"]||0)*100)/100)+"\n"
+          +"182 Déductions période : "+(Math.round((f["182"]||0)*100)/100)+"\n"
+          +"190 TVA déductible totale : "+(Math.round((f["190"]||0)*100)/100)+"\n"
+          +"205 "+(l205due>0?"TVA due":"Crédit")+" : "+(Math.round(((l205due>0?l205due:l205cred))*100)/100);
+        prefill=typeBtns+periodSel+'<div style="font-size:11px;color:var(--faint);margin-bottom:6px">Cases de la déclaration TVA 3122 (Art. 110 CGI)'+auto+'</div>'
+          +'<div class="card" style="border:1px solid var(--line)">'+rows+'</div>'
+          +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-add" data-act="copytxt" data-copy="'+esc(allTxt)+'">'+ic("copy")+' Copier toutes les cases</button><button class="chip" data-act="tab" data-tab="tva">'+ic("pencil")+' Modifier dans l\'onglet TVA</button></div>';
+      }
+    }else{
+      var dL=S.liasse[S.year+"|"+c.id]||{};
+      var lc=liasseCalc(dL);
+      var rowsIS=caseRow("","Résultat comptable",lc.rc)
+        +caseRow("","+ Réintégrations fiscales",lc.sumR)
+        +caseRow("","− Déductions fiscales",lc.sumD)
+        +caseRow("","Résultat fiscal net",lc.rfNet,true)
+        +caseRow("","IS théorique ("+Math.round(lc.tauxIS*100)+"%)",lc.isTheo)
+        +caseRow("","Cotisation minimale",lc.cm)
+        +caseRow("","IS DÛ (le plus élevé)",lc.isDu,true)
+        +caseRow("","Acompte provisionnel (¼)",lc.acompte);
+      var hasData=(lc.rc||lc.sumR||lc.sumD||lc.cmBase)?'':' · aucune donnée saisie (zéros)';
+      var allIS="Résultat fiscal / IS — "+c.dossier+" — Exercice "+S.year+"\n"
+        +"Résultat comptable : "+Math.round(lc.rc*100)/100+"\n"
+        +"Réintégrations : "+Math.round(lc.sumR*100)/100+"\n"
+        +"Déductions : "+Math.round(lc.sumD*100)/100+"\n"
+        +"Résultat fiscal net : "+Math.round(lc.rfNet*100)/100+"\n"
+        +"IS théorique : "+Math.round(lc.isTheo*100)/100+"\n"
+        +"Cotisation minimale : "+Math.round(lc.cm*100)/100+"\n"
+        +"IS dû : "+Math.round(lc.isDu*100)/100+"\n"
+        +"Acompte : "+Math.round(lc.acompte*100)/100;
+      prefill=typeBtns+'<div style="font-size:11px;color:var(--faint);margin-bottom:6px">Chiffres clés du résultat fiscal'+hasData+'</div>'
+        +'<div class="card" style="border:1px solid var(--line)">'+rowsIS+'</div>'
+        +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-add" data-act="copytxt" data-copy="'+esc(allIS)+'">'+ic("copy")+' Copier tous les chiffres</button><button class="chip" data-act="tab" data-tab="liasse">'+ic("pencil")+' Modifier dans la Liasse / IS</button></div>';
+    }
+  }
+
   return '<div class="wrap">'+header("Téléservices DGI (SIMPL)","Accès direct aux plateformes de télédéclaration · télépaiement")+
     '<div class="note" style="margin-top:18px;font-size:12.5px;line-height:1.6">La DGI ne propose pas de connexion automatique pour les logiciels tiers : la télédéclaration se fait sur le portail SIMPL avec vos identifiants, soit par saisie, soit en y déposant un fichier <b>EDI (XML)</b>. Ce module vous y conduit directement et prépare ce dont vous avez besoin.</div>'+
     '<div class="sectit mt5 mb3">'+ic("bank")+' Accès direct aux plateformes</div>'+portals+
@@ -7616,8 +7691,9 @@ function vTeledec(){
         '<button class="btn-add" data-act="tab" data-tab="tva" style="margin-top:14px">'+ic("chev")+' Aller à la TVA (générer l\'EDI)</button>'+
       '</div>'+
     '</div>'+
+    '<div class="card mt4" style="padding:20px"><div class="sectit mb3">'+ic("receipt")+' Déclaration pré-remplie '+(c?'— '+esc(c.dossier):'')+'</div>'+prefill+'</div>'+
     '<div class="card mt4"><div class="sectit" style="padding:16px 18px 0">'+ic("bell")+' À télédéclarer prochainement</div><div class="scroll" style="max-height:340px;margin-top:8px">'+pendHtml+'</div></div>'+
-    '<p style="font-size:11px;color:var(--faint);margin-top:12px">Adresses officielles DGI (tax.gov.ma). Le <b>télépaiement</b> s\'effectue sur SIMPL par prélèvement bancaire, après signature du mandat de prélèvement (modèle ADC940) auprès de la DGI. Vérifiez toujours les montants et échéances avant validation.</p>'+
+    '<p style="font-size:11px;color:var(--faint);margin-top:12px">Adresses officielles DGI (tax.gov.ma). Le <b>télépaiement</b> s\'effectue sur SIMPL par prélèvement bancaire, après signature du mandat de prélèvement (modèle ADC940) auprès de la DGI. Les chiffres pré-remplis sont calculés à partir de votre comptabilité : <b>vérifiez-les</b> avant de valider sur SIMPL.</p>'+
   '</div>';
 }
 
@@ -8546,7 +8622,8 @@ document.addEventListener("click",e=>{
   else if(a==="notiflog_clear"){if(!window.confirm("Effacer tout l'historique des notifications ?"))return;S.notiflog=[];save("notiflog");renderView();}
   else if(a==="backup_export"){exportBackup();}
   else if(a==="backup_import"){triggerImport();}
-  else if(a==="copytxt"){var v=t.dataset.copy||"";try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v);}else{var ta=document.createElement("textarea");ta.value=v;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}}catch(_e){}showOk("Copié : "+v);}
+  else if(a==="copytxt"){var v=t.dataset.copy||"";try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v);}else{var ta=document.createElement("textarea");ta.value=v;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}}catch(_e){}showOk((v.length>40||v.indexOf("\n")>=0)?"Copié dans le presse-papier.":("Copié : "+v));}
+  else if(a==="tstype"){S.tsType=t.dataset.v;S.tsPeriod=null;renderView();}
   else if(a==="team_push"){teamPush(t.dataset.id);}
   else if(a==="cgnccls"){S.cgncCls=t.dataset.c;renderView();}
   else if(a==="comptabal_inject"){comptaBalInject(t.dataset.id);}
@@ -8717,6 +8794,7 @@ document.addEventListener("change",e=>{
   if(t.dataset.cp!=null){comptaInput(t);return;}
   if(t.id==="tvaclient"){S.tvaSel.id=+t.value;S.tvaSel.period=null;S.curClient=+t.value;renderView();return;}
   if(t.id==="tsclient"){S.curClient=t.value===""?null:+t.value;renderView();return;}
+  if(t.id==="tsperiod"){S.tsPeriod=t.value;renderView();return;}
   if(t.id==="salclient"){S.salSel.id=+t.value;S.curClient=+t.value;renderView();return;}
   if(t.id==="paieclient"){S.paieSel.id=+t.value;S.curClient=+t.value;S.paieSel.emp=null;renderView();return;}
   if(t.id==="liasseclient"){S.liasseSel.id=+t.value;S.curClient=+t.value;renderView();return;}
