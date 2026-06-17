@@ -474,15 +474,35 @@ function tempAuthClient(){
   if(!window.supabase)return null;
   return window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-fid-signup-tmp"}});
 }
-// Crée un compte Supabase (e-mail + mot de passe) via le client temporaire et renvoie {uid, needsConfirm}.
-async function cloudCreateAccount(email,pass){
+// Crée un compte Supabase. Renvoie {uid, needsConfirm}.
+// 1) Méthode FIABLE : fonction Edge "creer-compte" -> compte DÉJÀ confirmé (connexion immédiate).
+// 2) Repli automatique : inscription côté navigateur si la fonction n'est pas (encore) déployée.
+// payload = {email, password, type:"client"|"collaborateur", client_id?, client_name?, name?, role?}
+async function cloudCreateAccount(payload){
+  var tryLocal=false;
+  try{
+    var r=await sb.functions.invoke("creer-compte",{body:payload});
+    if(r.error){
+      var msg=(r.error.message||"")+"";
+      try{ if(r.error.context&&typeof r.error.context.json==="function"){ var b=await r.error.context.json(); if(b&&b.error)msg=b.error; } }catch(_e){}
+      if(/not found|404|deployed|Failed to send|Failed to fetch|Functions(Fetch|Relay)/i.test(msg+" "+(r.error.name||""))) tryLocal=true;
+      else throw new Error(msg);
+    }else{
+      if(r.data&&r.data.error) throw new Error(r.data.error);
+      return {uid:(r.data&&r.data.user_id)||"", needsConfirm:false};
+    }
+  }catch(e){
+    var en=((e&&((e.name||"")+" "+(e.message||"")))||"")+"";
+    if(/FunctionsFetch|Failed to fetch|Failed to send|NetworkError|not found|404/i.test(en)) tryLocal=true;
+    else throw e;
+  }
+  if(!tryLocal) throw new Error("Création impossible.");
+  // Repli : inscription côté navigateur (le compte peut nécessiter une confirmation par e-mail)
   var tmp=tempAuthClient();
   if(!tmp)throw new Error("SDK cloud non chargé.");
-  var r=await tmp.auth.signUp({email:email,password:pass});
-  if(r.error)throw new Error(r.error.message);
-  var uid=(r.data&&r.data.user&&r.data.user.id)||"";
-  var needsConfirm=!(r.data&&r.data.session); // session absente = confirmation e-mail probablement activée
-  return {uid:uid,needsConfirm:needsConfirm};
+  var rr=await tmp.auth.signUp({email:payload.email,password:payload.password});
+  if(rr.error)throw new Error(rr.error.message);
+  return {uid:(rr.data&&rr.data.user&&rr.data.user.id)||"", needsConfirm:!(rr.data&&rr.data.session)};
 }
 // Modale affichant les identifiants créés, à transmettre au client/collaborateur.
 function modalCreds(){
@@ -3702,7 +3722,7 @@ async function portalCreateAccount(cid){
   if(pass.length<6){ showErr("Le mot de passe doit comporter au moins 6 caractères."); return; }
   setSync&&setSync("saving");
   try{
-    var res=await cloudCreateAccount(email,pass);
+    var res=await cloudCreateAccount({email:email,password:pass,type:"client",client_id:cid,client_name:c.dossier});
     // Liaison automatique dossier <-> compte (peut être bloquée par RLS ; sinon, liaison manuelle via l'UID affiché)
     if(res.uid){ try{ await sb.from("portal_clients").insert({user_id:res.uid,client_id:cid,client_name:c.dossier}); }catch(_e){} }
     S.flags[cid]=Object.assign({},S.flags[cid]); S.flags[cid].societe=Object.assign({},S.flags[cid].societe);
@@ -3977,7 +3997,7 @@ async function teamCreateAccount(id){
   if(pass.length<6){ showErr("Le mot de passe doit comporter au moins 6 caractères."); return; }
   setSync&&setSync("saving");
   try{
-    var res=await cloudCreateAccount(email,pass);
+    var res=await cloudCreateAccount({email:email,password:pass,type:"collaborateur",name:s.name||"",role:s.role||""});
     // Relie ses dossiers/tâches (table staff_data, par e-mail)
     await teamPushCloud(s);
     s.invited=new Date().toISOString(); save("team");
