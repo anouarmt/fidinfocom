@@ -366,7 +366,7 @@ function ld(k){try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){retur
 function lda(k){try{const v=JSON.parse(localStorage.getItem(k));return Array.isArray(v)?v:[]}catch(e){return []}}
 const S={tab:"dash",flags:ld(LS.flags),done:ld(LS.done),pay:ld(LS.pay),jur:ld(LS.jur),
   custom:lda(LS.custom),deleted:ld(LS.deleted),years:lda(LS.years),receipts:lda(LS.receipts),tva:ld(LS.tva),sal:ld(LS.sal),liasse:ld(LS.liasse),docs:ld(LS.docs),compta:ld(LS.compta),emprunts:ld(LS.emprunts),factures:lda(LS.factures),cabinet:ld(LS.cabinet),paie:ld(LS.paie),portal:ld(LS.portal),team:ld(LS.team),paieSel:{id:null,mois:null,emp:null},paieView:"bulletins",facSel:{id:null},facDraft:null,year:YEAR,curClient:(function(){try{var v=localStorage.getItem("fid_curclient");return v?+v:null;}catch(e){return null;}})(),comptaView:"saisie",comptaList:{type:null,statut:"",q:"",dmin:"",dmax:"",mmin:"",mmax:""},tvaSel:{id:null,period:null},salSel:{id:null},liasseSel:{id:null},liasseView:"is",docsSel:{id:null},empSel:{id:null},
-  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",modal:null,jurForm:null};
+  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",modal:null,jurForm:null,grpSel:{},grpSent:{},grpTpl:null};
 if(!S.years.length){S.years=[YEAR-1,YEAR,YEAR+1];}
 S.years.sort((a,b)=>a-b);
 if(S.years.indexOf(S.year)<0)S.year=S.years[S.years.length-1];
@@ -673,6 +673,64 @@ function modalNotif(key){
     +'<button class="chip" data-act="notif_copy" style="padding:0 14px">'+ic("copy")+'Copier</button>'
     +'</div>'
     +'<p style="font-size:11px;color:var(--faint);margin-top:10px">WhatsApp ouvre la discussion avec le message pré-rempli (il reste à appuyer sur Envoyer). SMS ouvre l\'application de messages de l\'appareil.</p>'
+    +'</div></div></div>';
+}
+
+/* ---------- NOTIFICATION GROUPÉE ---------- */
+function joursTxt(d){
+  var k=d.u.key,j=d.u.j;
+  if(k==="depose")return "déjà déposée";
+  if(k==="retard")return "échéance dépassée"+(typeof j==="number"?" depuis "+Math.abs(j)+" jour(s)":"");
+  if(typeof j==="number")return "il reste "+j+" jour(s)";
+  return "échéance proche";
+}
+function notifTplDefault(){
+  return "Bonjour,\nPour rappel, la déclaration « {declaration} » de votre dossier « {dossier} » est à déposer au plus tard le {date} ({jours}).\nMerci de nous transmettre les documents nécessaires.\nCordialement,\n{cabinet}";
+}
+function grpMsg(d,tpl){
+  var cab=cabinetGet();var nomCab=(cab.raison||"FID INFO COM").trim();
+  return String(tpl||notifTplDefault())
+    .replace(/{dossier}/g,d.client.dossier)
+    .replace(/{declaration}/g,d.label)
+    .replace(/{date}/g,fmtDate(d.date))
+    .replace(/{jours}/g,joursTxt(d))
+    .replace(/{cabinet}/g,nomCab);
+}
+function grpIsSel(key,hasNum){ return S.grpSel.hasOwnProperty(key)?!!S.grpSel[key]:hasNum; }
+function modalNotifGroup(){
+  var list=echFiltered();
+  var tpl=(S.grpTpl!=null)?S.grpTpl:notifTplDefault();
+  var withNum=0,sel=0,sent=0;
+  var rows=list.map(function(d){
+    var nums=waNumbers(d.client.tel);var hasNum=nums.length>0;if(hasNum)withNum++;
+    var on=grpIsSel(d.key,hasNum);if(on)sel++;
+    var isSent=!!S.grpSent[d.key];if(isSent)sent++;
+    var numTxt=hasNum?'<span class="mono" style="font-size:11.5px;color:#57534e">'+esc(waPretty(nums[0]))+'</span>':'<span style="font-size:11px;color:#B5530A">pas de n°</span>';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid #faf8f1;'+(isSent?'background:#F2F8F5':'')+'">'
+      +'<button class="iconbtn" data-act="grp_toggle" data-key="'+d.key+'" title="Sélectionner" style="color:'+(on?"#0E7A5F":"#d0ccc0")+'">'+ic(on?"check":"dashed")+'</button>'
+      +'<div style="flex:1;min-width:0"><div class="dossier" style="font-size:13px">'+esc(d.client.dossier)+'</div><div style="font-size:11px;color:var(--muted)">'+d.u.dot+' '+esc(d.label)+' · '+fmtDate(d.date)+'</div></div>'
+      +'<div style="text-align:right;min-width:96px">'+numTxt+'</div>'
+      +'<button class="iconbtn" data-act="grp_one" data-key="'+d.key+'" data-mode="wa" title="Envoyer ce message WhatsApp" style="color:'+(hasNum?"#25D366":"#d0ccc0")+'"'+(hasNum?"":" disabled")+'>'+ic("whatsapp")+'</button>'
+      +'<span style="width:20px;display:inline-flex;justify-content:center;color:'+(isSent?"#0E7A5F":"#d0ccc0")+'" title="'+(isSent?"Notifié":"Pas encore notifié")+'">'+ic(isSent?"check":"dashed")+'</span>'
+      +'</div>';
+  }).join("");
+  var body=list.length?rows:'<div class="empty" style="padding:30px">Aucune échéance pour ce filtre. Ajustez les filtres « urgence » et « catégorie » dans l\'onglet Échéances, puis rouvrez la notification groupée.</div>';
+  var filtreTxt=(S.echUrg==="active"?"À traiter":S.echUrg==="all"?"Toutes":S.echUrg)+" · "+(S.echCat==="all"?"toutes catégories":S.echCat.toUpperCase())+(S.echq?' · « '+esc(S.echq)+' »':'');
+  return '<div class="ov"><div class="modal" data-stop style="max-width:680px">'
+    +'<div class="mh"><div><h3 class="ff">Notification groupée</h3><div class="meta"><span>'+ic("cal")+esc(filtreTxt)+'</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+    +'<div class="mb">'
+    +'<div class="note" style="font-size:12px;margin-bottom:12px">'+list.length+' échéance(s) · '+withNum+' avec numéro · <b>'+sel+' sélectionné(s)</b> · '+sent+' notifié(s). Les numéros sont repris des fiches clients et mis au format international.</div>'
+    +'<div class="flbl">Modèle de message <span style="font-weight:400;color:var(--faint)">— variables : {dossier} {declaration} {date} {jours} {cabinet}</span></div>'
+    +'<textarea class="ipt" id="grp_tpl" rows="5" style="resize:vertical;line-height:1.5">'+esc(tpl)+'</textarea>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px;align-items:center">'
+    +'<button class="chip" data-act="grp_all">'+ic("check")+'Tout sélectionner</button>'
+    +'<button class="chip" data-act="grp_none">'+ic("dashed")+'Aucun</button>'
+    +'<button class="chip" data-act="grp_copyall" style="margin-left:auto">'+ic("copy")+'Copier tous les messages</button>'
+    +(sent?'<button class="chip" data-act="grp_reset">'+ic("clock")+'Réinitialiser l\'envoi</button>':'')
+    +'</div>'
+    +'<div class="card" style="margin-top:6px;max-height:300px;overflow:auto">'+body+'</div>'
+    +'<button class="btn-primary" data-act="grp_next" style="background:#25D366">'+ic("whatsapp","width:16px;height:16px")+' Ouvrir le prochain client sur WhatsApp ('+Math.max(0,sel-sent)+' restant'+((sel-sent)>1?"s":"")+')</button>'
+    +'<p style="font-size:11px;color:var(--faint);margin-top:10px">Le navigateur n\'autorise qu\'un seul envoi WhatsApp par clic. Cliquez « Ouvrir le prochain client » à la chaîne : chaque client est ouvert puis coché automatiquement. Vérifiez le message et appuyez sur Envoyer dans WhatsApp.</p>'
     +'</div></div></div>';
 }
 
@@ -7363,14 +7421,17 @@ function dashNotifs(){
   '</div>';
 }
 
-function echRows(){
-  const dls=allDeadlines().filter(d=>{
+function echFiltered(){
+  return allDeadlines().filter(d=>{
     if(S.echCat!=="all"&&d.cat!==S.echCat)return false;
     if(S.echUrg==="active"&&(d.u.key==="depose"||d.u.key==="planif"))return false;
     if(S.echUrg!=="active"&&S.echUrg!=="all"&&d.u.key!==S.echUrg)return false;
     if(S.echq&&!smartMatch(S.echq,d.client.dossier))return false;
     return true;
   });
+}
+function echRows(){
+  const dls=echFiltered();
   if(!dls.length)return '<div class="empty">Aucune échéance pour ce filtre.</div>';
   const cols="1fr 170px 120px 90px 140px 92px";
   return dls.map(d=>{
@@ -7399,7 +7460,7 @@ function vEch(){
     '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mt5 mb4">'+
       '<div class="search">'+ic("search")+'<input id="echq" placeholder="Rechercher un dossier…" value="'+esc(S.echq)+'"></div>'+
       seg(urgs,"echurg",S.echUrg,"#14201C")+
-      '<div style="margin-left:auto">'+seg(cats,"echcat",S.echCat,"#0E7A5F")+'</div>'+
+      '<div style="margin-left:auto;display:flex;gap:10px;align-items:center">'+seg(cats,"echcat",S.echCat,"#0E7A5F")+'<button class="btn-add" data-act="grp_open">'+ic("bell")+' Notifier en lot</button></div>'+
     '</div>'+
     '<div class="card"><div class="thead" style="grid-template-columns:'+cols+'"><div>DOSSIER</div><div>DÉCLARATION</div><div>ÉCHÉANCE</div><div>JOURS</div><div>STATUT</div><div style="text-align:right">ACTIONS</div></div><div class="scroll" id="echlist">'+echRows()+'</div></div>'+
     '<p style="font-size:11px;color:var(--faint);margin-top:12px">Notifier : bouton vert '+ic("whatsapp","width:11px;height:11px;vertical-align:-1px")+' sur chaque ligne → WhatsApp ou SMS avec un message de rappel pré-rempli. Règles : TVA trimestrielle → mois suivant le trimestre (20) · TVA mensuelle → le 20 du mois suivant · Salaires → 28 février · Bilan → 31 mars · Acomptes IS → mois 3/6/9/12 · AGO → 30 juin.</p>'+
@@ -8113,6 +8174,7 @@ function renderModal(){
   if(S.modal.type==="balgl"){o.innerHTML=modalBalGL(S.modal.cid,S.modal.compte);return;}
   if(S.modal.type==="creds"){o.innerHTML=modalCreds();return;}
   if(S.modal.type==="notif"){o.innerHTML=modalNotif(S.modal.key);return;}
+  if(S.modal.type==="notifgroup"){o.innerHTML=modalNotifGroup();return;}
   const c=S.modal.id==null?null:clients().find(x=>x.id===S.modal.id);
   if(S.modal.type==="client")o.innerHTML=modalClient(c);
   else if(S.modal.type==="pay")o.innerHTML=modalPay(c);
@@ -8289,6 +8351,35 @@ document.addEventListener("click",e=>{
       : "sms:+"+num+"?body="+encodeURIComponent(txt);
     var w=window.open(url,"_blank");
     if(!w){var link=document.createElement("a");link.href=url;link.target="_blank";link.rel="noopener";document.body.appendChild(link);link.click();link.remove();}
+  }
+  else if(a==="grp_open"){S.grpSel={};S.grpSent={};S.grpTpl=(S.grpTpl!=null?S.grpTpl:notifTplDefault());S.modal={type:"notifgroup"};renderModal();}
+  else if(a==="grp_toggle"){var ti=document.getElementById("grp_tpl");if(ti)S.grpTpl=ti.value;var k=t.dataset.key;var d0=allDeadlines().find(function(x){return x.key===k;});var hn=d0?waNumbers(d0.client.tel).length>0:false;var cur=grpIsSel(k,hn);S.grpSel[k]=!cur;renderModal();}
+  else if(a==="grp_all"){var ti=document.getElementById("grp_tpl");if(ti)S.grpTpl=ti.value;echFiltered().forEach(function(d){S.grpSel[d.key]=true;});renderModal();}
+  else if(a==="grp_none"){var ti=document.getElementById("grp_tpl");if(ti)S.grpTpl=ti.value;echFiltered().forEach(function(d){S.grpSel[d.key]=false;});renderModal();}
+  else if(a==="grp_reset"){var ti=document.getElementById("grp_tpl");if(ti)S.grpTpl=ti.value;S.grpSent={};renderModal();}
+  else if(a==="grp_one"){
+    var ti=document.getElementById("grp_tpl");if(ti)S.grpTpl=ti.value;
+    var k=t.dataset.key;var d0=allDeadlines().find(function(x){return x.key===k;});if(!d0)return;
+    var nums=waNumbers(d0.client.tel);if(!nums.length){showErr("Aucun numéro pour « "+d0.client.dossier+" ».");return;}
+    var url="https://wa.me/"+nums[0]+"?text="+encodeURIComponent(grpMsg(d0,S.grpTpl));
+    var w=window.open(url,"_blank");if(!w){var l=document.createElement("a");l.href=url;l.target="_blank";l.rel="noopener";document.body.appendChild(l);l.click();l.remove();}
+    S.grpSent[k]=true;renderModal();
+  }
+  else if(a==="grp_next"){
+    var ti=document.getElementById("grp_tpl");if(ti)S.grpTpl=ti.value;
+    var next=echFiltered().filter(function(d){var hn=waNumbers(d.client.tel).length>0;return hn&&grpIsSel(d.key,hn)&&!S.grpSent[d.key];})[0];
+    if(!next){showOk("Tous les clients sélectionnés (avec numéro) ont été ouverts.");return;}
+    var url="https://wa.me/"+waNumbers(next.client.tel)[0]+"?text="+encodeURIComponent(grpMsg(next,S.grpTpl));
+    var w=window.open(url,"_blank");if(!w){var l=document.createElement("a");l.href=url;l.target="_blank";l.rel="noopener";document.body.appendChild(l);l.click();l.remove();}
+    S.grpSent[next.key]=true;renderModal();
+  }
+  else if(a==="grp_copyall"){
+    var ti=document.getElementById("grp_tpl");if(ti)S.grpTpl=ti.value;
+    var sel=echFiltered().filter(function(d){var hn=waNumbers(d.client.tel).length>0;return grpIsSel(d.key,hn);});
+    if(!sel.length){showErr("Aucun client sélectionné.");return;}
+    var txt=sel.map(function(d){var nums=waNumbers(d.client.tel);return "▶ "+d.client.dossier+(nums.length?" ("+waPretty(nums[0])+")":" (pas de numéro)")+"\n"+grpMsg(d,S.grpTpl);}).join("\n\n— — —\n\n");
+    try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt);}else{var ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}}catch(_e){}
+    showOk(sel.length+" message(s) copié(s).");
   }
   else if(a==="team_push"){teamPush(t.dataset.id);}
   else if(a==="cgnccls"){S.cgncCls=t.dataset.c;renderView();}
