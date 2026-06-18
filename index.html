@@ -1080,9 +1080,17 @@ function tvaAuto(cid,period){
       else{rc+=tva;detail.achats.push({nom:p.fournisseur,num:p.numero,tva:tva});}
     });
   }
-  // COMMISSIONS BANCAIRES -> TVA déductible (frais déjà prélevés : identique dans les deux régimes)
-  (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0;}).forEach(function(o){
+  // COMMISSIONS BANCAIRES COMPTABILISÉES -> TVA déductible (frais déjà prélevés : identique dans les deux régimes)
+  (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0&&o.status==="valide";}).forEach(function(o){
     rc+=(+o.tvaComm||0);detail.banque.push({nom:o.libelle,tva:+o.tvaComm});
+  });
+  // INTÉRÊTS D'EMPRUNTS COMPTABILISÉS -> TVA 10% déductible (échéances validées de la période)
+  (empList(cid)||[]).forEach(function(emp){
+    empAmortir(emp).forEach(function(r){
+      if(r.valide && (+r.tva>0) && opYear({date:r.date})===S.year && pieceInPeriod({date:r.date},period)){
+        rc+=(+r.tva||0); detail.banque.push({nom:"Intérêts "+(emp.organisme||"emprunt"),tva:+r.tva});
+      }
+    });
   });
   var ventes=Object.keys(ventesByRate).map(function(t){return {base:Math.round(ventesByRate[t]*100)/100,taux:+t};});
   if(!ventes.length)ventes=[{base:"",taux:20}];
@@ -1729,9 +1737,18 @@ function releveDeductionsRows(cid,period){
         regDate:regDate,regMode:regMode,cr:cr,compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
     });
   }
-  (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0;}).forEach(function(o){
+  // Commissions bancaires COMPTABILISÉES (statut « valide ») -> TVA déductible
+  (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0&&o.status==="valide";}).forEach(function(o){
     var ht=+o.htComm||0,tva=+o.tvaComm||0,ttc=ht+tva;
     rows.push({journal:"BQ",num:o.reference||"",date:o.date||"",tiers:o.libelle||"Banque",if_:"",ice:"",design:"Commission bancaire",ttc:ttc,ht:ht,taux:o.tauxComm||10,code:(o.codeTva||tvaCodeDed(o.tauxComm||10,false)),tva:tva,prorata:100,recup:tva,regDate:o.date||"",regMode:"Banque",cr:o.reference||"",compteTva:"34552000",src:"op",srcId:o.id});
+  });
+  // Intérêts d'emprunts COMPTABILISÉS (échéances validées) -> TVA 10% déductible
+  (empList(c.id)||[]).forEach(function(emp){
+    empAmortir(emp).forEach(function(r){
+      if(!(r.valide && (+r.tva>0) && opYear({date:r.date})===S.year && pieceInPeriod({date:r.date},period)))return;
+      var ht=+r.interet||0,tva=+r.tva||0,ttc=ht+tva;
+      rows.push({journal:"BQ",num:"éch. "+r.n,date:r.date||"",tiers:emp.organisme||"Emprunt",if_:"",ice:"",design:"Intérêts d'emprunt",ttc:ttc,ht:ht,taux:10,code:(emp.codeTvaInteret||"142"),tva:tva,prorata:100,recup:tva,regDate:r.date||"",regMode:"Banque",cr:"",compteTva:comptaCanon(emp.cptTva||EMP_TVA),src:"emp",srcId:String(emp.id)});
+    });
   });
   rows.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
   return rows;
@@ -8152,6 +8169,7 @@ function releveSetCode(ref,value){
   var cid=String(S.curClient),g=comptaGet(cid);
   if(src==="piece"){ var pc=g.pieces.find(function(x){return String(x.id)===String(id);}); if(pc){pc.codeTva=value;} }
   else if(src==="op"){ var o=g.operations.find(function(x){return String(x.id)===String(id);}); if(o){o.codeTva=value;} }
+  else if(src==="emp"){ var arr=empList(cid),emp=arr.find(function(x){return String(x.id)===String(id);}); if(emp){emp.codeTvaInteret=value;empSave(cid,arr);} }
   save("compta"); showOk("Code TVA mis à jour : "+value+".");
 }
 function banqueEdit(oid){
