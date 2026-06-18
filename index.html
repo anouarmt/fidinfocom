@@ -4997,7 +4997,79 @@ function comptaCanonEcr(g){
   return ch;
 }
 function comptaCanonAll(){ var ch=false,cp=S.compta||{}; Object.keys(cp).forEach(function(k){ if(comptaCanonEcr(cp[k]))ch=true; }); return ch; }
-function comptaGet(cid){ var k=String(cid); if(!S.compta[k])S.compta[k]={pieces:[],ecritures:[],operations:[]}; if(!S.compta[k].pieces)S.compta[k].pieces=[]; if(!S.compta[k].ecritures)S.compta[k].ecritures=[]; if(!S.compta[k].operations)S.compta[k].operations=[]; if(!S.compta[k].immos)S.compta[k].immos=[]; if(!_CANON_DONE[k]){_CANON_DONE[k]=1;comptaCanonEcr(S.compta[k]);} return S.compta[k]; }
+function comptaGet(cid){ var k=String(cid); if(!S.compta[k])S.compta[k]={pieces:[],ecritures:[],operations:[]}; if(!S.compta[k].pieces)S.compta[k].pieces=[]; if(!S.compta[k].ecritures)S.compta[k].ecritures=[]; if(!S.compta[k].operations)S.compta[k].operations=[]; if(!S.compta[k].immos)S.compta[k].immos=[]; if(!S.compta[k].tiers)S.compta[k].tiers=[]; if(!_CANON_DONE[k]){_CANON_DONE[k]=1;comptaCanonEcr(S.compta[k]);} return S.compta[k]; }
+
+/* ============================================================================
+   REGISTRE DES TIERS — un seul compte auxiliaire par fournisseur / par client
+   Détection à partir des factures (ICE -> IF -> nom). Comptes :
+     Fournisseurs : 4411xxxxxx   (collectif 4411)
+     Clients      : 3421xxxxxx   (collectif 3421)
+   ============================================================================ */
+// Normalise une chaîne pour la comparaison (accents, casse, espaces, ponctuation)
+function _tnorm(s){ return _norm(s).replace(/[^a-z0-9]+/g," ").replace(/\s+/g," ").trim(); }
+// Ne garde que les chiffres (pour comparer ICE / IF)
+function _tdig(s){ return String(s==null?"":s).replace(/\D/g,""); }
+// Compte auxiliaire à partir d'un type + numéro de séquence
+function tiersCodeFor(type,seq){ var base=(type==="vente"||type==="client")?"3421":"4411"; return comptaCanon(base+("000000"+seq).slice(-6)); }
+// Prochaine séquence libre pour ce type
+function tiersNextSeq(g,type){ var fam=(type==="vente"||type==="client")?"client":"fournisseur"; var mx=0; (g.tiers||[]).forEach(function(t){ if(t.type===fam && +t.seq>mx)mx=+t.seq; }); return mx+1; }
+// Recherche d'un tiers existant : ICE d'abord, puis IF, puis nom normalisé
+function tiersFind(g,type,info){
+  var fam=(type==="vente"||type==="client")?"client":"fournisseur";
+  var ice=_tdig(info.ice), iff=_tdig(info.if_), nom=_tnorm(info.nom);
+  var list=(g.tiers||[]).filter(function(t){return t.type===fam;});
+  var byIce=ice?list.find(function(t){return _tdig(t.ice)===ice;}):null; if(byIce)return byIce;
+  var byIf =iff?list.find(function(t){return _tdig(t.if_)===iff;}):null; if(byIf)return byIf;
+  // match par nom — mais on refuse si les ICE/IF présents des deux côtés diffèrent (homonymes distincts)
+  if(nom){
+    var byNom=list.find(function(t){
+      if(_tnorm(t.nom)!==nom)return false;
+      if(ice && _tdig(t.ice) && _tdig(t.ice)!==ice)return false;
+      if(iff && _tdig(t.if_) && _tdig(t.if_)!==iff)return false;
+      return true;
+    });
+    if(byNom)return byNom;
+  }
+  return null;
+}
+// Trouve OU crée le tiers ; enrichit les infos manquantes ; renvoie son compte auxiliaire
+function tiersResolve(g,type,info){
+  info=info||{}; var nom=(info.nom||"").trim();
+  if(!nom && !_tdig(info.ice) && !_tdig(info.if_)) return null;   // rien d'identifiable
+  var fam=(type==="vente"||type==="client")?"client":"fournisseur";
+  var ex=tiersFind(g,type,info);
+  if(ex){
+    if(!ex.ice && info.ice)ex.ice=info.ice;
+    if(!ex.if_ && info.if_)ex.if_=info.if_;
+    if((!ex.nom||ex.nom.length<2) && nom)ex.nom=nom;
+    if(!ex.compte)ex.compte=tiersCodeFor(fam,ex.seq);
+    return ex.compte;
+  }
+  var seq=tiersNextSeq(g,fam), compte=tiersCodeFor(fam,seq);
+  g.tiers.push({id:"T"+Date.now()+"_"+Math.floor(Math.random()*1e4),type:fam,seq:seq,compte:compte,nom:nom||("Tiers "+seq),ice:info.ice||"",if_:info.if_||""});
+  return compte;
+}
+// Compte tiers à utiliser pour une pièce (auxiliaire si résolu, sinon collectif)
+function pieceTiersCompte(p){ return (p&&p.tiersCompte)?p.tiersCompte:((p&&p.type==="vente")?"3421":"4411"); }
+// (Re)résout le compte auxiliaire de chaque pièce — idempotent, appelé avant la génération des écritures
+function comptaResolveTiers(g){
+  if(!g||!g.pieces)return;
+  g.pieces.forEach(function(p){
+    if(p.rejected)return;
+    var isV=p.type==="vente";
+    var iff=isV?(p.if_client||p.if_||""):(p.if_fournisseur||p.if_||"");
+    var compte=tiersResolve(g,p.type,{nom:p.fournisseur||"",ice:p.ice||"",if_:iff});
+    if(compte){ p.tiersCompte=compte; }
+  });
+}
+// Libellé lisible d'un compte auxiliaire de tiers (nom du fournisseur / client)
+function tiersLabelFor(cp){
+  var cc=comptaCanon(cp);
+  var g=(S.curClient!=null)?comptaGet(S.curClient):null; if(!g)return "";
+  var t=(g.tiers||[]).find(function(x){return comptaCanon(x.compte)===cc;});
+  if(t)return (t.type==="client"?"Client ":"Frs ")+(t.nom||("Tiers "+t.seq));
+  return "";
+}
 function pieceYear(p){ return (p.date&&/^\d{4}/.test(p.date))?+p.date.slice(0,4):S.year; }
 // message de répartition par exercice après un import (les factures sont classées selon leur date)
 function importYearNote(yr){
@@ -5049,6 +5121,7 @@ function ecritureAchat(p){
   var ht=+p.ht||0,tva=+p.tva||0,cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
   var timbre=+p.timbre||0,debours=+p.debours||0,ras=+p.ras||0;
   var tvaNonRecup=!!p.tvaNonRecup;
+  var frsCpt=pieceTiersCompte(p);            // compte auxiliaire propre au fournisseur
   var lib=(p.fournisseur||"Fournisseur")+(p.numero?" Fac "+p.numero:"");
   var lignes=[];
   // 1) charge / immobilisation (HT, + TVA si non récupérable)
@@ -5064,10 +5137,10 @@ function ecritureAchat(p){
   var ttc=(+p.ttc)|| (ht+tva+timbre+debours);
   // 5) retenue à la source -> crédit État 4458 (à reverser), diminue le net fournisseur
   if(ras>0){
-    lignes.push({compte:"4411",libelle:"Frs "+(p.fournisseur||""),debit:0,credit:ttc-ras});
+    lignes.push({compte:frsCpt,libelle:"Frs "+(p.fournisseur||""),debit:0,credit:ttc-ras});
     lignes.push({compte:"4458",libelle:"Retenue à la source à reverser",debit:0,credit:ras});
   }else{
-    lignes.push({compte:"4411",libelle:"Frs "+(p.fournisseur||""),debit:0,credit:ttc});
+    lignes.push({compte:frsCpt,libelle:"Frs "+(p.fournisseur||""),debit:0,credit:ttc});
   }
   return {journal:"AC",lignes:lignes};
 }
@@ -5248,7 +5321,7 @@ function vCompta(){
   var head='<div class="wrap">'+header("Comptabilité","Saisie, journal et grand livre · Exercice "+S.year);
   if(!cs.length)return head+'<div class="empty">Aucun client.</div></div>';
   var clientOpts=cs.map(function(x){return '<option value="'+x.id+'"'+(x.id===S.curClient?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("");
-  var tabs=[["saisie","Saisie / Import"],["manuel","Saisie manuelle"],["anouveau","À-nouveaux N-1"],["immos","Amortissements"],["emprunts","Emprunts"],["journal","Journal général"],["gl","Grand livre"],["balance","Balance"],["controles","Anomalies"],["plan","Plan comptable"],["recap","Toutes sociétés"]];
+  var tabs=[["saisie","Saisie / Import"],["manuel","Saisie manuelle"],["tiers","Tiers (frs/clients)"],["anouveau","À-nouveaux N-1"],["immos","Amortissements"],["emprunts","Emprunts"],["journal","Journal général"],["gl","Grand livre"],["balance","Balance"],["controles","Anomalies"],["plan","Plan comptable"],["recap","Toutes sociétés"]];
   var toggle='<div style="display:flex;gap:6px;background:#EDEAE0;border-radius:10px;padding:3px;flex-wrap:wrap">'+tabs.map(function(t){return '<button data-act="comptaview" data-v="'+t[0]+'" class="chip" style="border:0;'+(S.comptaView===t[0]?"background:#14201C;color:#fff":"background:transparent")+'">'+t[1]+'</button>';}).join("")+'</div>';
   var bar='<div class="card mt5" style="padding:16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div class="flbl">Société</div><select class="ipt" id="comptaclient">'+clientOpts+'</select></div>'+toggle+'</div>';
   // hidden file inputs
@@ -5264,6 +5337,7 @@ function vCompta(){
   else if(S.comptaView==="emprunts") body=comptaEmpruntsBody(c);
   else if(S.comptaView==="recap") body=comptaRecapBody();
   else if(S.comptaView==="controles") body=comptaControlesBody(c);
+  else if(S.comptaView==="tiers") body=comptaTiersBody(c);
   else if(S.comptaView==="list") body=comptaListBody(c);
   else body=comptaSaisieBody(c);
   return head+bar+hidden+body+'</div>';
@@ -5754,7 +5828,7 @@ function comptaControlesBody(c){
     +'<div class="sectit">'+ic("alert")+' Contrôles & anomalies — '+esc(c.dossier)+' · '+S.year+'</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="ctrl_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button><button class="chip" data-act="ctrl_pdf">'+ic("receipt","width:13px;height:13px;vertical-align:-2px")+' Imprimer (PDF)</button></div></div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+pill("err")+' '+nE+' &nbsp; '+pill("warn")+' '+nW+' &nbsp; '+pill("info")+' '+nI+'</div></div>';
-  if(!list.length)return head+'<div class="card mt4" style="padding:24px;text-align:center;color:#0E7A5F;font-weight:600">'+ic("check")+' Aucune anomalie détectée pour cet exercice. La saisie semble cohérente.</div>';
+  if(!list.length)return head+(comptaImbalanceDiag(c).equilibre?"":comptaImbalancePanel(c))+'<div class="card mt4" style="padding:24px;text-align:center;color:#0E7A5F;font-weight:600">'+ic("check")+' Aucune anomalie détectée pour cet exercice. La saisie semble cohérente.</div>';
   var rowsH=list.map(function(x){var m=sevMeta[x.sev];
     return '<tr style="border-bottom:1px solid var(--line)">'
       +'<td style="padding:8px 6px;white-space:nowrap">'+m[2]+'</td>'
@@ -5767,7 +5841,7 @@ function comptaControlesBody(c){
     +'<tr style="background:#14201C;color:#fff;text-align:left"><th style="padding:8px 6px">Gravité</th><th style="padding:8px 6px">Catégorie</th><th style="padding:8px 6px">Contrôle</th><th style="padding:8px 6px;text-align:right">Montant</th><th style="padding:8px 6px">À compléter avec le client</th></tr>'
     +rowsH+'</table></div>';
   var note='<div class="note mt4" style="font-size:11.5px">Contrôles indicatifs calculés depuis les écritures et la balance de l\'exercice. Les seuils (espèces 5 000/50 000 DH, IF/ICE…) sont rappelés à titre d\'aide ; validez chaque point avec le client et selon le CGI en vigueur.</div>';
-  return head+table+note;
+  return head+(comptaImbalanceDiag(c).equilibre?"":comptaImbalancePanel(c))+table+note;
 }
 async function controlesExcel(){
   var c=clients().find(function(x){return x.id===S.curClient;});if(!c)return;
@@ -6063,22 +6137,24 @@ function ecritureReglement(p){
   var tr=regTreasury(p.modeReg,isV);
   var ref=p.refReg?(" "+p.refReg):"";
   var lib=(p.fournisseur||(isV?"Client":"Fournisseur"))+(p.numero?" Fac "+p.numero:"")+" — "+p.modeReg+ref;
+  var tiersCpt=pieceTiersCompte(p);          // compte auxiliaire propre au tiers
   var lignes;
   if(isV){
-    // encaissement client : débit trésorerie / crédit 3421
+    // encaissement client : débit trésorerie / crédit compte client auxiliaire
     lignes=[{compte:tr.compte,libelle:lib,debit:mt,credit:0},
-            {compte:"3421",libelle:"Clt "+(p.fournisseur||""),debit:0,credit:mt}];
+            {compte:tiersCpt,libelle:"Clt "+(p.fournisseur||""),debit:0,credit:mt}];
   }else{
-    // paiement fournisseur : débit 4411 / crédit trésorerie
-    lignes=[{compte:"4411",libelle:"Frs "+(p.fournisseur||""),debit:mt,credit:0},
+    // paiement fournisseur : débit compte fournisseur auxiliaire / crédit trésorerie
+    lignes=[{compte:tiersCpt,libelle:"Frs "+(p.fournisseur||""),debit:mt,credit:0},
             {compte:tr.compte,libelle:lib,debit:0,credit:mt}];
   }
   return {journal:tr.journal,lignes:lignes,date:regDateOf(p)};
 }
 function ecritureVente(p){
   var ht=+p.ht||0,tva=+p.tva||0,ttc=+p.ttc||(ht+tva),cpt=p.compte||"7111";
+  var cltCpt=pieceTiersCompte(p);            // compte auxiliaire propre au client
   var lib=(p.fournisseur||"Client")+(p.numero?" Fac "+p.numero:"");
-  var lignes=[{compte:"3421",libelle:"Clt "+(p.fournisseur||""),debit:ttc,credit:0},
+  var lignes=[{compte:cltCpt,libelle:"Clt "+(p.fournisseur||""),debit:ttc,credit:0},
               {compte:cpt,libelle:lib,debit:0,credit:ht}];
   if(tva>0)lignes.push({compte:"4455",libelle:"TVA facturée",debit:0,credit:tva});
   return {journal:"VE",lignes:lignes};
@@ -6093,6 +6169,7 @@ var _AP_DONE={}; // dossiers déjà réconciliés pour cette session (évite des
 function comptaAutoPost(g){
   if(!g)return;
   g.pieces=g.pieces||[]; g.ecritures=g.ecritures||[];
+  comptaResolveTiers(g);                       // 0) un seul compte auxiliaire par fournisseur / client
   var byId={}; g.pieces.forEach(function(p){ byId[String(p.id)]=p; });
   // 1) Purge des écritures-pièces orphelines (pièce supprimée) ou devenues incomplètes -> cascade de suppression
   g.ecritures=g.ecritures.filter(function(e){
@@ -6164,8 +6241,14 @@ function reviewFields(p,isV){
     +(typeof cgncOptgroup!=="undefined"?cgncOptgroup(isV?/^7/:/^[26]/,p.compte):"");
   var ec=ecritureFor(p),preview=ec.lignes.map(function(l){return '<tr><td style="padding:2px 6px;color:var(--muted)">'+esc(l.compte)+'</td><td style="padding:2px 6px">'+esc(l.libelle)+'</td><td class="mono" style="text-align:right;padding:2px 6px">'+(l.debit?fmtDH2(l.debit):"")+'</td><td class="mono" style="text-align:right;padding:2px 6px">'+(l.credit?fmtDH2(l.credit):"")+'</td></tr>';}).join("");
   var bal=Math.abs((+p.ht||0)+(+p.tva||0)-(+p.ttc||(+p.ht||0)+(+p.tva||0)));
+  var ifField=isV?"if_client":"if_fournisseur";
+  var ifVal=isV?(p.if_client||p.if_||""):(p.if_fournisseur||p.if_||"");
+  var tcpt=pieceTiersCompte(p), tlab=tiersLabelFor(tcpt);
+  var tiersBadge=(p.tiersCompte)?('<div style="margin-top:8px;font-size:11.5px;color:#0a5f4a;background:#E3F1EB;border-radius:8px;padding:6px 10px">'+ic("building","width:13px;height:13px;vertical-align:-2px")+' Compte tiers auxiliaire détecté : <b class="mono">'+esc(comptaCanon(tcpt))+'</b>'+(tlab?' — '+esc(tlab):"")+' <span style="color:#5a7a6e">(un seul compte par '+(isV?"client":"fournisseur")+', détecté par ICE / IF / nom)</span></div>'):'';
   return '<div style="display:flex;gap:8px;flex-wrap:wrap">'+f("Date","date",p.date)+f(isV?"Client":"Fournisseur","fournisseur",p.fournisseur)+'</div>'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("ICE","ice",p.ice)+f("N° facture","numero",p.numero)+f("Page(s)","pages",p.pages)+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("ICE","ice",p.ice)+f("IF (identifiant fiscal)",ifField,ifVal)+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("N° facture","numero",p.numero)+f("Page(s)","pages",p.pages)+'</div>'
+    +tiersBadge
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("HT","ht",p.ht,1)+f("TVA","tva",p.tva,1)+f("TTC","ttc",p.ttc,1)+'</div>'
     +(bal>1?'<div style="font-size:11.5px;color:#B5530A;margin-top:6px">⚠️ HT + TVA ≠ TTC (écart '+fmtDH2(bal)+')</div>':'')
     +'<div style="margin-top:10px"><div class="flbl">Compte ('+(isV?"produit":"charge / immo")+')</div><select class="ipt" data-cp="'+p.id+':compte">'+opts+'</select>'+compteHintHtml(p)+'</div>'
@@ -6801,6 +6884,8 @@ function canonLignes(ecr){ if(ecr&&ecr.lignes)canonArr(ecr.lignes); return ecr; 
 // Normalise tous les comptes des écritures au format 10 chiffres (stockage uniforme)
 function comptaNormalizeEcritures(g){ (g&&g.ecritures||[]).forEach(function(e){ (e.lignes||[]).forEach(function(l){ if(l&&l.compte!=null&&l.compte!=="") l.compte=comptaCanon(l.compte); }); }); }
 function libCompte(cp){
+  // Comptes auxiliaires de tiers (4411xxxxxx / 3421xxxxxx) -> nom du fournisseur / client
+  var _t=tiersLabelFor(cp); if(_t)return _t;
   if(COMPTE_LABELS[cp])return COMPTE_LABELS[cp];
   var rt=cgncTrim(cp); if(COMPTE_LABELS[rt])return COMPTE_LABELS[rt];
   var f=(typeof PLAN_COMPTABLE!=="undefined"&&PLAN_COMPTABLE.find(function(a){return a[0]===cp||a[0]===rt;}))||(typeof PLAN_VENTES!=="undefined"&&PLAN_VENTES.find(function(a){return a[0]===cp||a[0]===rt;}));
@@ -6808,6 +6893,41 @@ function libCompte(cp){
   var g=(typeof cgncLabel!=="undefined")?cgncLabel(cp):"";
   if(g)return g;
   var cl=classifyCompte(cp); return cl?cl.m:"";
+}
+/* ===== VUE TIERS — annuaire des comptes auxiliaires fournisseurs / clients ===== */
+function tiersSolde(c,compte){
+  var ecs=ecrituresOf(c),s=0,cc=comptaCanon(compte);
+  ecs.forEach(function(e){(e.lignes||[]).forEach(function(l){ if(comptaCanon((l.compte||"").trim())===cc)s+=(+l.debit||0)-(+l.credit||0); });});
+  return Math.round(s*100)/100;
+}
+function comptaTiersBody(c){
+  if(!c)return '<div class="note mt5">Aucune société.</div>';
+  var g=comptaGet(c.id);
+  comptaResolveTiers(g);                 // garantit que chaque pièce a son compte auxiliaire
+  // recompte d'usage : nombre de pièces rattachées à chaque tiers
+  var usage={}; (g.pieces||[]).forEach(function(p){ if(p.tiersCompte){ var k=comptaCanon(p.tiersCompte); usage[k]=(usage[k]||0)+1; } });
+  var frs=(g.tiers||[]).filter(function(t){return t.type==="fournisseur";}).sort(function(a,b){return a.seq-b.seq;});
+  var cli=(g.tiers||[]).filter(function(t){return t.type==="client";}).sort(function(a,b){return a.seq-b.seq;});
+  function tbl(list,titre,coul){
+    if(!list.length)return '<div class="card" style="padding:18px"><div class="sectit mb2">'+titre+'</div><div class="note" style="font-size:12px">Aucun tiers détecté pour l\'instant. Importez des factures dans « Saisie / Import » : chaque fournisseur / client reçoit automatiquement un compte auxiliaire unique (détecté par ICE, IF puis nom).</div></div>';
+    var rows=list.map(function(t){
+      var solde=tiersSolde(c,t.compte), n=usage[comptaCanon(t.compte)]||0;
+      var sTxt=Math.abs(solde)<0.01?'<span style="color:var(--faint)">soldé</span>':(solde>0?'<span class="mono" style="color:#14201C">'+fmtDH2(solde)+' D</span>':'<span class="mono" style="color:#0a5f4a">'+fmtDH2(-solde)+' C</span>');
+      return '<tr style="border-top:1px solid var(--line)">'
+        +'<td style="padding:6px 8px" class="mono"><b>'+esc(comptaCanon(t.compte))+'</b></td>'
+        +'<td style="padding:6px 8px"><input class="ipt" data-tiers="'+esc(t.id)+':nom" value="'+esc(t.nom||"")+'" style="min-width:150px"></td>'
+        +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':ice" value="'+esc(t.ice||"")+'" placeholder="ICE" style="min-width:120px"></td>'
+        +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':if_" value="'+esc(t.if_||"")+'" placeholder="IF" style="min-width:110px"></td>'
+        +'<td style="padding:6px 8px;text-align:center">'+n+'</td>'
+        +'<td style="padding:6px 8px;text-align:right">'+sTxt+'</td></tr>';
+    }).join("");
+    return '<div class="card" style="padding:18px;overflow-x:auto"><div class="sectit mb2" style="color:'+coul+'">'+titre+' ('+list.length+')</div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:620px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px;text-align:center">Factures</th><th style="padding:4px 8px;text-align:right">Solde</th></tr>'+rows+'</table>'
+      +'<div class="note" style="font-size:11px;margin-top:8px">Modifier le nom, l\'ICE ou l\'IF met à jour toutes les écritures du tiers. Le regroupement se fait par ICE en priorité, puis IF, puis nom.</div></div>';
+  }
+  return '<div class="note mt4" style="font-size:12px;background:#F2F8F5;border-radius:10px;padding:10px 14px;color:#0a5f4a">'
+    +ic("building","width:14px;height:14px;vertical-align:-2px")+' <b>Un seul compte par tiers.</b> Chaque fournisseur reçoit un compte <b class="mono">4411xxxxxx</b> et chaque client un compte <b class="mono">3421xxxxxx</b>, créés automatiquement à partir des factures importées (identification par ICE / IF / nom). Les écritures d\'achat, de vente et de règlement sont imputées sur ces comptes auxiliaires.</div>'
+    +'<div class="grid mt4" style="grid-template-columns:1fr;gap:14px">'+tbl(frs,"Fournisseurs — comptes 4411","#2563EB")+tbl(cli,"Clients — comptes 3421","#0E7A5F")+'</div>';
 }
 // agrège toutes les lignes d'écriture de l'exercice par n° de compte
 function comptaBalanceRows(c){
@@ -6832,6 +6952,143 @@ function anN1Map(cid){
   if(st&&st.rows) st.rows.forEach(function(r){ var k=comptaCanon(r.c); map[k]=(map[k]||0)+(+r.solde||0); });
   return map;
 }
+/* ============================================================================
+   DIAGNOSTIC EXACT DU DÉSÉQUILIBRE — quelle écriture déséquilibre la balance ?
+   ============================================================================ */
+function comptaImbalanceDiag(c){
+  var ecs=ecrituresOf(c), bad=[], totD=0, totC=0;
+  ecs.forEach(function(e){
+    var d=0,cr=0; (e.lignes||[]).forEach(function(l){ d+=(+l.debit||0); cr+=(+l.credit||0); });
+    d=Math.round(d*100)/100; cr=Math.round(cr*100)/100; totD+=d; totC+=cr;
+    var ec=Math.round((d-cr)*100)/100;
+    if(Math.abs(ec)>0.004){
+      bad.push({id:e.id,date:e.date||"",journal:e.journal||"",piece:e.piece||"",deb:d,cred:cr,ecart:ec,
+        manuel:!!e.manuel,auto:!!e.auto,pieceId:e.pieceId||null,
+        nature:e.tvaReg?"Régularisation TVA":e.isReg?"Régularisation IS":e.affReg?"Affectation résultat":e.amort?"Dotations amortissements":e.pieceId?"Écriture de pièce":e.manuel?"Écriture manuelle":"Écriture"});
+    }
+  });
+  totD=Math.round(totD*100)/100; totC=Math.round(totC*100)/100;
+  bad.sort(function(a,b){return Math.abs(b.ecart)-Math.abs(a.ecart);});
+  return {totD:totD,totC:totC,ecart:Math.round((totD-totC)*100)/100,bad:bad,equilibre:Math.abs(totD-totC)<0.01};
+}
+// Bloc HTML expliquant précisément l'origine du déséquilibre
+function comptaImbalancePanel(c){
+  var dg=comptaImbalanceDiag(c);
+  if(dg.equilibre && !dg.bad.length)return "";
+  var rows=dg.bad.map(function(b){
+    return '<tr style="border-top:1px solid #f3d9d3">'
+      +'<td style="padding:6px 8px"><span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:#FBEAE8;color:#B42318">'+esc(b.nature)+'</span></td>'
+      +'<td style="padding:6px 8px" class="mono">'+esc(b.date)+'</td>'
+      +'<td style="padding:6px 8px">'+esc(b.journal)+'</td>'
+      +'<td style="padding:6px 8px">'+esc(b.piece||"—")+'</td>'
+      +'<td style="padding:6px 8px;text-align:right" class="mono">'+fmtDH2(b.deb)+'</td>'
+      +'<td style="padding:6px 8px;text-align:right" class="mono">'+fmtDH2(b.cred)+'</td>'
+      +'<td style="padding:6px 8px;text-align:right;font-weight:700;color:#B42318" class="mono">'+(b.ecart>0?"+":"")+fmtDH2(b.ecart)+'</td>'
+      +'<td style="padding:6px 8px;text-align:right">'+(b.manuel?'<button class="chip" data-act="comptaeditecr" data-id="'+esc(b.id)+'">✎ Corriger</button>':(b.pieceId?'<button class="chip" data-act="comptaeditpiece" data-id="'+esc(b.pieceId)+'">✎ Voir la pièce</button>':'<span style="font-size:11px;color:var(--faint)">auto</span>'))+'</td>'
+      +'</tr>';
+  }).join("");
+  var head=dg.bad.length
+    ? '<div style="font-weight:700;color:#B42318;margin-bottom:4px">⚠️ Déséquilibre de '+fmtDH2(Math.abs(dg.ecart))+' — origine identifiée ('+dg.bad.length+' écriture'+(dg.bad.length>1?"s":"")+' non équilibrée'+(dg.bad.length>1?"s":"")+') :</div>'
+      +'<div style="font-size:11.5px;color:#8a3a30;margin-bottom:8px">Chaque écriture listée a un total débit ≠ crédit. Corrigez-la pour rééquilibrer la balance. La somme des écarts ci-dessous explique exactement le déséquilibre total.</div>'
+    : '<div style="font-weight:700;color:#B42318;margin-bottom:6px">⚠️ Déséquilibre de '+fmtDH2(Math.abs(dg.ecart))+' — toutes les écritures sont pourtant équilibrées individuellement.</div>'
+      +'<div style="font-size:11.5px;color:#8a3a30;margin-bottom:4px">Cela vient généralement d\'un arrondi cumulé ou d\'un report à-nouveau (N-1) non équilibré. Vérifiez l\'onglet « À-nouveaux N-1 ».</div>';
+  return '<div class="card" style="padding:16px;margin:0 0 14px;background:#FEF6F4;border:1px solid #f3d9d3">'+head
+    +(dg.bad.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:640px"><tr style="color:#a26056;text-align:left"><th style="padding:4px 8px">Nature</th><th style="padding:4px 8px">Date</th><th style="padding:4px 8px">Jrnl</th><th style="padding:4px 8px">Pièce</th><th style="padding:4px 8px;text-align:right">Débit</th><th style="padding:4px 8px;text-align:right">Crédit</th><th style="padding:4px 8px;text-align:right">Écart</th><th></th></tr>'+rows+'</table></div>':"")
+    +'</div>';
+}
+
+/* ============================================================================
+   CLÔTURE — UN SEUL BOUTON pour générer toutes les écritures de fin d'année :
+   1) Dotations aux amortissements   2) Régularisations TVA (toutes périodes)
+   3) Régularisation de l'IS          4) Affectation du résultat
+   Idempotent : relancer met à jour les écritures existantes.
+   ============================================================================ */
+// liasse d'un client donné sans dépendre de S.liasseSel (valeurs par défaut)
+function liasseGet0(cid){ return S.liasse[S.year+"|"+cid]||{rc:"",reint:[{lib:"",mt:""}],deduc:[{lib:"",mt:""}],deficit:"",ca:"",pf:"",subv:"",tauxIS:"20",tauxCM:"0.25",exoCM:false,acomptesIS:"",immo:[immoNew()],prov:[provNew()]}; }
+function comptaCloturePost(cid){
+  var c=clients().find(function(x){return x.id===+cid;}); if(!c){showErr("Société introuvable.");return;}
+  var g=comptaGet(c.id); var done=[], skip=[];
+  // 1) DOTATIONS AUX AMORTISSEMENTS
+  (function(){
+    var lignes=[];
+    (g.immos||[]).forEach(function(im){ var dot=immoDotYear(im,S.year); if(dot<=0)return;
+      lignes.push({compte:immoDotCompte(im.compte),libelle:"DEA "+(im.libelle||""),debit:dot,credit:0});
+      lignes.push({compte:immoAmortCompte(im.compte),libelle:"Amort. "+(im.libelle||""),debit:0,credit:dot});
+    });
+    var id=immoRegId(c.id,S.year),ix=immoRegIndex(g,id);
+    if(!lignes.length){ if(ix>=0){g.ecritures.splice(ix,1);} skip.push("amortissements (aucune immobilisation amortissable)"); return; }
+    var ecr={id:id,date:S.year+"-12-31",journal:"OD",piece:"Dotations aux amortissements "+S.year,lignes:canonArr(lignes),manuel:true,amort:true};
+    if(ix>=0)g.ecritures[ix]=ecr; else g.ecritures.push(ecr);
+    done.push("Dotations aux amortissements");
+  })();
+  // 2) RÉGULARISATIONS TVA — toutes les périodes de l'exercice
+  (function(){
+    var pers=tvaPeriods(c); if(!pers.length){ skip.push("TVA (déclaration néant)"); return; }
+    var n=0;
+    pers.forEach(function(per){
+      var saved=S.tva[S.year+"|"+c.id+"|"+per.k];
+      var d=saved||tvaAuto(c.id,per.k);            // déclaration saisie, sinon calcul auto depuis la compta
+      var calc=tvaCalc(d), L=tvaRegLignes(calc);
+      var id=tvaRegId(c.id,per.k),ix=tvaRegIndex(g,id);
+      if(!L.length){ if(ix>=0)g.ecritures.splice(ix,1); return; }
+      var ecr={id:id,date:tvaPeriodEndDate(per.k),journal:"OD",piece:"Régularisation TVA "+per.label+" "+S.year,lignes:canonArr(L),manuel:true,tvaReg:true,period:per.k};
+      if(ix>=0)g.ecritures[ix]=ecr; else g.ecritures.push(ecr); n++;
+    });
+    if(n)done.push("Régularisations TVA ("+n+" période"+(n>1?"s":"")+")"); else skip.push("TVA (aucun montant à régulariser)");
+  })();
+  // 3) RÉGULARISATION DE L'IS
+  (function(){
+    var ld=S.liasse[S.year+"|"+c.id];
+    if(!ld){ skip.push("IS (liasse non renseignée)"); return; }
+    var d=Object.assign({},liasseGet0(c.id),ld);
+    var L=liasseRegLignes(d);
+    var id=liasseRegId(c.id,S.year),ix=liasseRegIndex(g,id);
+    if(!L.length){ if(ix>=0)g.ecritures.splice(ix,1); skip.push("IS (IS dû nul)"); return; }
+    var ecr={id:id,date:S.year+"-12-31",journal:"OD",piece:"Régularisation IS "+S.year,lignes:L,manuel:true,isReg:true};
+    if(ix>=0)g.ecritures[ix]=ecr; else g.ecritures.push(ecr);
+    done.push("Régularisation de l'IS");
+  })();
+  // 4) AFFECTATION DU RÉSULTAT
+  (function(){
+    var ld=S.liasse[S.year+"|"+c.id];
+    if(!ld){ skip.push("affectation du résultat (liasse non renseignée)"); return; }
+    var d=Object.assign({},liasseGet0(c.id),ld);
+    var r=liasseAffCalc(d,c),L=liasseAffLignes(d,c);
+    var id=liasseAffId(c.id,S.year),ix=liasseRegIndex(g,id);
+    if(!L.length){ if(ix>=0)g.ecritures.splice(ix,1); skip.push("affectation (aucun résultat à affecter)"); return; }
+    if(r.isBenef && r.ran<-0.005){ skip.push("affectation (sur-affectation : réserves+dividendes > bénéfice)"); return; }
+    var ecr={id:id,date:r.date,journal:"OD",piece:"Affectation résultat "+S.year,lignes:canonArr(L),manuel:true,affReg:true};
+    if(ix>=0)g.ecritures[ix]=ecr; else g.ecritures.push(ecr);
+    done.push("Affectation du résultat");
+  })();
+  comptaAutoPost(g); save("compta"); renderView();
+  var msg="Clôture "+S.year+" — "+(done.length?done.length+" régularisation(s) générée(s) : "+done.join(", ")+".":"aucune écriture générée.");
+  if(skip.length)msg+=" Ignoré : "+skip.join(" ; ")+".";
+  if(done.length)showOk(msg); else showErr(msg);
+}
+// Supprime toutes les écritures de clôture générées automatiquement (annulation)
+function comptaClotureUndo(cid){
+  var c=clients().find(function(x){return x.id===+cid;}); if(!c)return;
+  if(!window.confirm("Supprimer toutes les écritures de régularisation de fin d'année "+S.year+" (amortissements, TVA, IS, affectation) ?"))return;
+  var g=comptaGet(c.id),n0=g.ecritures.length;
+  g.ecritures=g.ecritures.filter(function(e){ return !(e.amort||e.tvaReg||e.isReg||e.affReg); });
+  comptaAutoPost(g); save("compta"); renderView();
+  showOk((n0-g.ecritures.length)+" écriture(s) de régularisation supprimée(s).");
+}
+// Carte « Régulariser tout » (bouton unique de clôture)
+function comptaClotureCard(c){
+  var g=comptaGet(c.id);
+  var has=(g.ecritures||[]).some(function(e){return e.amort||e.tvaReg||e.isReg||e.affReg;});
+  return '<div class="card" style="padding:16px;margin:0 0 14px;background:#F2F8F5;border:1px solid #cfe6dc">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
+    +'<div><div class="sectit" style="color:#0a5f4a">'+ic("check","width:15px;height:15px;vertical-align:-2px")+' Régularisation de fin d\'année — '+esc(c.dossier)+' · '+S.year+'</div>'
+    +'<div style="font-size:11.5px;color:#5a7a6e;margin-top:3px">Un seul clic génère (ou met à jour) toutes les écritures de clôture : <b>dotations aux amortissements</b>, <b>régularisations de TVA</b> (toutes périodes), <b>régularisation de l\'IS</b> et <b>affectation du résultat</b>.</div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    +'<button class="btn-primary" data-act="compta_cloture" data-id="'+c.id+'" style="background:#0E7A5F">'+ic("check","width:15px;height:15px;vertical-align:-2px")+' '+(has?"Mettre à jour la clôture":"Régulariser toute l\'année")+'</button>'
+    +(has?'<button class="chip" data-act="compta_cloture_undo" data-id="'+c.id+'" style="color:#B42318;border-color:#f0c9c4">'+ic("trash","width:13px;height:13px;vertical-align:-2px")+' Annuler la clôture</button>':"")
+    +'</div></div></div>';
+}
+
 function comptaBalanceBody(c){
   var rows=comptaBalanceRows(c);
   var n1=anN1Map(c.id), n1keys=Object.keys(n1), hasN1=n1keys.length>0;
@@ -6864,7 +7121,10 @@ function comptaBalanceBody(c){
   var n1th = showN1 ? ('<th style="text-align:right;padding:4px 8px;background:#FBF9F2">Solde Débiteur N-1 ('+(S.year-1)+')</th><th style="text-align:right;padding:4px 8px;background:#FBF9F2;border-right:2px solid #E6DFC9">Solde Créditeur N-1 ('+(S.year-1)+')</th>') : '';
   var n1tot = showN1 ? ('<td class="mono" style="text-align:right;padding:6px 8px;background:#F5F1E4">'+fmtDH2(tN1D)+'</td><td class="mono" style="text-align:right;padding:6px 8px;background:#F5F1E4;border-right:2px solid #E6DFC9">'+fmtDH2(tN1C)+'</td>') : '';
   return '<div class="card mt4" style="padding:20px;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px"><div class="sectit">Balance comptable — '+esc(c.dossier)+' · '+S.year+(showN1?' (comparée à '+(S.year-1)+')':'')+'</div><span class="note" style="font-size:11.5px">'+allRows.length+' comptes · générée depuis les écritures de l\'exercice'+(hasN1&&!showN1?' · comparaison N-1 disponible':'')+'</span></div>'
-    +badge+actions
+    +badge
+    +(ok?"":comptaImbalancePanel(c))
+    +comptaClotureCard(c)
+    +actions
     +'<table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte</th><th style="padding:4px 8px">Intitulé</th>'+n1th+'<th style="text-align:right;padding:4px 8px">Mvt Débit</th><th style="text-align:right;padding:4px 8px">Mvt Crédit</th><th style="text-align:right;padding:4px 8px">Solde Débiteur</th><th style="text-align:right;padding:4px 8px">Solde Créditeur</th></tr>'+body
     +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="2" style="padding:6px 8px">TOTAUX</td>'+n1tot+'<td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tDeb)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tCred)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tSDeb)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tSCred)+'</td></tr></table>'
     +'<div class="note" style="margin-top:10px;font-size:11.5px">💡 Cliquez sur une ligne pour afficher le détail du compte dans le grand livre. '+(hasN1?'Les colonnes <b>'+(S.year-1)+'</b> proviennent du FEC / grand livre N-1 importé dans « À-nouveaux N-1 ».':'Importez un FEC / grand livre N-1 dans « À-nouveaux N-1 » pour afficher les colonnes de comparaison '+(S.year-1)+'.')+' « Injecter dans la liasse » remplit le module Liasse / IS (Bilan, CPC, ESG).</div></div>';
@@ -7091,7 +7351,12 @@ function ocrTiers(type,x){
 function ocrTiersIce(type,x){
   x=x||{};
   if(type==="vente"){ return x.ice_client||x.client_ice||x.iceClient||""; }
-  return x.ice_fournisseur||"";
+  return x.ice_fournisseur||x.ice||x.fournisseur_ice||"";
+}
+function ocrTiersIf(type,x){
+  x=x||{};
+  if(type==="vente"){ return x.if_client||x.client_if||x.identifiant_fiscal_client||x.ifClient||""; }
+  return x.if_fournisseur||x.fournisseur_if||x.identifiant_fiscal||x.identifiant_fiscal_fournisseur||x.if_||x.if||"";
 }
 async function comptaUpload(type,files){
   if(!sb||!session){showErr("Connectez-vous (cloud) pour importer.");return;}
@@ -7139,7 +7404,7 @@ async function comptaUpload(type,files){
       }
       var _det=detectCompte({type:type,libelle:(x.designation||x.libelle||x.description||x.objet||x.nature||""),fournisseur:x.fournisseur||"",categorie:x.categorie||"",soc:soc});
       var piece={id:Date.now()+"_"+i+"_"+j,type:type,name:f.name+(multi?" — facture "+(j+1)+"/"+facts.length:""),path:piecePath,status:"avalider",
-        date:x.date||"",fournisseur:ocrTiers(type,x)||"",ice:ocrTiersIce(type,x)||"",numero:x.numero||"",
+        date:x.date||"",fournisseur:ocrTiers(type,x)||"",ice:ocrTiersIce(type,x)||"",if_:ocrTiersIf(type,x)||"",numero:x.numero||"",
         ht:x.montant_ht!=null?x.montant_ht:"",tva:x.montant_tva!=null?x.montant_tva:"",ttc:x.montant_ttc!=null?x.montant_ttc:"",
         compte:_det.compte,compteAuto:true,compteReason:_det.reason,compteConf:_det.confidence,extracted:x,
         pages:(piecePath!==path)?"":(x.pages||"")}; // si découpé, plus besoin de n° de page
@@ -7294,7 +7559,7 @@ async function comptaUploadGrouped(type,files){
       var piece={id:Date.now()+"_"+i+"_"+gi,type:type,
         name:f.name+" — facture "+(gi+1)+"/"+groups.length+" ("+pageLbl+")",
         path:piecePath,status:"avalider",
-        date:gx.date||"",fournisseur:ocrTiers(type,gx)||"",ice:ocrTiersIce(type,gx)||"",numero:gx.numero||"",
+        date:gx.date||"",fournisseur:ocrTiers(type,gx)||"",ice:ocrTiersIce(type,gx)||"",if_:ocrTiersIf(type,gx)||"",numero:gx.numero||"",
         ht:gx.montant_ht!=null?gx.montant_ht:"",tva:gx.montant_tva!=null?gx.montant_tva:"",ttc:gx.montant_ttc!=null?gx.montant_ttc:"",
         compte:_det.compte,compteAuto:true,compteReason:_det.reason,compteConf:_det.confidence,extracted:gx,pages:""};
       if(grp.err)piece.ocrError=grp.err;
@@ -7322,6 +7587,18 @@ function pieceSig(p){
   var num=(p.numero||"").trim().toLowerCase().replace(/\s+/g,"");
   var key=num?num:("d:"+(p.date||""));
   return p.type+"|"+key+"|"+ttc+"|"+tiers;
+}
+// Édition d'un tiers (nom / ICE / IF) depuis la vue Tiers — met à jour les écritures
+function comptaTiersInput(t){
+  var f=t.dataset.tiers.split(":"),tid=f[0],field=f[1],cid=String(S.curClient),g=comptaGet(cid);
+  var ti=(g.tiers||[]).find(function(x){return String(x.id)===String(tid);}); if(!ti)return;
+  ti[field]=t.value;
+  // propage le nouveau nom aux pièces rattachées (libellés des écritures)
+  if(field==="nom"){
+    var cc=comptaCanon(ti.compte);
+    (g.pieces||[]).forEach(function(p){ if(p.tiersCompte && comptaCanon(p.tiersCompte)===cc){ p.fournisseur=t.value; } });
+  }
+  comptaAutoPost(g); save("compta");
 }
 function comptaInput(t){
   var f=t.dataset.cp.split(":"),pid=f[0],field=f[1],cid=String(S.curClient),g=comptaGet(cid);
@@ -9061,6 +9338,10 @@ document.addEventListener("click",e=>{
   else if(a==="balgl"){S.modal={type:"balgl",cid:+t.dataset.id,compte:t.dataset.c};renderModal();}
   else if(a==="comptabal_copy"){comptaBalCopy(t.dataset.id);}
   else if(a==="comptabal_xlsx"){comptaBalXlsx(t.dataset.id);}
+  else if(a==="compta_cloture"){comptaCloturePost(t.dataset.id);}
+  else if(a==="compta_cloture_undo"){comptaClotureUndo(t.dataset.id);}
+  else if(a==="comptaeditecr"){S.comptaView="manuel";renderView();odEdit(t.dataset.id);}
+  else if(a==="comptaeditpiece"){S.comptaView="saisie";renderView();comptaEditor(t.dataset.id);}
   else if(a==="comptaimport"){var inp=document.getElementById("compta_file_"+t.dataset.type);if(inp)inp.click();}
   else if(a==="an_import_click"){var inp=document.getElementById("compta_file_an");if(inp)inp.click();}
   else if(a==="an_paste_go"){comptaANPaste();}
@@ -9172,6 +9453,7 @@ document.addEventListener("input",e=>{
   if(t.dataset.annex!=null){annexInput(t);return;}
   if(t.dataset.tbl!=null){tblInput(t);return;}
   if(t.dataset.cp!=null){comptaInput(t);return;}
+  if(t.dataset.tiers!=null){comptaTiersInput(t);return;}
   if(t.dataset.anmap!=null){comptaANSetMap(t.dataset.anmap,t.value);return;}
   if(t.dataset.anpaid!=null){anItemToggle(t.dataset.anpaid);return;}
   if(t.dataset.anpaiddate!=null){anItemDate(t.dataset.anpaiddate,t.value);return;}
