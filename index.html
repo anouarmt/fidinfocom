@@ -1915,7 +1915,7 @@ function liasseResultsHtml(c){
   function ln(l,v,strong,col){return '<div style="display:flex;justify-content:space-between;padding:4px 0;'+(strong?"font-weight:700":"")+'"><span style="color:var(--muted)">'+l+'</span><span class="mono" style="'+(col?"color:"+col:"")+'">'+fmtDH(v)+'</span></div>';}
   var sign=c.rc>=0?"Bénéfice":"Déficit";
   return '<div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Passage au résultat fiscal</div>'
-    +ln("Résultat comptable ("+sign+")",c.rc)
+    +ln("Résultat net comptable ("+sign+")",c.rc)
     +ln("+ Réintégrations",c.sumR,false,"#B5530A")
     +ln("− Déductions",c.sumD,false,"#0E7A5F")
     +ln("= Résultat fiscal brut",c.rfBrut,true)
@@ -2330,7 +2330,7 @@ async function exportAllExcel(){
     if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
     var wb=window.XLSX.utils.book_new();
     function add(name,aoa){var ws=window.XLSX.utils.aoa_to_sheet(aoa);window.XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));}
-    var is=[["RÉSULTAT FISCAL & IS — "+c.dossier+" — Exercice "+S.year],[],["Résultat comptable","",calc.rc],["Total réintégrations","",calc.sumR],["Total déductions","",calc.sumD],["Résultat fiscal brut","",calc.rfBrut],["Report déficitaire","",calc.imput],["Résultat net fiscal","",calc.rfNet],[],["IS théorique ("+(calc.tauxIS*100)+"%)","",calc.isTheo],["Cotisation minimale","",calc.cm],["IS DÛ","",calc.isDu],["Acompte (25%)","",calc.acompte]];
+    var is=[["RÉSULTAT FISCAL & IS — "+c.dossier+" — Exercice "+S.year],[],["Résultat net comptable","",calc.rc],["Total réintégrations","",calc.sumR],["Total déductions","",calc.sumD],["Résultat fiscal brut","",calc.rfBrut],["Report déficitaire","",calc.imput],["Résultat net fiscal","",calc.rfNet],[],["IS théorique ("+(calc.tauxIS*100)+"%)","",calc.isTheo],["Cotisation minimale","",calc.cm],["IS DÛ","",calc.isDu],["Acompte (25%)","",calc.acompte]];
     add("Résultat fiscal IS",is);
     if(b.nbComptes){
       var bo=bilanOff(parseBalance(d.balText||""));
@@ -2358,7 +2358,7 @@ function printAllPDF(){
   var d=liasseGet(),calc=liasseCalc(d),b=bilanBuild(parseBalance(d.balText||"")),soc=((S.flags[c.id]||{}).societe)||{};
   function tbl(title,rows){return '<h3>'+title+'</h3><table>'+rows+'</table>';}
   function tr(l,v,strong){return '<tr'+(strong?' class="s"':'')+'><td>'+l+'</td><td class="r">'+fmtDH(v)+'</td></tr>';}
-  var H='<h2>Résultat fiscal & IS</h2><table>'+tr("Résultat comptable",calc.rc)+tr("+ Réintégrations",calc.sumR)+tr("− Déductions",calc.sumD)+tr("= Résultat fiscal brut",calc.rfBrut,1)+tr("− Report déficitaire",calc.imput)+tr("= Résultat net fiscal",calc.rfNet,1)+tr("IS théorique ("+(calc.tauxIS*100)+"%)",calc.isTheo)+tr("Cotisation minimale",calc.cm)+tr("IS DÛ",calc.isDu,1)+tr("Acompte (25%)",calc.acompte)+'</table>';
+  var H='<h2>Résultat fiscal & IS</h2><table>'+tr("Résultat net comptable",calc.rc)+tr("+ Réintégrations",calc.sumR)+tr("− Déductions",calc.sumD)+tr("= Résultat fiscal brut",calc.rfBrut,1)+tr("− Report déficitaire",calc.imput)+tr("= Résultat net fiscal",calc.rfNet,1)+tr("IS théorique ("+(calc.tauxIS*100)+"%)",calc.isTheo)+tr("Cotisation minimale",calc.cm)+tr("IS DÛ",calc.isDu,1)+tr("Acompte (25%)",calc.acompte)+'</table>';
   if(b.nbComptes){
     var bo=bilanOff(parseBalance(d.balText||""));
     var aH='<tr><th>Rubrique</th><th class=r>Brut</th><th class=r>Amort/Prov</th><th class=r>Net</th></tr>';
@@ -2406,6 +2406,7 @@ function vLiasse(){
   if(S.liasseView==="bilan") body=renderBilanBody(d);
   else if(S.liasseView==="cpc") body=renderCPCBody(d);
   else if(S.liasseView==="esg") body=renderESGBody(d);
+  else if(S.liasseView==="affectation") body=vLiasseAffectation(d,c);
   else if(ANNEX_DEFS[S.liasseView]) body=vTbl(S.liasseView,d);
   else body=liasseISBody(d);
   return head+liasseTopbar(clientOpts)+body+'</div>';
@@ -2447,6 +2448,150 @@ function liasseRegDel(){
   var cid=S.liasseSel.id; if(!cid)return; var g=comptaGet(cid),id=liasseRegId(cid,S.year),ix=liasseRegIndex(g,id);
   if(ix<0){showErr("Aucune écriture de régularisation IS pour "+S.year+".");return;}
   g.ecritures.splice(ix,1); save("compta"); renderView(); showOk("Écriture de régularisation IS supprimée du journal.");
+}
+/* ========== AFFECTATION DU RÉSULTAT → REPORT À NOUVEAU ==========
+   Bénéfice : Débit 1191 (ou 1181) / Crédit 1140 réserve légale, réserves, 4465 dividendes, 1161 RAN créditeur.
+   Perte    : Crédit 1199 (ou 1189) / Débit 1169 RAN débiteur.
+   Réserve légale : 5 % du bénéfice, plafonnée à 10 % du capital (loi 17-95). */
+function liasseAffData(d){var a=d.aff||{};return {
+  source:a.source||"1191", date:a.date||((S.year+1)+"-06-30"),
+  legale:(a.legale==null?"":a.legale), resCompte:a.resCompte||"1152",
+  reserves:(a.reserves==null?"":a.reserves), dividendes:(a.dividendes==null?"":a.dividendes)};}
+function liasseAffSuggest(c){
+  var rows=c?comptaBalanceRows(c):[],cap=0,leg=0,ran=0;
+  rows.forEach(function(r){var t=cgncTrim(r.c);
+    if(t.indexOf("111")===0)cap+=(r.sCred-r.sDeb);
+    else if(t.indexOf("1140")===0)leg+=(r.sCred-r.sDeb);
+    else if(t.indexOf("1161")===0)ran+=(r.sCred-r.sDeb);
+    else if(t.indexOf("1169")===0)ran-=(r.sDeb-r.sCred);});
+  return {capital:Math.round(cap*100)/100,legaleExistante:Math.round(leg*100)/100,ranAnterieur:Math.round(ran*100)/100};
+}
+function liasseAffCalc(d,c){
+  var sug=liasseAffSuggest(c),aff=liasseAffData(d);
+  var benefice=num(d.rc),isBenef=benefice>=0,abs=Math.round(Math.abs(benefice)*100)/100;
+  var legaleSug=0;
+  if(isBenef&&abs>0){var room=Math.max(0,sug.capital*0.10-sug.legaleExistante);legaleSug=Math.round(Math.min(abs*0.05,room)*100)/100;}
+  var hasLeg=(aff.legale!==""&&aff.legale!=null);
+  var legale=isBenef?(hasLeg?Math.round(num(aff.legale)*100)/100:legaleSug):0;
+  var reserves=isBenef?Math.round(num(aff.reserves)*100)/100:0;
+  var dividendes=isBenef?Math.round(num(aff.dividendes)*100)/100:0;
+  var ran=Math.round((abs-legale-reserves-dividendes)*100)/100;
+  return {benefice:benefice,isBenef:isBenef,abs:abs,capital:sug.capital,legaleExistante:sug.legaleExistante,
+    ranAnterieur:sug.ranAnterieur,legaleSug:legaleSug,legale:legale,reserves:reserves,dividendes:dividendes,
+    ran:ran,source:aff.source,resCompte:aff.resCompte,date:aff.date,hasLeg:hasLeg};
+}
+function liasseAffLignes(d,c){
+  var r=liasseAffCalc(d,c),L=[];if(r.abs<=0)return L;
+  if(r.isBenef){
+    var src=r.source==="1181"?"1181000000":"1191000000";
+    L.push({compte:src,libelle:"Affectation résultat "+S.year+" (bénéfice)",debit:r.abs,credit:0});
+    if(r.legale>0)L.push({compte:"1140000000",libelle:"Réserve légale",debit:0,credit:r.legale});
+    if(r.reserves>0)L.push({compte:comptaCanon(r.resCompte),libelle:"Autres réserves",debit:0,credit:r.reserves});
+    if(r.dividendes>0)L.push({compte:"4465000000",libelle:"Associés - dividendes à payer",debit:0,credit:r.dividendes});
+    if(r.ran>0.005)L.push({compte:"1161000000",libelle:"Report à nouveau (créditeur)",debit:0,credit:r.ran});
+  }else{
+    var srcP=r.source==="1181"?"1189000000":"1199000000";
+    L.push({compte:srcP,libelle:"Affectation résultat "+S.year+" (perte)",debit:0,credit:r.abs});
+    L.push({compte:"1169000000",libelle:"Report à nouveau (débiteur)",debit:r.abs,credit:0});
+  }
+  return L;
+}
+function liasseAffAnoms(r){
+  var a=[];
+  if(r.abs<=0){a.push({t:"info",m:"Aucun résultat à affecter. Renseignez/détectez le résultat net comptable."});return a;}
+  if(r.isBenef){
+    a.push({t:"ok",m:"Bénéfice à affecter : "+fmtDH(r.abs)});
+    if(r.ran<-0.005)a.push({t:"err",m:"Sur-affectation : réserves + dividendes ("+fmtDH(r.legale+r.reserves+r.dividendes)+") dépassent le bénéfice. Réduisez les montants."});
+    else a.push({t:"ok",m:"Report à nouveau (créditeur) constitué : "+fmtDH(r.ran)});
+    if(r.capital>0){
+      if(r.legaleExistante>=r.capital*0.10-0.005)a.push({t:"info",m:"Réserve légale déjà au plafond (10 % du capital "+fmtDH(r.capital)+"). Dotation facultative."});
+      else a.push({t:"info",m:"Réserve légale suggérée : "+fmtDH(r.legaleSug)+" (5 % plafonné à 10 % du capital "+fmtDH(r.capital)+"; déjà doté : "+fmtDH(r.legaleExistante)+")."});
+    } else a.push({t:"warn",m:"Capital social non détecté en comptabilité : vérifiez la dotation à la réserve légale."});
+    if(r.ranAnterieur<-0.005)a.push({t:"warn",m:"Report à nouveau débiteur antérieur ("+fmtDH(r.ranAnterieur)+") : il doit être apuré avant dotation de la réserve légale."});
+  }else{
+    a.push({t:"warn",m:"Perte de l'exercice : "+fmtDH(r.abs)+" → reportée en report à nouveau débiteur (1169)."});
+  }
+  return a;
+}
+function liasseAffId(cid,year){return "AFFECT|"+year+"|"+cid;}
+function liasseAffExists(cid,year){if(!cid)return false;var g=comptaGet(cid);return liasseRegIndex(g,liasseAffId(cid,year))>=0;}
+function liasseAffPost(){
+  var cid=S.liasseSel.id;if(!cid){showErr("Sélectionnez une société.");return;}
+  var c=clients().find(function(x){return x.id===cid;});
+  var d=Object.assign({},liasseGet(),S.liasse[liasseKey()]||{});
+  var r=liasseAffCalc(d,c),L=liasseAffLignes(d,c);
+  if(!L.length){showErr("Aucun résultat à affecter pour "+S.year+".");return;}
+  if(r.isBenef&&r.ran<-0.005){showErr("Sur-affectation : le total réserves + dividendes dépasse le bénéfice.");return;}
+  var g=comptaGet(cid),id=liasseAffId(cid,S.year),ix=liasseRegIndex(g,id);
+  var ecr={id:id,date:r.date,journal:"OD",piece:"Affectation résultat "+S.year,lignes:canonArr(L),manuel:true,affReg:true};
+  if(ix>=0)g.ecritures[ix]=ecr;else g.ecritures.push(ecr);
+  save("compta");renderView();
+  showOk("Affectation du résultat "+S.year+" comptabilisée (journal OD, "+r.date+"). Report à nouveau généré. Visible dans Comptabilité → Journal général.");
+}
+function liasseAffDel(){
+  var cid=S.liasseSel.id;if(!cid)return;var g=comptaGet(cid),id=liasseAffId(cid,S.year),ix=liasseRegIndex(g,id);
+  if(ix<0){showErr("Aucune écriture d'affectation pour "+S.year+".");return;}
+  g.ecritures.splice(ix,1);save("compta");renderView();showOk("Écriture d'affectation du résultat supprimée du journal.");
+}
+function affAcc(c){c=String(c||"");var t=c.replace(/0+$/,"");return t.length>=4?t:c.slice(0,4);}
+function affRanHtml(r){
+  if(r.isBenef)return '<span style="font-weight:700;color:#0E7A5F">Report à nouveau (créditeur)</span><span class="ff" style="font-size:19px;font-weight:700;color:#0E7A5F">'+fmtDH(r.ran)+'</span>';
+  return '<span style="font-weight:700;color:#B42318">Report à nouveau (débiteur)</span><span class="ff" style="font-size:19px;font-weight:700;color:#B42318">'+fmtDH(r.abs)+'</span>';
+}
+function affRightHtml(r,c){
+  var aff={source:r.source,resCompte:r.resCompte,date:r.date},exists=liasseAffExists(c?c.id:null,S.year),L=liasseAffLignes_fromCalc(r);
+  var col={err:["#B42318","#FBEAE8","🔴"],warn:["#9A7610","#FAF3DD","🟡"],ok:["#0E7A5F","#E3F1EB","🟢"],info:["#5C6B66","#EEF1EF","⚪"]};
+  var anoms=liasseAffAnoms(r).map(function(x){var k=col[x.t];return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:'+k[1]+';color:'+k[0]+';font-size:12.5px;margin-bottom:6px">'+k[2]+' '+esc(x.m)+'</div>';}).join("");
+  var preview=L.length?('<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px"><tr style="color:var(--faint);text-align:left"><th style="padding:3px 6px">Compte</th><th style="padding:3px 6px">Libellé</th><th style="text-align:right;padding:3px 6px">Débit</th><th style="text-align:right;padding:3px 6px">Crédit</th></tr>'
+      +L.map(function(l){return '<tr><td class="mono" style="padding:2px 6px">'+esc(affAcc(l.compte))+'</td><td style="padding:2px 6px;color:var(--muted)">'+esc(l.libelle)+'</td><td class="mono" style="text-align:right;padding:2px 6px">'+(l.debit?fmtDH(l.debit):"")+'</td><td class="mono" style="text-align:right;padding:2px 6px">'+(l.credit?fmtDH(l.credit):"")+'</td></tr>';}).join("")
+      +'</table></div>'):'<div class="note" style="font-size:12px;color:var(--muted)">Renseignez le résultat net (onglet « Résultat fiscal & IS » ou bouton Détecter) pour générer l\'écriture.</div>';
+  return '<div class="card" style="padding:20px"><div class="sectit mb3">'+ic("alert")+' Contrôles</div>'+(anoms||'<div style="font-size:12px;color:var(--faint)">—</div>')+'</div>'
+    +'<div class="card" style="padding:20px;margin-top:16px"><div class="sectit mb3">'+ic("book")+' Écriture (journal OD)</div>'+preview
+    +(exists?'<div class="note" style="background:#E3F1EB;color:#0a5f4a;border-radius:8px;padding:6px 10px;font-size:11.5px;margin-top:8px">✓ Affectation '+S.year+' déjà enregistrée. La régénérer la met à jour.</div>':'')
+    +(L.length?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn-primary" data-act="liasse_aff_post" style="flex:1;min-width:170px">'+ic("check","width:15px;height:15px;vertical-align:-2px")+' '+(exists?"Mettre à jour l'écriture":"Comptabiliser l'affectation")+'</button>'
+      +(exists?'<button class="chip" data-act="liasse_aff_del" style="color:#B42318;border-color:#f0c9c4">'+ic("trash","width:14px;height:14px")+' Supprimer</button>':'')+'</div>':'')
+    +'</div>'
+    +'<div class="note" style="margin-top:14px;font-size:11.5px">L\'écriture est datée de l\'AGO ('+esc(r.date)+') : elle alimente le <b>report à nouveau d\'ouverture</b> de l\'exercice suivant. Réserve légale, plafond et apurement des pertes antérieures restent à valider (loi 17-95, art. 329).</div>';
+}
+function vLiasseAffectation(d,c){
+  var r=liasseAffCalc(d,c),aff=liasseAffData(d);
+  var resOpts=[["1152","1152 · Réserves facultatives"],["1151","1151 · Réserves statutaires"],["1155","1155 · Réserves réglementées"],["1158","1158 · Autres réserves"]]
+    .map(function(o){return '<option value="'+o[0]+'"'+(aff.resCompte===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("");
+  var srcOpts=[["1191","Résultat net de l'exercice (1191/1199)"],["1181","Résultat en instance d'affectation (1181/1189)"]]
+    .map(function(o){return '<option value="'+o[0]+'"'+(aff.source===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("");
+  function fld(lbl,key,val,ph){return '<div><div class="flbl">'+lbl+'</div><input class="ipt mono" type="number" data-liasse="aff:'+key+'" placeholder="'+(ph||"0")+'" value="'+esc(val)+'"></div>';}
+  var dateField='<div><div class="flbl">Date de l\'écriture (AGO)</div><input class="ipt mono" data-liasse="aff:date" value="'+esc(aff.date)+'" placeholder="'+(S.year+1)+'-06-30"></div>';
+  var left='<div class="card" style="padding:20px">'
+    +'<div class="sectit mb3">'+ic("book")+' Affectation du résultat '+S.year+'</div>'
+    +'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span style="color:var(--muted)">Résultat net comptable</span><span class="mono" style="font-weight:700;color:'+(r.isBenef?"#0E7A5F":"#B42318")+'">'+fmtDH(r.benefice)+'</span></div>'
+    +'<div class="grid g2" style="margin-top:12px"><div><div class="flbl">Compte de résultat à solder</div><select class="ipt" data-liasse="aff:source">'+srcOpts+'</select></div>'+dateField+'</div>';
+  if(r.isBenef){
+    left+='<div class="sectit" style="margin:16px 0 8px;color:#B5530A">Répartition du bénéfice</div>'
+      +'<div class="grid g2">'+fld("Réserve légale (suggérée "+fmtDH(r.legaleSug)+")","legale",aff.legale,String(r.legaleSug))
+      +'<div><div class="flbl">Compte autres réserves</div><select class="ipt" data-liasse="aff:resCompte">'+resOpts+'</select></div>'
+      +fld("Autres réserves","reserves",aff.reserves)+fld("Dividendes (4465)","dividendes",aff.dividendes)+'</div>'
+      +'<div id="liasseAffRan" style="margin-top:12px;padding:12px;border-radius:10px;background:#E3F1EB;display:flex;justify-content:space-between;align-items:center">'+affRanHtml(r)+'</div>';
+  }else{
+    left+='<div id="liasseAffRan" style="margin-top:12px;padding:12px;border-radius:10px;background:#FBEAE8;display:flex;justify-content:space-between;align-items:center">'+affRanHtml(r)+'</div>';
+  }
+  left+='</div>';
+  return '<div id="liasseAffBody"><div class="grid mt4" style="grid-template-columns:1.1fr 1fr;align-items:start">'+left+'<div id="liasseAffRight">'+affRightHtml(r,c)+'</div></div></div>';
+}
+function liasseAffLignes_fromCalc(r){
+  var L=[];if(r.abs<=0)return L;
+  if(r.isBenef){
+    var src=r.source==="1181"?"1181000000":"1191000000";
+    L.push({compte:src,libelle:"Affectation résultat "+S.year+" (bénéfice)",debit:r.abs,credit:0});
+    if(r.legale>0)L.push({compte:"1140000000",libelle:"Réserve légale",debit:0,credit:r.legale});
+    if(r.reserves>0)L.push({compte:comptaCanon(r.resCompte),libelle:"Autres réserves",debit:0,credit:r.reserves});
+    if(r.dividendes>0)L.push({compte:"4465000000",libelle:"Associés - dividendes à payer",debit:0,credit:r.dividendes});
+    if(r.ran>0.005)L.push({compte:"1161000000",libelle:"Report à nouveau (créditeur)",debit:0,credit:r.ran});
+  }else{
+    var srcP=r.source==="1181"?"1189000000":"1199000000";
+    L.push({compte:srcP,libelle:"Affectation résultat "+S.year+" (perte)",debit:0,credit:r.abs});
+    L.push({compte:"1169000000",libelle:"Report à nouveau (débiteur)",debit:r.abs,credit:0});
+  }
+  return L;
 }
 function liasseRegBodyHtml(d){
   var r=liasseRegCalc(d),cid=S.liasseSel.id,exists=liasseRegExists(cid,S.year),L=liasseRegLignes(d);
@@ -2515,6 +2660,49 @@ function liasseChecklist(kind,arr){
   return '<div style="font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin:2px 0 6px">Postes courants — cochez pour ajouter</div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+chips+'</div>';
 }
+/* ----- Détection automatique des réintégrations / déductions depuis les écritures -----
+   Mappe des racines de comptes CGNC vers un poste. side="deb" => solde débiteur (charges),
+   "cred" => solde créditeur (produits). cap=true => montant à plafonner (part déductible). */
+var LIASSE_AUTO=[
+  {kind:"reint",code:"is",        roots:["6701"],                 side:"deb"},
+  {kind:"reint",code:"amendes",   roots:["6583"],                 side:"deb"},
+  {kind:"reint",code:"dons",      roots:["6586","61462","6146"],  side:"deb", cap:true},
+  {kind:"deduc",code:"dividendes",roots:["7321","7325","7328"],   side:"cred"}
+];
+function liasseAutoDetect(c){
+  var rows=comptaBalanceRows(c),out={reint:{},deduc:{}};
+  LIASSE_AUTO.forEach(function(m){
+    var amt=0,comptes=[];
+    rows.forEach(function(r){
+      var t=cgncTrim(r.c);
+      var hit=m.roots.some(function(rt){return String(r.c).indexOf(rt)===0||String(t).indexOf(rt)===0;});
+      if(!hit)return;
+      var v=(m.side==="deb")?r.sDeb:r.sCred;
+      if(v>0.005){amt+=v;comptes.push(t||r.c);}
+    });
+    if(amt>0.005)out[m.kind][m.code]={amt:Math.round(amt*100)/100,comptes:comptes,cap:!!m.cap};
+  });
+  return out;
+}
+/* Chiffres comptables tirés de la balance de l'exercice : résultat net comptable (produits cl.7 − charges cl.6,
+   IS inclus) + assiette de la cotisation minimale (CA 711/712, produits financiers 73 hors reprises 739,
+   subventions & dons reçus 716/756/7586). Art. 144 CGI — à vérifier selon le plan de comptes. */
+function liasseComptaFigures(c){
+  var rows=comptaBalanceRows(c);
+  function sumRoots(roots,side,excl){var t=0;rows.forEach(function(r){var tr=cgncTrim(r.c);
+    var hit=roots.some(function(rt){return String(r.c).indexOf(rt)===0||String(tr).indexOf(rt)===0;});
+    if(!hit)return;
+    if(excl&&excl.some(function(x){return String(r.c).indexOf(x)===0||String(tr).indexOf(x)===0;}))return;
+    t+=(side==="deb"?r.sDeb:r.sCred);});return Math.round(t*100)/100;}
+  var prod=0,charge=0;
+  rows.forEach(function(r){var d0=String(r.c).charAt(0);
+    if(d0==="7")prod+=(r.sCred-r.sDeb);
+    else if(d0==="6")charge+=(r.sDeb-r.sCred);});
+  return {rc:Math.round((prod-charge)*100)/100,
+          ca:sumRoots(["711","712"],"cred"),
+          pf:sumRoots(["73"],"cred",["739"]),
+          subv:sumRoots(["716","756","7586"],"cred")};
+}
 function liasseISBody(d){
   var calc=liasseCalc(d);
   function lines(kind,arr,phl){return (arr||[]).map(function(r,i){
@@ -2530,15 +2718,25 @@ function liasseISBody(d){
     }
     if(r.code){ // poste prédéfini, montant simple
       var p2=liassePresetDef(kind,r.code);
-      return '<div class="rowline" style="grid-template-columns:1fr 130px 40px"><div style="display:flex;align-items:center;font-size:12.5px;font-weight:600;color:#14201C">'+esc(r.lib||(p2?p2.lib:""))+'</div><input class="ipt mono" type="number" '+base+'mt" placeholder="0" value="'+esc(r.mt)+'">'+del+'</div>'
-        +(p2?'<div style="font-size:11px;color:var(--faint);margin:-4px 0 10px;padding-left:2px">'+esc(p2.art)+' · '+esc(p2.note)+'</div>':"");
+      var badge=r.auto?'<span style="font-size:9.5px;font-weight:700;letter-spacing:.04em;color:#0E7A5F;background:#E3F1EB;border-radius:6px;padding:1px 6px;margin-left:6px">AUTO</span>':"";
+      var srcline=r.auto&&r.src?'<div style="font-size:11px;color:var(--faint);margin:-4px 0 2px;padding-left:2px">Source : comptes '+esc(r.src)+'</div>':"";
+      var capline=(r.auto&&r.cap)?'<div style="font-size:11px;color:#9A7610;background:#FAF3DD;border-radius:6px;padding:4px 8px;margin:0 0 10px">⚠ Montant comptabilisé total — réintégrez uniquement la fraction non déductible / hors limite.</div>':"";
+      return '<div class="rowline" style="grid-template-columns:1fr 130px 40px"><div style="display:flex;align-items:center;font-size:12.5px;font-weight:600;color:#14201C">'+esc(r.lib||(p2?p2.lib:""))+badge+'</div><input class="ipt mono" type="number" '+base+'mt" placeholder="0" value="'+esc(r.mt)+'">'+del+'</div>'
+        +srcline
+        +(p2?'<div style="font-size:11px;color:var(--faint);margin:'+(srcline?"0":"-4px")+' 0 '+(capline?"4px":"10px")+';padding-left:2px">'+esc(p2.art)+' · '+esc(p2.note)+'</div>':"")
+        +capline;
     }
     return '<div class="rowline" style="grid-template-columns:1fr 130px 40px"><input class="ipt" '+base+'lib" placeholder="'+phl+'" value="'+esc(r.lib)+'"><input class="ipt mono" type="number" '+base+'mt" placeholder="0" value="'+esc(r.mt)+'">'+del+'</div>';
   }).join("");}
   var isOpts=[["20","20 % (bénéfice < 100 M)"],["35","35 % (≥ 100 M)"],["40","40 % (banques/assur.)"]].map(function(o){return '<option value="'+o[0]+'"'+(d.tauxIS===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("");
   return '<div class="grid mt4" style="grid-template-columns:1.25fr 1fr;align-items:start">'
     +'<div class="card" style="padding:20px">'
-      +'<div class="flbl">Résultat comptable avant impôt (DH — négatif si déficit)</div><input class="ipt mono" type="number" data-liasse="rc" placeholder="0" value="'+esc(d.rc)+'" style="max-width:260px">'
+      +'<div class="flbl">Résultat net comptable (après impôt — négatif si déficit)</div><input class="ipt mono" type="number" data-liasse="rc" placeholder="0" value="'+esc(d.rc)+'" style="max-width:260px">'
+      +'<div style="margin-top:12px;padding:12px;border-radius:10px;background:#EEF1EF;border:1px solid var(--line)">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div style="font-size:12px;font-weight:600;color:#14201C">Détection automatique depuis la comptabilité</div>'
+        +'<button class="btn-primary" data-act="liasseautodetect" style="padding:7px 12px;font-size:12.5px">'+ic("book","width:14px;height:14px;vertical-align:-2px")+' Détecter '+S.year+'</button></div>'
+        +'<div style="font-size:11px;color:var(--muted);margin-top:6px">Lit les soldes des écritures de l\'exercice et renseigne : le <b>résultat net comptable</b>, l\'<b>assiette de cotisation minimale</b> (CA 711/712, produits financiers 73, subventions & dons 716/756/7586), puis propose les <b>réintégrations</b> — IS (6701, réintégré car compris dans le résultat net), amendes & pénalités fiscales/pénales (6583), dons (6586/6146) — et les <b>déductions</b> — produits de participation (7321/7325/7328). Les postes de jugement (espèces &gt; seuil, carburant, véhicule, plafond des dons) restent à cocher/ajuster.</div>'
+      +'</div>'
       +'<div class="sectit" style="margin:18px 0 8px;color:#B5530A">+ Réintégrations (charges non déductibles)</div>'
       +liasseChecklist("reint",d.reint)
       +lines("reint",d.reint,"Libellé (ex. amendes, IS, dons…)")
@@ -2565,8 +2763,12 @@ function liasseInput(t){
   if(f[0]==="reint"||f[0]==="deduc"){var arr=d[f[0]];var i=+f[1];arr[i]=Object.assign({},arr[i]);arr[i][f[2]]=t.value;
     if((f[2]==="base"||f[2]==="pct")&&arr[i].pct!=null){arr[i].mt=liassePresetMt(arr[i]);var mc=document.getElementById("presetmt_"+f[0]+"_"+i);if(mc)mc.textContent=fmtDH(arr[i].mt);}
   }
+  else if(f[0]==="aff"){d.aff=Object.assign({},d.aff||{});d.aff[f[1]]=t.value;}
   else d[f[0]]=t.value;
   S.liasse[key]=d;save("liasse");
+  if(f[0]==="aff"){var c=clients().find(function(x){return x.id===S.liasseSel.id;});var rr=liasseAffCalc(d,c);
+    var ran=document.getElementById("liasseAffRan");if(ran)ran.innerHTML=affRanHtml(rr);
+    var rt=document.getElementById("liasseAffRight");if(rt)rt.innerHTML=affRightHtml(rr,c);return;}
   var calc=liasseCalc(d);
   var r=document.getElementById("liasseResults");if(r)r.innerHTML=liasseResultsHtml(calc);
   var an=document.getElementById("liasseAnoms");if(an)an.innerHTML=liasseAnomsHtml(d,calc);
@@ -2612,7 +2814,7 @@ async function liasseExport(){
     aoa.push(["Société",c.dossier,"","ICE",soc.ice||"","IF",soc.if||""]);
     aoa.push(["Exercice",S.year]);aoa.push([]);
     aoa.push(["TABLEAU DE PASSAGE DU RÉSULTAT COMPTABLE AU RÉSULTAT FISCAL"]);
-    aoa.push(["Résultat comptable avant impôt","",calc.rc]);
+    aoa.push(["Résultat net comptable","",calc.rc]);
     aoa.push(["RÉINTÉGRATIONS"]);
     (d.reint||[]).forEach(function(r){if(r.lib||r.mt)aoa.push(["",r.lib,num(r.mt)]);});
     aoa.push(["Total réintégrations","",calc.sumR]);
@@ -7745,7 +7947,7 @@ function vTeledec(){
     }else{
       var isp=isPrefillData(c);
       var lc=liasseCalc(isp.d);
-      var rowsIS=caseRow("","Résultat comptable",lc.rc)
+      var rowsIS=caseRow("","Résultat net comptable",lc.rc)
         +caseRow("","+ Réintégrations fiscales",lc.sumR)
         +caseRow("","− Déductions fiscales",lc.sumD)
         +caseRow("","Résultat fiscal net",lc.rfNet,true)
@@ -8615,7 +8817,27 @@ document.addEventListener("click",e=>{
       arr.push(row);}}
     if(!arr.length)arr=[{lib:"",mt:""}];
     d[kind]=arr;S.liasse[k]=d;save("liasse");renderView();}
-  else if(a==="liassereintadd"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.reint=(d.reint||[]).concat([{lib:"",mt:""}]);S.liasse[k]=d;save("liasse");renderView();}
+  else if(a==="liasseautodetect"){
+    var c=clients().find(function(x){return x.id===S.liasseSel.id;});
+    if(!c){showErr("Sélectionnez d'abord une société.");return;}
+    if(!ecrituresOf(c).length){showErr("Aucune écriture comptable pour "+c.dossier+" ("+S.year+"). Validez des factures dans « Comptabilité »." );return;}
+    var det=liasseAutoDetect(c),fig=liasseComptaFigures(c),k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});var nb=0;
+    d.rc=fig.rc;d.ca=fig.ca;d.pf=fig.pf;d.subv=fig.subv;
+    ["reint","deduc"].forEach(function(kind){
+      var arr=(d[kind]||[]).slice();
+      Object.keys(det[kind]).forEach(function(code){
+        var info=det[kind][code],p=liassePresetDef(kind,code);
+        var row={code:code,lib:(p?p.lib:code),mt:info.amt,auto:true,src:info.comptes.join(", "),cap:info.cap};
+        var idx=arr.findIndex(function(r){return r.code===code;});
+        if(idx>-1){arr[idx]=Object.assign({},arr[idx],row);}
+        else{var e=arr.findIndex(function(r){return !r.code&&!r.lib&&!r.mt&&r.pct==null;});if(e>-1)arr.splice(e,1);arr.push(row);}
+        nb++;
+      });
+      if(!arr.length)arr=[{lib:"",mt:""}];
+      d[kind]=arr;
+    });
+    S.liasse[k]=d;save("liasse");renderView();
+    showOk(nb?("Détection terminée : résultat net "+fmtDH(fig.rc)+", base CM "+fmtDH(fig.ca+fig.pf+fig.subv)+", "+nb+" poste(s) de réint./déduc. repris depuis la comptabilité "+S.year+". Vérifiez les montants à plafonner."):("Résultat net "+fmtDH(fig.rc)+" et base CM repris. Aucun compte de réintégration/déduction détecté pour "+S.year+"."));}
   else if(a==="liassereintdel"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.reint=(d.reint||[]).filter(function(_,i){return i!==+t.dataset.i;});if(!d.reint.length)d.reint=[{lib:"",mt:""}];S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liassededucadd"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.deduc=(d.deduc||[]).concat([{lib:"",mt:""}]);S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liassededucdel"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.deduc=(d.deduc||[]).filter(function(_,i){return i!==+t.dataset.i;});if(!d.deduc.length)d.deduc=[{lib:"",mt:""}];S.liasse[k]=d;save("liasse");renderView();}
@@ -8648,6 +8870,8 @@ document.addEventListener("click",e=>{
   else if(a==="immo_post_del"){immoDelDotations();}
   else if(a==="liasse_reg_post"){liasseRegPost();}
   else if(a==="liasse_reg_del"){liasseRegDel();}
+  else if(a==="liasse_aff_post"){liasseAffPost();}
+  else if(a==="liasse_aff_del"){liasseAffDel();}
   else if(a==="portal_req_add"){portalReqAdd();}
   else if(a==="portal_req_status"){portalReqStatus(t.dataset.id,t.dataset.st);}
   else if(a==="portal_req_del"){portalReqDel(t.dataset.id);}
