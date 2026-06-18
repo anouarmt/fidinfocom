@@ -6175,10 +6175,15 @@ function regTreasury(mode,isVente){
 // montant réglé directement sur la pièce (mode de paiement coché « réglée »)
 function pieceRegDirect(p){
   if(!p||!p.regle||!p.modeReg)return 0;
+  if(!(p.status==="valide"||p.status==="exporte"))return 0;   // règlement réservé aux factures validées / comptabilisées
   var ttc=+p.ttc||((+p.ht||0)+(+p.tva||0));
   var mt=(p.montantReg!=null&&p.montantReg!=="")?+p.montantReg:ttc;
   return Math.round((mt||0)*100)/100;
 }
+// Une pièce ne génère son écriture comptable QUE si elle est validée / comptabilisée
+// (statut « valide » ou « exporte ») et complète (compte + HT). Un brouillon « à valider »
+// n'alimente ni le journal, ni le grand livre, ni la balance.
+function pieceComptable(p){ return !!(p && !p.rejected && (p.status==="valide"||p.status==="exporte") && p.compte && (+p.ht>0)); }
 // date effective du règlement (par défaut la date de facture)
 function regDateOf(p){ return p.dateReg||p.date||(S.year+"-01-01"); }
 function regYearOf(p){ var d=regDateOf(p); return (d&&/^\d{4}/.test(d))?+d.slice(0,4):S.year; }
@@ -6224,22 +6229,22 @@ function comptaAutoPost(g){
   g.pieces=g.pieces||[]; g.ecritures=g.ecritures||[];
   comptaResolveTiers(g);                       // 0) un seul compte auxiliaire par fournisseur / client
   var byId={}; g.pieces.forEach(function(p){ byId[String(p.id)]=p; });
-  // 1) Purge des écritures-pièces orphelines (pièce supprimée) ou devenues incomplètes -> cascade de suppression
+  // 1) Purge des écritures-pièces orphelines (pièce supprimée) ou non comptabilisées -> cascade de suppression
   g.ecritures=g.ecritures.filter(function(e){
     if(!e.pieceId)return true;                  // garder écritures manuelles / banque / emprunt
     var p=byId[String(e.pieceId)];
     if(!p)return false;                         // pièce supprimée -> écriture supprimée
     if(p.rejected)return false;                 // pièce rejetée -> pas d'écriture
-    if(e.regId)return !!(p.regle&&p.modeReg&&pieceRegDirect(p)>0); // règlement : gardé tant que la pièce est réglée
-    if(!p.compte||!(+p.ht>0))return false;      // pièce incomplète -> pas d'écriture
+    if(e.regId)return !!(p.regle&&p.modeReg&&pieceRegDirect(p)>0); // règlement : gardé tant que la pièce est réglée (et validée)
+    if(!pieceComptable(p))return false;         // brouillon / incomplète -> pas d'écriture de facture
     return true;
   });
   // 2) Index des écritures-pièces restantes (facture + règlement, séparés)
   var ecByPiece={},regByPiece={};
   g.ecritures.forEach(function(e){ if(e.pieceId){ if(e.regId)regByPiece[String(e.pieceId)]=e; else ecByPiece[String(e.pieceId)]=e; } });
-  // 3) Création ou rafraîchissement d'une écriture par pièce éligible (compte + HT renseignés)
+  // 3) Création ou rafraîchissement d'une écriture par pièce VALIDÉE / COMPTABILISÉE (compte + HT renseignés)
   g.pieces.forEach(function(p){
-    if(p.rejected||!p.compte||!(+p.ht>0)){ p.ecritureId=null; return; }
+    if(!pieceComptable(p)){ p.ecritureId=null; return; }
     var ec=ecritureFor(p), ex=ecByPiece[String(p.id)];
     if(ex){
       ex.date=p.date||(S.year+"-01-01");
@@ -7379,6 +7384,7 @@ function rapprochSuggestions(o,g){
   var wantType=isSortie?"achat":"vente";
   var cands=g.pieces.filter(function(p){
     if((p.type||"achat")!==wantType)return false;
+    if(!(p.status==="valide"||p.status==="exporte"))return false;   // règlement réservé aux factures validées / comptabilisées
     var resteFromOthers=pieceTTCb(p)-(pieceRegle(p.id,g)-affMontant(o,p.id));
     return resteFromOthers>0.01;
   });
@@ -7768,7 +7774,15 @@ function comptaValidate(pid){
   p.status="valide";
   comptaAutoPost(g);
   save("compta");
-  var full=document.getElementById("fullmodal");if(full)full.remove();
+  // Si l'éditeur plein écran est ouvert sur cette pièce, on le rafraîchit en place
+  // pour révéler la section « Règlement » (désormais disponible) au lieu de le fermer.
+  var form=document.getElementById("ed_form");
+  if(form){
+    form.innerHTML=editorBody(p)+'<button class="btn-primary" data-act="comptavalidate" data-id="'+p.id+'" style="margin-top:14px;width:100%;display:none">Valider</button>';
+    renderView();
+    showOk("Facture validée. Vous pouvez maintenant saisir le règlement ci-dessous.");
+    return;
+  }
   renderView();
   showOk("Facture validée et passée au journal.");
 }
@@ -7912,14 +7926,26 @@ function editorBody(p){
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">'+eChk(p,"Payé","paye")+eChk(p,"Déclaré","declare")+'</div>'
     +'</div>';
   // Section 5 — Règlement / Mode de paiement (génère une écriture de trésorerie + impacte la TVA encaissement)
+  // Le règlement n'est possible que pour une facture VALIDÉE / COMPTABILISÉE (pas en brouillon).
+  var estCompta=(p.status==="valide"||p.status==="exporte");
   var regModeOpts='<option value="">— choisir —</option>'+REG_MODES.map(function(m){return '<option'+((p.modeReg||"")===m?" selected":"")+'>'+esc(m)+'</option>';}).join("");
-  var sReg='<div class="ed-sec"><div class="ed-tit">Règlement / Mode de paiement</div>'
+  var sReg;
+  if(!estCompta){
+    sReg='<div class="ed-sec"><div class="ed-tit">Règlement / Mode de paiement</div>'
+      +'<div class="note" style="font-size:12px;background:#FBF3E8;border:1px solid #f0dcc0;border-radius:9px;padding:10px 12px;color:#8a5a1a">'
+      +ic("info","width:14px;height:14px;vertical-align:-2px")+' Le règlement n\'est disponible que pour une facture <b>validée / comptabilisée</b>. '
+      +'Cliquez d\'abord sur <b>« Valider et passer au journal »</b> ci-dessous, puis revenez ici pour saisir le paiement.'
+      +'<div style="margin-top:8px"><button class="btn-primary" data-act="comptavalidate" data-id="'+p.id+'" style="padding:6px 14px">'+ic("check","width:14px;height:14px;vertical-align:-2px")+' Valider maintenant</button></div>'
+      +'</div></div>';
+  }else{
+    sReg='<div class="ed-sec"><div class="ed-tit">Règlement / Mode de paiement</div>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap">'+eChk(p,(isV?"Encaissée (réglée par le client)":"Réglée (payée au fournisseur)"),"regle")+'</div>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><div style="flex:1;min-width:170px"><div class="flbl">Mode de paiement</div><select class="ipt" data-ed="'+p.id+':modeReg">'+regModeOpts+'</select></div>'+eFld(p,"Date de règlement","dateReg",p.dateReg,{type:"date"})+'</div>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">'+eFld(p,"Référence (n° chèque / effet / bordereau)","refReg",p.refReg)+eFld(p,"Montant réglé (vide = TTC)","montantReg",p.montantReg,{type:"number",mono:1})+'</div>'
     +'<div id="ed_regprev_'+p.id+'">'+reglementPreviewHtml(p)+'</div>'
     +'<div class="note" style="font-size:11px;margin-top:8px">Le règlement crée une écriture de trésorerie (Caisse 5161 · Banque 5141 · Effets 3425/4415) visible au <b>Journal</b>, au <b>Grand Livre</b> et à la <b>Balance</b>. En régime <b>encaissement</b>, il déclenche l\'exigibilité de la TVA pour la période du règlement.</div>'
     +'</div>';
+  }
   // aperçu écriture
   var ec=ecritureFor(p),preview=ec.lignes.map(function(l){return '<tr><td style="padding:3px 6px;color:var(--muted)">'+esc(l.compte)+'</td><td style="padding:3px 6px">'+esc(l.libelle)+'</td><td class="mono" style="text-align:right;padding:3px 6px">'+(l.debit?fmtDH2(l.debit):"")+'</td><td class="mono" style="text-align:right;padding:3px 6px">'+(l.credit?fmtDH2(l.credit):"")+'</td></tr>';}).join("");
   var td=ec.lignes.reduce(function(a,l){return a+(+l.debit||0);},0),tc=ec.lignes.reduce(function(a,l){return a+(+l.credit||0);},0);
@@ -8010,7 +8036,11 @@ function edCheck(t){
 function edSave(pid){ save("compta"); showOk("Facture enregistrée."); }
 function edDraft(pid){
   var cid=String(S.curClient),g=comptaGet(cid),p=g.pieces.find(function(x){return String(x.id)===String(pid);});if(!p)return;
-  p.status="avalider";save("compta");showOk("Repassée en brouillon (à valider).");
+  p.status="avalider";
+  comptaAutoPost(g);save("compta");           // retire l'écriture de facture (et le règlement) tant que non validée
+  var form=document.getElementById("ed_form");
+  if(form){ form.innerHTML=editorBody(p)+'<button class="btn-primary" data-act="comptavalidate" data-id="'+p.id+'" style="margin-top:14px;width:100%">'+ic("check","width:15px;height:15px")+' Valider et passer au journal</button>'; }
+  renderView();showOk("Repassée en brouillon — retirée du journal jusqu'à validation.");
 }
 function edAddDoc(pid){
   var cid=String(S.curClient),g=comptaGet(cid),p=g.pieces.find(function(x){return String(x.id)===String(pid);});if(!p)return;
