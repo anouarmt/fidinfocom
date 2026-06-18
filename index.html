@@ -1700,7 +1700,7 @@ function releveDeductionsRows(cid,period){
         var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
         rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
           if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":"Achat/charge")+" (réglé)",
-          ttc:ttc,ht:ht,taux:taux,code:tvaCodeDed(taux,isImmo),tva:tva,prorata:100,recup:tva,
+          ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDed(taux,isImmo)),tva:tva,prorata:100,recup:tva,
           regDate:o.date||"",regMode:o.isCommission?"Banque":"Virement/Chèque",cr:o.reference||"",compteTva:isImmo?"34551000":"34552000"});
       });
     });
@@ -1712,7 +1712,7 @@ function releveDeductionsRows(cid,period){
       var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
       rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
         if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":"Achat/charge")+" (réglé)",
-        ttc:mt,ht:ht,taux:taux,code:tvaCodeDed(taux,isImmo),tva:tva,prorata:100,recup:tva,
+        ttc:mt,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDed(taux,isImmo)),tva:tva,prorata:100,recup:tva,
         regDate:regDateOf(p),regMode:p.modeReg||"",cr:p.refReg||"",compteTva:isImmo?"34551000":"34552000"});
     });
   }else{
@@ -1725,13 +1725,13 @@ function releveDeductionsRows(cid,period){
       if(op){regDate=op.date||"";regMode="Virement/Chèque";cr=op.reference||"";}
       rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
         if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:isImmo?"Immobilisation":"Achat/charge",
-        ttc:ttc,ht:ht,taux:taux,code:tvaCodeDed(taux,isImmo),tva:tva,prorata:100,recup:tva,
+        ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDed(taux,isImmo)),tva:tva,prorata:100,recup:tva,
         regDate:regDate,regMode:regMode,cr:cr,compteTva:isImmo?"34551000":"34552000"});
     });
   }
   (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0;}).forEach(function(o){
     var ht=+o.htComm||0,tva=+o.tvaComm||0,ttc=ht+tva;
-    rows.push({journal:"BQ",num:o.reference||"",date:o.date||"",tiers:o.libelle||"Banque",if_:"",ice:"",design:"Commission bancaire",ttc:ttc,ht:ht,taux:o.tauxComm||10,code:tvaCodeDed(o.tauxComm||10,false),tva:tva,prorata:100,recup:tva,regDate:o.date||"",regMode:"Banque",cr:o.reference||"",compteTva:"34552000"});
+    rows.push({journal:"BQ",num:o.reference||"",date:o.date||"",tiers:o.libelle||"Banque",if_:"",ice:"",design:"Commission bancaire",ttc:ttc,ht:ht,taux:o.tauxComm||10,code:(o.codeTva||tvaCodeDed(o.tauxComm||10,false)),tva:tva,prorata:100,recup:tva,regDate:o.date||"",regMode:"Banque",cr:o.reference||"",compteTva:"34552000"});
   });
   rows.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
   return rows;
@@ -5671,6 +5671,7 @@ function comptaBanqueList(c,rows,all){
   var body=rows.map(function(o){
     var stTxt=o.status==="valide"?'<span style="color:#0E7A5F;font-weight:600">✓ Comptabilisé</span>':(o.status==="rapproche"?'<span style="color:#2563EB;font-weight:600">Rapproché</span>':'<span style="color:#9A9684">Nouveau</span>');
     var act='<button class="chip" data-act="banque_edit" data-id="'+o.id+'">✎</button> ';
+    if(o.path)act+='<button class="chip" data-act="banque_edit" data-id="'+o.id+'" style="color:#0E7A5F" title="Voir le relevé bancaire">'+ic("receipt","width:13px;height:13px;vertical-align:-2px")+' Relevé</button> ';
     var nAff=(o.affectations||[]).filter(function(a){return +a.montant>0;}).length;
     act+='<button class="chip" data-act="banque_match" data-id="'+o.id+'" style="color:#2563EB">'+(nAff?"↔ "+nAff+" fact.":"↔ Affecter")+'</button> ';
     if((o.status||"nouveau")!=="valide")act+='<button class="chip" data-act="banque_validate" data-id="'+o.id+'" style="color:#0E7A5F">Comptabiliser</button> ';
@@ -6252,6 +6253,7 @@ function reviewFields(p,isV){
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("HT","ht",p.ht,1)+f("TVA","tva",p.tva,1)+f("TTC","ttc",p.ttc,1)+'</div>'
     +(bal>1?'<div style="font-size:11.5px;color:#B5530A;margin-top:6px">⚠️ HT + TVA ≠ TTC (écart '+fmtDH2(bal)+')</div>':'')
     +'<div style="margin-top:10px"><div class="flbl">Compte ('+(isV?"produit":"charge / immo")+')</div><select class="ipt" data-cp="'+p.id+':compte">'+opts+'</select>'+compteHintHtml(p)+'</div>'
+    +(isV?"":'<div style="margin-top:10px"><div class="flbl">Code TVA (relevé de déductions) — modifiable</div><select class="ipt mono" data-cp="'+p.id+':codeTva">'+tvaDedCodeOptions(p.codeTva||tvaCodeDed((+p.ht>0?Math.round((+p.tva||0)/(+p.ht)*100):20),/^2/.test(p.compte||"")))+'</select><div class="note" style="font-size:11px;margin-top:3px">Laissez vide pour le code automatique selon le taux ; corrigez-le ici si nécessaire (ex. 142 ↔ 150 pour les opérations de banque).</div></div>')
     +'<div style="margin-top:10px;background:#F7F4EC;border-radius:10px;padding:8px"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Écriture (journal '+(isV?"Ventes":"Achats")+')</div><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--faint)"><td style="padding:0 6px">Compte</td><td style="padding:0 6px">Libellé</td><td style="text-align:right;padding:0 6px">Débit</td><td style="text-align:right;padding:0 6px">Crédit</td></tr>'+preview+'</table></div>';
 }
 function reviewCard(p){
@@ -7947,15 +7949,105 @@ function banqueDel(oid){
   g.operations=g.operations.filter(function(x){return String(x.id)!==String(oid);});
   save("compta");renderView();showOk("Opération supprimée.");
 }
+// Options <option> de tous les codes TVA déductibles (pour correction manuelle)
+function tvaDedCodeOptions(sel){
+  sel=String(sel||"");
+  return '<option value="">— choisir le code —</option>'+(TVA_CODES.deductible||[]).map(function(cc){
+    return '<option value="'+esc(cc.code)+'"'+(cc.code===sel?" selected":"")+'>'+esc(cc.code)+' · '+esc(cc.lib)+' ('+cc.taux+'%)'+(cc.actuel?"":" — ancien")+'</option>';
+  }).join("");
+}
 function banqueEdit(oid){
+  S.modal={type:"banqueop",oid:String(oid)};
+  renderModal();
+}
+// Éditeur d'opération bancaire : libellé, contrepartie, commission + CODE TVA modifiable, aperçu du relevé
+function modalBanqueOp(oid){
+  var cid=String(S.curClient),g=comptaGet(cid),o=g.operations.find(function(x){return String(x.id)===String(oid);});
+  if(!o)return '<div class="ov"><div class="modal" data-stop style="max-width:420px"><div class="mb" style="padding:24px">Opération introuvable.<div style="margin-top:14px"><button class="chip" data-act="close">Fermer</button></div></div></div></div>';
+  var isComm=!!o.isCommission, taux=o.tauxComm||10;
+  var defCode=o.codeTva||tvaCodeDed(taux,false);
+  var sens=(+o.debit||0)>0?"Débit (sortie)":((+o.credit||0)>0?"Crédit (entrée)":"—");
+  var commBox=isComm?(''
+    +'<div style="background:#FBFAF5;border:1px solid #E6E2D6;border-radius:10px;padding:12px;margin-top:12px">'
+    +'<div class="sectit mb2" style="font-size:12px">Commission / frais bancaires — TVA déductible '+taux+'%</div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+    +'<div style="min-width:110px"><div class="flbl">Taux TVA</div><select class="ipt" data-opf="'+esc(o.id)+':tauxComm">'+[0,7,10,14,20].map(function(x){return '<option value="'+x+'"'+(+taux===x?" selected":"")+'>'+x+'%</option>';}).join("")+'</select></div>'
+    +'<div style="flex:1;min-width:170px"><div class="flbl">HT</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':htComm" value="'+esc(o.htComm!=null?o.htComm:"")+'"></div>'
+    +'<div style="flex:1;min-width:170px"><div class="flbl">TVA</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':tvaComm" value="'+esc(o.tvaComm!=null?o.tvaComm:"")+'"></div>'
+    +'</div>'
+    +'<div style="margin-top:10px"><div class="flbl">Code TVA (relevé de déductions) — modifiable</div><select class="ipt mono" data-opf="'+esc(o.id)+':codeTva">'+tvaDedCodeOptions(defCode)+'</select>'
+    +'<div class="note" style="font-size:11px;margin-top:4px">Pour une commission bancaire, le code officiel est généralement <b>142 (Opérations de banque)</b> ; certains cabinets utilisent <b>150 (Achats à l\'intérieur 10%)</b>. Choisissez celui retenu pour le dossier.</div></div>'
+    +'</div>'):('<div class="note" style="font-size:11.5px;margin-top:12px">Cette opération n\'est pas détectée comme une commission/frais bancaire. Cochez ci-dessous pour la traiter comme telle (TVA déductible 10%).</div>'
+    +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px"><input type="checkbox" data-opcomm="'+esc(o.id)+'" style="width:16px;height:16px;accent-color:#0E7A5F"> <span style="font-size:13px">Traiter comme commission bancaire (TVA déductible)</span></label>');
+  var prev=o.path
+    ? '<div id="op_prevwrap" style="height:100%;min-height:360px;background:#f3f1ea;border-radius:10px;overflow:hidden"><div class="note" style="padding:20px">Chargement du relevé…</div></div>'
+    : '<div class="note" style="padding:20px;text-align:center;color:#9A9684">Aucun fichier relevé lié à cette opération.</div>';
+  return '<div class="ov"><div class="modal" data-stop style="max-width:1000px;width:100%">'
+    +'<div class="mh"><div><h3 class="ff">Opération bancaire</h3><div class="meta"><span>'+ic("book")+esc(o.banque||"Banque")+'</span><span>'+esc(o.date||"")+' · '+sens+'</span></div></div>'
+    +'<div style="display:flex;gap:8px;align-items:center">'+(o.path?'<button class="chip" data-act="op_opendoc" data-id="'+esc(o.id)+'">'+ic("receipt","width:13px;height:13px;vertical-align:-2px")+' Ouvrir</button>':"")+'<button class="xbtn" data-act="close">'+ic("x")+'</button></div></div>'
+    +'<div class="mb" style="padding:0">'
+    +'<div style="display:flex;flex-wrap:wrap;gap:0">'
+    +'<div style="flex:1;min-width:300px;padding:18px;border-right:1px solid var(--line)">'
+      +'<div class="flbl">Libellé</div><input class="ipt" data-opf="'+esc(o.id)+':libelle" value="'+esc(o.libelle||"")+'">'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">'
+        +'<div style="flex:1;min-width:120px"><div class="flbl">Débit</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':debit" value="'+esc(o.debit!=null?o.debit:"")+'"></div>'
+        +'<div style="flex:1;min-width:120px"><div class="flbl">Crédit</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':credit" value="'+esc(o.credit!=null?o.credit:"")+'"></div>'
+      +'</div>'
+      +'<div style="margin-top:10px"><div class="flbl">Compte de contrepartie</div><input class="ipt mono" list="od_plan" data-opf="'+esc(o.id)+':contrepartie" value="'+esc(o.contrepartie||"4711")+'" placeholder="6111, 3421, 4711…"></div>'
+      +commBox
+      +'<datalist id="od_plan">'+odPlanOptions()+'</datalist>'
+      +'<button class="btn-primary" data-act="op_save" data-id="'+esc(o.id)+'" style="margin-top:16px;width:100%">'+ic("check","width:15px;height:15px;vertical-align:-2px")+' Enregistrer</button>'
+    +'</div>'
+    +'<div style="flex:1;min-width:300px;padding:18px">'
+      +'<div class="flbl">Aperçu du relevé bancaire</div>'+prev
+    +'</div>'
+    +'</div></div></div></div>';
+}
+// Champ d'une opération bancaire édité (data-opf="id:field")
+function comptaOpInput(t){
+  var f=t.dataset.opf.split(":"),oid=f[0],field=f[1],cid=String(S.curClient),g=comptaGet(cid);
+  var o=g.operations.find(function(x){return String(x.id)===String(oid);});if(!o)return;
+  o[field]=t.value;
+  if(field==="tauxComm"){ // recalc HT/TVA à partir du débit si commission TTC
+    var taux=+t.value||0, ttc=+o.debit||0;
+    if(ttc>0 && taux>0){ var tva=ttc*taux/(100+taux); o.tvaComm=Math.round(tva*100)/100; o.htComm=Math.round((ttc-tva)*100)/100; }
+  }
+  save("compta");
+  if(field==="tauxComm"){ S.modal={type:"banqueop",oid:oid}; renderModal(); }
+}
+// Coche « traiter comme commission »
+function comptaOpComm(oid){
   var cid=String(S.curClient),g=comptaGet(cid),o=g.operations.find(function(x){return String(x.id)===String(oid);});if(!o)return;
-  var lib=window.prompt("Libellé de l'opération :",o.libelle||"");if(lib!=null)o.libelle=lib;
-  var cp=window.prompt("Compte de contrepartie (ex. 6111, 3421…) — laisser 4711 si inconnu :",o.contrepartie||"4711");if(cp!=null)o.contrepartie=cp.trim()||"4711";
+  var ttc=+o.debit||0,taux=10,tva=ttc>0?ttc*taux/(100+taux):0;
+  o.isCommission=true; o.tauxComm=taux; o.tvaComm=Math.round(tva*100)/100; o.htComm=Math.round((ttc-tva)*100)/100;
+  if(!o.contrepartie||o.contrepartie==="4711")o.contrepartie="61475";
+  if(!o.codeTva)o.codeTva=tvaCodeDed(taux,false);
+  save("compta"); S.modal={type:"banqueop",oid:oid}; renderModal();
+}
+// Enregistre et met à jour l'écriture si déjà comptabilisée
+function comptaOpSave(oid){
+  var cid=String(S.curClient),g=comptaGet(cid),o=g.operations.find(function(x){return String(x.id)===String(oid);});if(!o)return;
   if(o.status==="valide"&&o.ecritureId){
     var ec=ecritureBanque(o,g),e=g.ecritures.find(function(x){return x.id===o.ecritureId;});
     if(e){e.lignes=ec.lignes;e.piece=o.reference||o.libelle||"Banque";}
   }
-  save("compta");renderView();showOk("Opération modifiée.");
+  save("compta");S.modal=null;renderModal();renderView();showOk("Opération mise à jour.");
+}
+// Aperçu du relevé dans la modale
+async function comptaOpPrev(oid){
+  var cid=String(S.curClient),g=comptaGet(cid),o=g.operations.find(function(x){return String(x.id)===String(oid);});if(!o||!o.path)return;
+  var wrap=document.getElementById("op_prevwrap");if(!wrap)return;
+  try{ var url=await comptaSignedUrlPath(o.path); wrap.innerHTML=previewHtml(url,o.path,null); }
+  catch(e){ wrap.innerHTML='<div class="note" style="padding:20px;color:#B5530A">Aperçu indisponible : '+esc(e.message||e)+'</div>'; }
+}
+async function comptaSignedUrlPath(path){
+  if(!path)throw new Error("Aucun fichier lié.");
+  var r=await sb.storage.from(DOC_BUCKET).createSignedUrl(path,3600);
+  if(r.error)throw r.error; return r.data.signedUrl;
+}
+async function comptaOpenDoc(oid){
+  var cid=String(S.curClient),g=comptaGet(cid),o=g.operations.find(function(x){return String(x.id)===String(oid);});if(!o||!o.path){showErr("Aucun relevé lié.");return;}
+  try{var url=await comptaSignedUrlPath(o.path);window.open(url,"_blank");}catch(e){showErr("Ouverture impossible : "+(e.message||e));}
 }
 // ----- rapprochement multi-factures avec montants partiels -----
 function banqueMatch(oid){
@@ -9076,6 +9168,7 @@ function renderModal(){
   if(S.modal.type==="receipt"){o.innerHTML=modalReceipt(S.modal.id,S.modal.prefill);return;}
   if(S.modal.type==="suivi"){o.innerHTML=modalSuivi(S.modal.cid,S.modal.eid);return;}
   if(S.modal.type==="balgl"){o.innerHTML=modalBalGL(S.modal.cid,S.modal.compte);return;}
+  if(S.modal.type==="banqueop"){o.innerHTML=modalBanqueOp(S.modal.oid);setTimeout(function(){comptaOpPrev(S.modal.oid);},30);return;}
   if(S.modal.type==="creds"){o.innerHTML=modalCreds();return;}
   if(S.modal.type==="notif"){o.innerHTML=modalNotif(S.modal.key);return;}
   if(S.modal.type==="notifgroup"){o.innerHTML=modalNotifGroup();return;}
@@ -9398,6 +9491,8 @@ document.addEventListener("click",e=>{
   else if(a==="banque_validateall"){banqueValidateAll();}
   else if(a==="banque_del"){banqueDel(t.dataset.id);}
   else if(a==="banque_edit"){banqueEdit(t.dataset.id);}
+  else if(a==="op_save"){comptaOpSave(t.dataset.id);}
+  else if(a==="op_opendoc"){comptaOpenDoc(t.dataset.id);}
   else if(a==="banque_match"){banqueMatch(t.dataset.id);}
   else if(a==="aff_auto"){affAuto(t.dataset.id,t.dataset.montant);}
   else if(a==="aff_clear"){affClear(t.dataset.id);}
@@ -9454,6 +9549,7 @@ document.addEventListener("input",e=>{
   if(t.dataset.tbl!=null){tblInput(t);return;}
   if(t.dataset.cp!=null){comptaInput(t);return;}
   if(t.dataset.tiers!=null){comptaTiersInput(t);return;}
+  if(t.dataset.opf!=null){comptaOpInput(t);return;}
   if(t.dataset.anmap!=null){comptaANSetMap(t.dataset.anmap,t.value);return;}
   if(t.dataset.anpaid!=null){anItemToggle(t.dataset.anpaid);return;}
   if(t.dataset.anpaiddate!=null){anItemDate(t.dataset.anpaiddate,t.value);return;}
@@ -9504,7 +9600,8 @@ document.addEventListener("change",e=>{
   if(t.dataset.oda!=null){odAssistInput(t);return;}
   if(t.dataset.od!=null||t.dataset.odl!=null){odInput(t);return;}
   if(t.dataset.cp!=null){comptaInput(t);return;}
-  if(t.id==="tvaclient"){S.tvaSel.id=+t.value;S.tvaSel.period=null;S.curClient=+t.value;renderView();return;}
+  if(t.dataset.opf!=null){comptaOpInput(t);return;}
+  if(t.dataset.opcomm!=null){comptaOpComm(t.dataset.opcomm);return;}
   if(t.id==="tsclient"){S.curClient=t.value===""?null:+t.value;renderView();return;}
   if(t.id==="tsperiod"){S.tsPeriod=t.value;renderView();return;}
   if(t.id==="salclient"){S.salSel.id=+t.value;S.curClient=+t.value;renderView();return;}
