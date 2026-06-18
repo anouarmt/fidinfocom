@@ -5248,7 +5248,7 @@ function vCompta(){
   var head='<div class="wrap">'+header("Comptabilité","Saisie, journal et grand livre · Exercice "+S.year);
   if(!cs.length)return head+'<div class="empty">Aucun client.</div></div>';
   var clientOpts=cs.map(function(x){return '<option value="'+x.id+'"'+(x.id===S.curClient?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("");
-  var tabs=[["saisie","Saisie / Import"],["manuel","Saisie manuelle"],["anouveau","À-nouveaux N-1"],["immos","Amortissements"],["emprunts","Emprunts"],["journal","Journal général"],["gl","Grand livre"],["balance","Balance"],["plan","Plan comptable"],["recap","Toutes sociétés"]];
+  var tabs=[["saisie","Saisie / Import"],["manuel","Saisie manuelle"],["anouveau","À-nouveaux N-1"],["immos","Amortissements"],["emprunts","Emprunts"],["journal","Journal général"],["gl","Grand livre"],["balance","Balance"],["controles","Anomalies"],["plan","Plan comptable"],["recap","Toutes sociétés"]];
   var toggle='<div style="display:flex;gap:6px;background:#EDEAE0;border-radius:10px;padding:3px;flex-wrap:wrap">'+tabs.map(function(t){return '<button data-act="comptaview" data-v="'+t[0]+'" class="chip" style="border:0;'+(S.comptaView===t[0]?"background:#14201C;color:#fff":"background:transparent")+'">'+t[1]+'</button>';}).join("")+'</div>';
   var bar='<div class="card mt5" style="padding:16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div class="flbl">Société</div><select class="ipt" id="comptaclient">'+clientOpts+'</select></div>'+toggle+'</div>';
   // hidden file inputs
@@ -5263,6 +5263,7 @@ function vCompta(){
   else if(S.comptaView==="immos") body=comptaImmosBody(c);
   else if(S.comptaView==="emprunts") body=comptaEmpruntsBody(c);
   else if(S.comptaView==="recap") body=comptaRecapBody();
+  else if(S.comptaView==="controles") body=comptaControlesBody(c);
   else if(S.comptaView==="list") body=comptaListBody(c);
   else body=comptaSaisieBody(c);
   return head+bar+hidden+body+'</div>';
@@ -5691,6 +5692,109 @@ function comptaListBody(c){
   var foot='<tr style="border-top:2px solid #14201C;font-weight:700;color:#14201C"><td colspan="4" style="padding:10px 6px">TOTAL ('+rows.length+')</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tHT)+'</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tTVA)+'</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tTTC)+'</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tReg)+'</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tRes)+'</td><td colspan="2"></td></tr>';
   var tbl='<div class="card" style="padding:14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:760px">'+head+body+foot+'</table></div>';
   return filters+bulk+'<div id="cl_bulkwrap">'+clBulkBar()+'</div>'+tbl;
+}
+/* ========== CONTRÔLES & ANOMALIES (récap dossier à revoir avec le client) ========== */
+function ctrlRank(s){return s==="err"?0:s==="warn"?1:2;}
+function comptaControles(c){
+  var g=comptaGet(c.id),out=[],rows=comptaBalanceRows(c);
+  function soldeRoots(roots){var t=0;rows.forEach(function(r){var tr=cgncTrim(r.c);if(roots.some(function(rt){return String(r.c).indexOf(rt)===0||String(tr).indexOf(rt)===0;}))t+=r.solde;});return Math.round(t*100)/100;}
+  function add(sev,cat,titre,detail,montant,action){out.push({sev:sev,cat:cat,titre:titre,detail:detail||"",montant:(montant==null?null:Math.round(montant*100)/100),action:action||""});}
+  var pieces=(g.pieces||[]).filter(function(p){return !p.rejected && pieceYear(p)===S.year;});
+  var rejected=(g.pieces||[]).filter(function(p){return p.rejected && pieceYear(p)===S.year;});
+  var ecs=(g.ecritures||[]).filter(function(e){return (e.date&&/^\d{4}/.test(e.date)?+e.date.slice(0,4):S.year)===S.year;});
+  if(!ecs.length && !pieces.length){add("info","Saisie","Aucune écriture pour "+S.year,"Le dossier ne contient pas encore d'écritures pour l'exercice.",null,"Importer ou saisir les pièces.");return out;}
+  // 1) équilibre de la balance
+  var totD=0,totC=0;rows.forEach(function(r){totD+=r.mvDeb;totC+=r.mvCred;});
+  var ecart=Math.round((totD-totC)*100)/100;
+  if(Math.abs(ecart)>0.5)add("err","Balance","Balance déséquilibrée","Total débit "+fmtDH(totD)+" ≠ total crédit "+fmtDH(totC)+".",ecart,"Identifier et corriger l'écriture non équilibrée.");
+  // 2) compte d'attente bancaire
+  var att=soldeRoots(["4711"]);if(Math.abs(att)>1)add("warn","Banque","Compte d'attente 4711 non soldé","Mouvements bancaires non affectés à un compte définitif.",att,"Affecter chaque opération bancaire (rapprochement).");
+  // 3) caisse créditrice
+  var caisse=soldeRoots(["5161"]);if(caisse<-1)add("err","Caisse","Caisse créditrice (impossible)","Solde de caisse négatif.",caisse,"Justifier les apports en caisse ou corriger les sorties.");
+  // 4) tiers au sens inhabituel
+  var frs=soldeRoots(["4411"]);if(frs>1)add("warn","Tiers","Fournisseurs au solde débiteur","Solde débiteur global du compte fournisseurs.",frs,"Justifier (avances/avoirs) ou corriger les imputations.");
+  var cli=soldeRoots(["3421"]);if(cli<-1)add("warn","Tiers","Clients au solde créditeur","Solde créditeur global du compte clients.",cli,"Justifier (avances reçues) ou corriger les imputations.");
+  // 5) charges créditrices / produits débiteurs
+  var sens=[];rows.forEach(function(r){var d0=String(r.c).charAt(0);if(d0==="6"&&r.solde<-1)sens.push(r);else if(d0==="7"&&r.solde>1)sens.push(r);});
+  if(sens.length)add("info","Cohérence",sens.length+" compte(s) de gestion au sens inhabituel",sens.slice(0,6).map(function(x){return cgncTrim(x.c)+" "+(x.lib||"")+" ("+fmtDH(x.solde)+")";}).join(" · ")+(sens.length>6?" …":""),null,"Vérifier les charges créditrices / produits débiteurs.");
+  // 6) factures sans IF/ICE
+  var noIF=pieces.filter(function(p){return (p.type==="achat"||!p.type)&&(+p.ht>0)&&!(((p.if_fournisseur||p.if_||"").trim())&&((p.ice||"").trim()));});
+  if(noIF.length){var htIF=noIF.reduce(function(s,p){return s+(+p.ht||0);},0);add("warn","Justificatifs",noIF.length+" facture(s) d'achat sans IF/ICE conforme","Charges potentiellement non déductibles (facture irrégulière, art. 11-IV).",htIF,"Réclamer au client les factures conformes (IF + ICE du fournisseur).");}
+  // 7) pièces incomplètes
+  var incomp=pieces.filter(function(p){return !((p.compte||"").trim())||!(+p.ht>0)||!((p.date||"").trim());});
+  if(incomp.length)add("warn","Saisie",incomp.length+" pièce(s) incomplète(s)","Compte d'imputation, montant HT ou date manquant.",null,"Compléter compte, montant et date.");
+  // 8) pièces rejetées
+  if(rejected.length)add("info","Saisie",rejected.length+" pièce(s) rejetée(s)","Pièces écartées de la comptabilisation.",null,"Vérifier et réintégrer si nécessaire.");
+  // 9) règlements en espèces > seuil
+  var cashJour=pieces.filter(function(p){return p.regle&&p.modeReg==="Espèces"&&pieceRegDirect(p)>OD_CASH_LIMIT;});
+  var moisFrs={};pieces.forEach(function(p){if(p.regle&&p.modeReg==="Espèces"){var k=(p.fournisseur||"?")+"|"+((regDateOf(p)||"").slice(0,7));moisFrs[k]=(moisFrs[k]||0)+pieceRegDirect(p);}});
+  var cashMois=Object.keys(moisFrs).filter(function(k){return moisFrs[k]>50000;});
+  if(cashJour.length||cashMois.length){var exc=cashJour.reduce(function(s,p){return s+Math.max(0,pieceRegDirect(p)-OD_CASH_LIMIT);},0);add("warn","Espèces",cashJour.length+" règlement(s) espèces > 5 000 DH/jour"+(cashMois.length?" · "+cashMois.length+" cumul mensuel > 50 000 DH":""),"Fraction non déductible (art. 11-II) + TVA non récupérable sur l'excédent ; amende de 6 %.",exc,"Privilégier un moyen traçable ; réintégrer la fraction non déductible.");}
+  // 10) doublons potentiels
+  var seen={},dup=0;pieces.forEach(function(p){if(!((p.numero||"").trim()))return;var ttc=+p.ttc||((+p.ht||0)+(+p.tva||0));var k=(p.type||"achat")+"|"+(p.fournisseur||"").toLowerCase().trim()+"|"+(p.numero||"").toLowerCase().trim()+"|"+Math.round(ttc);if(seen[k])dup++;else seen[k]=1;});
+  if(dup)add("warn","Doublons",dup+" doublon(s) potentiel(s)","Même fournisseur, n° de facture et montant TTC.",null,"Vérifier une double comptabilisation.");
+  // 11) liasse : IS non comptabilisé / résultat non affecté
+  var ld=S.liasse[S.year+"|"+c.id];
+  if(ld){var lc=liasseCalc(ld);
+    if(lc.isDu>0 && !liasseRegExists(c.id,S.year))add("info","Liasse","IS non comptabilisé","IS dû estimé "+fmtDH(lc.isDu)+" non régularisé au journal.",lc.isDu,"Comptabiliser la régularisation IS (onglet Liasse).");
+    if(Math.abs(num(ld.rc))>0.5 && !liasseAffExists(c.id,S.year))add("info","Liasse","Résultat non affecté","Résultat net "+fmtDH(num(ld.rc))+" non encore affecté.",num(ld.rc),"Comptabiliser l'affectation du résultat (report à nouveau).");
+  }
+  out.sort(function(a,b){return ctrlRank(a.sev)-ctrlRank(b.sev);});
+  return out;
+}
+function comptaControlesBody(c){
+  if(!c)return '<div class="note mt5">Aucune société.</div>';
+  var list=comptaControles(c);
+  var nE=list.filter(function(x){return x.sev==="err";}).length,
+      nW=list.filter(function(x){return x.sev==="warn";}).length,
+      nI=list.filter(function(x){return x.sev==="info";}).length;
+  var sevMeta={err:["#B42318","#FBEAE8","🔴 Bloquant"],warn:["#9A7610","#FAF3DD","🟡 À compléter"],info:["#5C6B66","#EEF1EF","⚪ Information"]};
+  function pill(t){var m=sevMeta[t];return '<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:'+m[1]+';color:'+m[0]+'">'+m[2]+'</span>';}
+  var head='<div class="card mt4" style="padding:18px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
+    +'<div class="sectit">'+ic("alert")+' Contrôles & anomalies — '+esc(c.dossier)+' · '+S.year+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="ctrl_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button><button class="chip" data-act="ctrl_pdf">'+ic("receipt","width:13px;height:13px;vertical-align:-2px")+' Imprimer (PDF)</button></div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+pill("err")+' '+nE+' &nbsp; '+pill("warn")+' '+nW+' &nbsp; '+pill("info")+' '+nI+'</div></div>';
+  if(!list.length)return head+'<div class="card mt4" style="padding:24px;text-align:center;color:#0E7A5F;font-weight:600">'+ic("check")+' Aucune anomalie détectée pour cet exercice. La saisie semble cohérente.</div>';
+  var rowsH=list.map(function(x){var m=sevMeta[x.sev];
+    return '<tr style="border-bottom:1px solid var(--line)">'
+      +'<td style="padding:8px 6px;white-space:nowrap">'+m[2]+'</td>'
+      +'<td style="padding:8px 6px;color:var(--muted);white-space:nowrap">'+esc(x.cat)+'</td>'
+      +'<td style="padding:8px 6px;font-weight:600;color:#14201C">'+esc(x.titre)+'<div style="font-weight:400;color:var(--muted);font-size:12px;margin-top:2px">'+esc(x.detail)+'</div></td>'
+      +'<td class="mono" style="padding:8px 6px;text-align:right;white-space:nowrap">'+(x.montant==null?"—":fmtDH(x.montant))+'</td>'
+      +'<td style="padding:8px 6px;color:#14201C">'+esc(x.action)+'</td></tr>';
+  }).join("");
+  var table='<div class="card mt4" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:820px">'
+    +'<tr style="background:#14201C;color:#fff;text-align:left"><th style="padding:8px 6px">Gravité</th><th style="padding:8px 6px">Catégorie</th><th style="padding:8px 6px">Contrôle</th><th style="padding:8px 6px;text-align:right">Montant</th><th style="padding:8px 6px">À compléter avec le client</th></tr>'
+    +rowsH+'</table></div>';
+  var note='<div class="note mt4" style="font-size:11.5px">Contrôles indicatifs calculés depuis les écritures et la balance de l\'exercice. Les seuils (espèces 5 000/50 000 DH, IF/ICE…) sont rappelés à titre d\'aide ; validez chaque point avec le client et selon le CGI en vigueur.</div>';
+  return head+table+note;
+}
+async function controlesExcel(){
+  var c=clients().find(function(x){return x.id===S.curClient;});if(!c)return;
+  var list=comptaControles(c);if(!list.length){showErr("Aucune anomalie à exporter.");return;}
+  try{
+    if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    var sevLbl={err:"Bloquant",warn:"À compléter",info:"Information"};
+    var aoa=[["CONTRÔLES & ANOMALIES — "+c.dossier+" — Exercice "+S.year],[],["Gravité","Catégorie","Contrôle","Détail","Montant (DH)","À compléter avec le client"]];
+    list.forEach(function(x){aoa.push([sevLbl[x.sev]||x.sev,x.cat,x.titre,x.detail,(x.montant==null?"":x.montant),x.action]);});
+    var ws=window.XLSX.utils.aoa_to_sheet(aoa);ws["!cols"]=[{wch:14},{wch:14},{wch:34},{wch:46},{wch:16},{wch:46}];
+    var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,"Anomalies");
+    window.XLSX.writeFile(wb,"Anomalies_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+S.year+".xlsx");
+    showOk("Récapitulatif des anomalies exporté ("+list.length+" ligne(s)).");
+  }catch(e){showErr("Export Excel impossible (connexion requise) : "+e.message);}
+}
+function controlesPDF(){
+  var c=clients().find(function(x){return x.id===S.curClient;});if(!c)return;
+  var list=comptaControles(c);if(!list.length){showErr("Aucune anomalie à imprimer.");return;}
+  var soc=socOf(c.id),sevLbl={err:"BLOQUANT",warn:"À COMPLÉTER",info:"INFORMATION"};
+  var rows=list.map(function(x){return '<tr><td>'+sevLbl[x.sev]+'</td><td>'+esc(x.cat)+'</td><td><b>'+esc(x.titre)+'</b><br><span style="color:#555">'+esc(x.detail)+'</span></td><td class="r">'+(x.montant==null?"—":fmtDH(x.montant))+'</td><td>'+esc(x.action)+'</td></tr>';}).join("");
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>Anomalies '+esc(c.dossier)+' '+S.year+'</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;padding:24px;font-size:12px}h1{font-size:18px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:14px}td,th{padding:5px 7px;border-bottom:1px solid #ddd;vertical-align:top;text-align:left}th{background:#14201C;color:#fff;font-size:11px}.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}@media print{tr{page-break-inside:avoid}}</style></head><body>'
+    +'<h1>CONTRÔLES & ANOMALIES — '+esc(c.dossier)+'</h1><div>Exercice '+S.year+(soc.ice?' · ICE '+esc(soc.ice):'')+(soc.if?' · IF '+esc(soc.if):'')+' · '+list.length+' point(s)</div>'
+    +'<table><tr><th>Gravité</th><th>Catégorie</th><th>Contrôle</th><th class="r">Montant</th><th>À compléter avec le client</th></tr>'+rows+'</table>'
+    +'<p style="margin-top:16px;font-size:10.5px;color:#666">Contrôles indicatifs calculés depuis les écritures et la balance. À valider avec le client et selon le CGI en vigueur.</p>'
+    +'<script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script></body></html>';
+  var w=window.open("","_blank");if(!w){showErr("Autorisez les fenêtres popup pour imprimer.");return;}
+  w.document.open();w.document.write(html);w.document.close();
 }
 function comptaRecapBody(){
   var cs=clients();
@@ -8861,6 +8965,8 @@ document.addEventListener("click",e=>{
   else if(a==="docextract"){docExtract(t.dataset.id);}
   else if(a==="docreporttva"){docReportTVA(t.dataset.id);}
   else if(a==="comptaview"){S.comptaView=t.dataset.v;renderView();}
+  else if(a==="ctrl_excel"){controlesExcel();}
+  else if(a==="ctrl_pdf"){controlesPDF();}
   else if(a==="immo_add"){immoAdd();}
   else if(a==="immo_canceledit"){immoCancelEdit();}
   else if(a==="immo_edit"){immoEdit(t.dataset.id);}
