@@ -1547,8 +1547,8 @@ function ventesDetailRows(cid,period){
         var tva=taux>0?(mt*taux/(100+taux)):0, ht=mt-tva;
         rows.push({journal:"VE",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
           if_:p.if_client||p.if_||"",ice:p.ice||"",design:"Vente / prestation (encaissée)",
-          ttc:mt,ht:ht,taux:taux,code:tvaCodeForRate(taux),tva:tva,
-          regDate:o.date||"",regMode:o.isCommission?"Banque":"Virement/Chèque",cr:o.reference||"",compteTva:"44552000"});
+          ttc:mt,ht:ht,taux:taux,code:(p.codeTva||tvaCodeForRate(taux)),tva:tva,
+          regDate:o.date||"",regMode:o.isCommission?"Banque":"Virement/Chèque",cr:o.reference||"",compteTva:"44552000",src:"piece",srcId:p.id});
       });
     });
     // + ventes réglées directement sur la facture (mode de paiement)
@@ -1557,8 +1557,8 @@ function ventesDetailRows(cid,period){
       var tva=taux>0?(mt*taux/(100+taux)):0, ht=mt-tva;
       rows.push({journal:"VE",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
         if_:p.if_client||p.if_||"",ice:p.ice||"",design:"Vente / prestation (encaissée)",
-        ttc:mt,ht:ht,taux:taux,code:tvaCodeForRate(taux),tva:tva,
-        regDate:regDateOf(p),regMode:p.modeReg,cr:p.refReg||"",compteTva:"44552000"});
+        ttc:mt,ht:ht,taux:taux,code:(p.codeTva||tvaCodeForRate(taux)),tva:tva,
+        regDate:regDateOf(p),regMode:p.modeReg,cr:p.refReg||"",compteTva:"44552000",src:"piece",srcId:p.id});
     });
   }else{
     // Régime des débits : TVA exigible à la date de facture (paiement indifférent)
@@ -1570,8 +1570,8 @@ function ventesDetailRows(cid,period){
       else if(p.regle&&p.modeReg){regDate=regDateOf(p);regMode=p.modeReg;cr=p.refReg||"";}
       rows.push({journal:"VE",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
         if_:p.if_client||p.if_||"",ice:p.ice||"",design:"Vente / prestation",
-        ttc:ttc,ht:ht,taux:taux,code:tvaCodeForRate(taux),tva:tva,
-        regDate:regDate,regMode:regMode,cr:cr,compteTva:"44552000"});
+        ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeForRate(taux)),tva:tva,
+        regDate:regDate,regMode:regMode,cr:cr,compteTva:"44552000",src:"piece",srcId:p.id});
     });
   }
   rows.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
@@ -1644,7 +1644,7 @@ function ventesDetailHtml(c){
       +'<td style="padding:4px 6px" class="mono">'+esc(r.date)+'</td><td style="padding:4px 6px;font-weight:600">'+esc(r.tiers)+'</td>'
       +'<td style="padding:4px 6px">'+esc(r.if_)+'</td><td style="padding:4px 6px">'+esc(r.ice)+'</td><td style="padding:4px 6px">'+esc(r.design)+'</td>'
       +'<td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.ttc)+'</td><td style="padding:4px 6px;text-align:right" class="mono">'+fmtDH2(r.ht)+'</td>'
-      +'<td style="padding:4px 6px;text-align:center">'+r.taux+'%</td><td style="padding:4px 6px;text-align:center">'+esc(r.code)+'</td>'
+      +'<td style="padding:4px 6px;text-align:center">'+r.taux+'%</td><td style="padding:2px 4px;text-align:center">'+(r.src?('<select class="ipt mono" data-relcode="'+esc(r.src)+':'+esc(r.srcId)+'" style="padding:2px 4px;font-size:11px;min-width:64px;height:auto" title="Code TVA collectée — modifiable">'+tvaCollCodeOptionsShort(r.code)+'</select>'):esc(r.code))+'</td>'
       +'<td style="padding:4px 6px;text-align:right;color:#0a5f4a;font-weight:600" class="mono">'+fmtDH2(r.tva)+'</td>'
       +'<td style="padding:4px 6px;color:'+(r.regDate?"#14201C":"#C0392B")+'" class="mono">'+(r.regDate||"non réglé")+'</td>'
       +'<td style="padding:4px 6px">'+esc(r.regMode)+'</td><td style="padding:4px 6px">'+esc(r.cr)+'</td><td style="padding:4px 6px" class="mono">'+esc(comptaCanon(r.compteTva))+'</td></tr>';
@@ -7964,6 +7964,16 @@ function tvaDedCodeOptionsShort(sel){
     return '<option value="'+esc(cc.code)+'"'+(cc.code===sel?" selected":"")+'>'+esc(cc.code)+' ('+cc.taux+'%)</option>';
   }).join("");
   if(sel && !has)out='<option value="'+esc(sel)+'" selected>'+esc(sel)+'</option>'+out;  // code inconnu : on le garde
+  return out;
+}
+// Variante compacte pour la TVA collectée (ventes)
+function tvaCollCodeOptionsShort(sel){
+  sel=String(sel||"");
+  var has=(TVA_CODES.collectee||[]).some(function(cc){return cc.code===sel;});
+  var out=(TVA_CODES.collectee||[]).map(function(cc){
+    return '<option value="'+esc(cc.code)+'"'+(cc.code===sel?" selected":"")+'>'+esc(cc.code)+(cc.taux>0?' ('+cc.taux+'%)':'')+'</option>';
+  }).join("");
+  if(sel && !has)out='<option value="'+esc(sel)+'" selected>'+esc(sel)+'</option>'+out;
   return out;
 }
 // Écrit le code TVA choisi dans la pièce ou l'opération source (depuis le tableau du relevé)
