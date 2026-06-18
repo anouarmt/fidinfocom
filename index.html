@@ -5071,6 +5071,56 @@ function tiersLabelFor(cp){
   return "";
 }
 function pieceYear(p){ return (p.date&&/^\d{4}/.test(p.date))?+p.date.slice(0,4):S.year; }
+
+/* ============================================================================
+   LETTRAGE — rapprochement des comptes de tiers (factures ↔ règlements)
+   Le code lettre (A, B, …) est stocké par MOUVEMENT, via une clé stable
+   (id d'écriture + index de ligne) qui survit à la régénération des écritures.
+   ============================================================================ */
+function lettrageStore(g){ if(!g.lettrage)g.lettrage={}; return g.lettrage; }
+function movKey(eid,idx){ return String(eid)+"#"+idx; }
+// 0->A, 25->Z, 26->AA, 27->AB … (base 26 bijective)
+function letterCode(n){ var s="";n=(n|0)+1;while(n>0){var r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s; }
+function nextLettre(g){ var used={},st=lettrageStore(g);Object.keys(st).forEach(function(k){used[st[k]]=true;});var n=0;while(used[letterCode(n)])n++;return letterCode(n); }
+// Tous les mouvements d'un compte (tiers ou autre), avec clé stable et lettre courante
+function tiersMovements(c,compte){
+  var cc=comptaCanon(compte),g=comptaGet(c.id),st=lettrageStore(g),ecs=ecrituresOf(c),out=[];
+  ecs.forEach(function(e){ (e.lignes||[]).forEach(function(l,i){
+    if(comptaCanon((l.compte||"").trim())===cc){
+      var k=movKey(e.id,i);
+      out.push({key:k,date:e.date||"",journal:e.journal||"",piece:e.piece||"",lib:l.libelle||"",debit:+l.debit||0,credit:+l.credit||0,lettre:st[k]||""});
+    }
+  });});
+  out.sort(function(a,b){return (a.date||"").localeCompare(b.date||"")|| (a.lettre||"~").localeCompare(b.lettre||"~");});
+  return out;
+}
+// Solde non lettré d'un compte (= reste dû / à recevoir)
+function tiersSoldeNonLettre(c,compte){ var s=0;tiersMovements(c,compte).forEach(function(m){ if(!m.lettre)s+=m.debit-m.credit; });return Math.round(s*100)/100; }
+// Lettrer une sélection de mouvements (doit être équilibrée)
+function lettrerSelection(cid,keys){
+  var g=comptaGet(cid),st=lettrageStore(g),code=nextLettre(g);
+  keys.forEach(function(k){ st[k]=code; });
+  save("compta"); return code;
+}
+// Délettrer : retire toutes les lignes portant ce code
+function delettrerCode(cid,code){
+  var g=comptaGet(cid),st=lettrageStore(g),n=0;
+  Object.keys(st).forEach(function(k){ if(st[k]===code){delete st[k];n++;} });
+  save("compta"); return n;
+}
+// Lettrage automatique : apparie les montants égaux (1 débit ↔ 1 crédit) non lettrés
+function lettrageAuto(cid,compte){
+  var c=clients().find(function(x){return x.id===+cid;}); if(!c)return 0;
+  var g=comptaGet(cid),st=lettrageStore(g);
+  var mv=tiersMovements(c,compte).filter(function(m){return !m.lettre;});
+  var deb=mv.filter(function(m){return m.debit>0.005;}),cred=mv.filter(function(m){return m.credit>0.005;}),used={},n=0;
+  deb.forEach(function(d){
+    var match=cred.find(function(cm){return !used[cm.key]&&Math.abs(cm.credit-d.debit)<0.01;});
+    if(match){ var code=nextLettre(g); st[d.key]=code; st[match.key]=code; used[match.key]=true; used[d.key]=true; n++; }
+  });
+  save("compta"); return n;
+}
+
 // message de répartition par exercice après un import (les factures sont classées selon leur date)
 function importYearNote(yr){
   var ys=Object.keys(yr).map(Number).sort(function(a,b){return a-b;});
@@ -5663,8 +5713,10 @@ function comptaOpMatch(o,fl){
 function comptaBanqueList(c,rows,all){
   if(!all.length)return '<div class="empty mt4">Aucune opération bancaire pour '+S.year+'. Cliquez « Importer » sur la carte Rel. bancaires pour déposer un relevé (OCR).</div>';
   var nNouveau=rows.filter(function(o){return (o.status||"nouveau")==="nouveau";}).length;
+  var nValide=rows.filter(function(o){return o.status==="valide";}).length;
   var bulk='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">'
     +(nNouveau?'<button class="btn-primary" data-act="banque_validateall">'+ic("check","width:14px;height:14px")+' Comptabiliser tout ('+nNouveau+')</button>':'')
+    +(nValide?'<button class="chip" data-act="banque_draftall" style="color:#B5530A">↩ Tout repasser en brouillon ('+nValide+')</button>':'')
     +'</div>';
   var head='<tr style="color:var(--faint);text-align:left;border-bottom:1px solid #E6E2D6;font-size:12px">'
     +'<th style="padding:8px 6px">Date</th><th style="padding:8px 6px">Libellé</th><th style="padding:8px 6px;text-align:right">Débit</th><th style="padding:8px 6px;text-align:right">Crédit</th><th style="padding:8px 6px;text-align:right">Solde</th><th style="padding:8px 6px;text-align:center">Statut</th><th style="padding:8px 6px;text-align:right">Actions</th></tr>';
@@ -6915,17 +6967,21 @@ function comptaTiersBody(c){
     var rows=list.map(function(t){
       var solde=tiersSolde(c,t.compte), n=usage[comptaCanon(t.compte)]||0;
       var sTxt=Math.abs(solde)<0.01?'<span style="color:var(--faint)">soldé</span>':(solde>0?'<span class="mono" style="color:#14201C">'+fmtDH2(solde)+' D</span>':'<span class="mono" style="color:#0a5f4a">'+fmtDH2(-solde)+' C</span>');
+      var nonLet=tiersSoldeNonLettre(c,t.compte);
+      var nlTxt=Math.abs(nonLet)<0.01?'<span style="color:#0E7A5F;font-size:11px">✓ lettré</span>':'<span class="mono" style="color:#B5530A;font-size:11.5px">'+fmtDH2(Math.abs(nonLet))+(nonLet>0?" D":" C")+'</span>';
       return '<tr style="border-top:1px solid var(--line)">'
         +'<td style="padding:6px 8px" class="mono"><b>'+esc(comptaCanon(t.compte))+'</b></td>'
         +'<td style="padding:6px 8px"><input class="ipt" data-tiers="'+esc(t.id)+':nom" value="'+esc(t.nom||"")+'" style="min-width:150px"></td>'
         +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':ice" value="'+esc(t.ice||"")+'" placeholder="ICE" style="min-width:120px"></td>'
         +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':if_" value="'+esc(t.if_||"")+'" placeholder="IF" style="min-width:110px"></td>'
         +'<td style="padding:6px 8px;text-align:center">'+n+'</td>'
-        +'<td style="padding:6px 8px;text-align:right">'+sTxt+'</td></tr>';
+        +'<td style="padding:6px 8px;text-align:right">'+sTxt+'</td>'
+        +'<td style="padding:6px 8px;text-align:right">'+nlTxt+'</td>'
+        +'<td style="padding:6px 8px;text-align:right"><button class="chip" data-act="lettrage_open" data-id="'+c.id+'" data-compte="'+esc(comptaCanon(t.compte))+'" style="font-size:11.5px">'+ic("link","width:12px;height:12px;vertical-align:-2px")+' Lettrer</button></td></tr>';
     }).join("");
     return '<div class="card" style="padding:18px;overflow-x:auto"><div class="sectit mb2" style="color:'+coul+'">'+titre+' ('+list.length+')</div>'
-      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:620px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px;text-align:center">Factures</th><th style="padding:4px 8px;text-align:right">Solde</th></tr>'+rows+'</table>'
-      +'<div class="note" style="font-size:11px;margin-top:8px">Modifier le nom, l\'ICE ou l\'IF met à jour toutes les écritures du tiers. Le regroupement se fait par ICE en priorité, puis IF, puis nom.</div></div>';
+      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:720px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px;text-align:center">Factures</th><th style="padding:4px 8px;text-align:right">Solde</th><th style="padding:4px 8px;text-align:right">Non lettré</th><th style="padding:4px 8px;text-align:right">Lettrage</th></tr>'+rows+'</table>'
+      +'<div class="note" style="font-size:11px;margin-top:8px">Modifier le nom, l\'ICE ou l\'IF met à jour toutes les écritures du tiers. « Lettrer » ouvre le rapprochement facture ↔ règlement (solde non lettré = reste dû).</div></div>';
   }
   return '<div class="note mt4" style="font-size:12px;background:#F2F8F5;border-radius:10px;padding:10px 14px;color:#0a5f4a">'
     +ic("building","width:14px;height:14px;vertical-align:-2px")+' <b>Un seul compte par tiers.</b> Chaque fournisseur reçoit un compte <b class="mono">4411xxxxxx</b> et chaque client un compte <b class="mono">3421xxxxxx</b>, créés automatiquement à partir des factures importées (identification par ICE / IF / nom). Les écritures d\'achat, de vente et de règlement sont imputées sur ces comptes auxiliaires.</div>'
@@ -7176,23 +7232,25 @@ async function comptaBalXlsx(cid){
 function modalBalGL(cid,compte){
   var c=clients().find(function(x){return x.id===+cid;}); if(!c)return '';
   compte=String(compte);
-  var ecs=ecrituresOf(c),mv=[];
-  ecs.forEach(function(e){(e.lignes||[]).forEach(function(l){
+  var ecs=ecrituresOf(c),mv=[],_g=comptaGet(c.id),_st=lettrageStore(_g);
+  ecs.forEach(function(e){(e.lignes||[]).forEach(function(l,li){
     if(comptaCanon((l.compte||"").trim())===comptaCanon(compte)){
-      mv.push({date:e.date||"",journal:e.journal||"",piece:e.piece||"",lib:l.libelle||"",debit:+l.debit||0,credit:+l.credit||0});
+      mv.push({date:e.date||"",journal:e.journal||"",piece:e.piece||"",lib:l.libelle||"",debit:+l.debit||0,credit:+l.credit||0,lettre:_st[movKey(e.id,li)]||""});
     }
   });});
   mv.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
   var nom=libCompte(compte);
+  var isTiers=/^(4411|3421)/.test(comptaCanon(compte));
   var sd=0,sc=0,solde=0;
   var rows=mv.map(function(m){
     sd+=m.debit;sc+=m.credit;solde+=m.debit-m.credit;
     var jl=JOURNAL_LIB[m.journal]||m.journal||"";
-    return '<tr style="border-bottom:1px solid var(--line-soft)">'
+    return '<tr style="border-bottom:1px solid var(--line-soft)'+(m.lettre?";background:#F2F8F5":"")+'">'
       +'<td class="mono" style="padding:5px 8px;color:var(--muted);white-space:nowrap">'+esc((m.date||"").split("-").reverse().join("/"))+'</td>'
       +'<td style="padding:5px 8px"><span class="mono" title="'+esc(jl)+'">'+esc(m.journal||"")+'</span></td>'
       +'<td class="mono" style="padding:5px 8px;color:var(--faint)">'+esc(m.piece||"")+'</td>'
       +'<td style="padding:5px 8px">'+esc(m.lib||"")+'</td>'
+      +(isTiers?'<td style="padding:5px 8px;text-align:center">'+(m.lettre?'<span style="background:#0E7A5F;color:#fff;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:700">'+esc(m.lettre)+'</span>':'')+'</td>':'')
       +'<td class="mono" style="text-align:right;padding:5px 8px">'+(m.debit?fmtDH2(m.debit):"")+'</td>'
       +'<td class="mono" style="text-align:right;padding:5px 8px">'+(m.credit?fmtDH2(m.credit):"")+'</td>'
       +'<td class="mono" style="text-align:right;padding:5px 8px;font-weight:600;color:'+(solde<0?"#0a5f4a":"#14201C")+'">'+fmtDH2(solde)+'</td>'
@@ -7200,18 +7258,81 @@ function modalBalGL(cid,compte){
   }).join("");
   var soldeFinal=Math.round((sd-sc)*100)/100;
   var sens=soldeFinal>0?"débiteur":soldeFinal<0?"créditeur":"nul";
-  return '<div class="ov"><div class="modal" data-stop style="max-width:780px">'
-    +'<div class="mh"><div><h3 class="ff">Grand livre — compte '+esc(compte)+'</h3><div class="meta"><span>'+ic("book")+esc(nom||"")+'</span><span>'+esc(c.dossier)+' · '+S.year+'</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+  var colspanTot=isTiers?5:4;
+  return '<div class="ov"><div class="modal" data-stop style="max-width:820px">'
+    +'<div class="mh"><div><h3 class="ff">Grand livre — compte '+esc(compte)+'</h3><div class="meta"><span>'+ic("book")+esc(nom||"")+'</span><span>'+esc(c.dossier)+' · '+S.year+'</span></div></div>'
+    +'<div style="display:flex;gap:8px;align-items:center">'+(isTiers?'<button class="chip" data-act="lettrage_open" data-id="'+c.id+'" data-compte="'+esc(comptaCanon(compte))+'">'+ic("link","width:13px;height:13px;vertical-align:-2px")+' Lettrer</button>':"")+'<button class="xbtn" data-act="close">'+ic("x")+'</button></div></div>'
     +'<div class="mb">'
     +(mv.length
       ? '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'
-        +'<tr style="color:var(--faint);text-align:left"><th style="padding:5px 8px">Date</th><th style="padding:5px 8px">Jrnl</th><th style="padding:5px 8px">Pièce</th><th style="padding:5px 8px">Libellé</th><th style="text-align:right;padding:5px 8px">Débit</th><th style="text-align:right;padding:5px 8px">Crédit</th><th style="text-align:right;padding:5px 8px">Solde</th></tr>'
+        +'<tr style="color:var(--faint);text-align:left"><th style="padding:5px 8px">Date</th><th style="padding:5px 8px">Jrnl</th><th style="padding:5px 8px">Pièce</th><th style="padding:5px 8px">Libellé</th>'+(isTiers?'<th style="padding:5px 8px;text-align:center">Let.</th>':'')+'<th style="text-align:right;padding:5px 8px">Débit</th><th style="text-align:right;padding:5px 8px">Crédit</th><th style="text-align:right;padding:5px 8px">Solde</th></tr>'
         +rows
-        +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="4" style="padding:6px 8px">TOTAUX ('+mv.length+' mouvement'+(mv.length>1?"s":"")+')</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(sd)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(sc)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(soldeFinal)+'</td></tr>'
+        +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="'+colspanTot+'" style="padding:6px 8px">TOTAUX ('+mv.length+' mouvement'+(mv.length>1?"s":"")+')</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(sd)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(sc)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(soldeFinal)+'</td></tr>'
         +'</table></div>'
-        +'<div class="note" style="margin-top:12px;font-size:11.5px">Solde '+sens+' : <b>'+fmtDH2(Math.abs(soldeFinal))+'</b>. Détail issu des écritures de l\'exercice (achats, ventes, banque, OD) qui mouvementent le compte '+esc(compte)+'.</div>'
+        +'<div class="note" style="margin-top:12px;font-size:11.5px">Solde '+sens+' : <b>'+fmtDH2(Math.abs(soldeFinal))+'</b>. Détail issu des écritures de l\'exercice (achats, ventes, banque, OD) qui mouvementent le compte '+esc(compte)+'.'+(isTiers?' Utilisez « Lettrer » pour rapprocher factures et règlements.':'')+'</div>'
       : '<div class="note">Aucun mouvement pour ce compte sur l\'exercice '+S.year+'.</div>')
     +'</div></div></div>';
+}
+// ===== Modale de LETTRAGE d'un compte de tiers =====
+function modalLettrage(cid,compte){
+  var c=clients().find(function(x){return x.id===+cid;}); if(!c)return '<div class="ov"><div class="modal" data-stop style="max-width:420px"><div class="mb" style="padding:24px">Société introuvable.<div style="margin-top:14px"><button class="chip" data-act="close">Fermer</button></div></div></div></div>';
+  compte=comptaCanon(compte);
+  var mv=tiersMovements(c,compte), nom=tiersLabelFor(compte)||libCompte(compte);
+  var onlyOpen=S._letOpen!==false;
+  var shown=onlyOpen?mv.filter(function(m){return !m.lettre;}):mv;
+  var sd=mv.reduce(function(a,m){return a+m.debit;},0),sc=mv.reduce(function(a,m){return a+m.credit;},0);
+  var nonLet=tiersSoldeNonLettre(c,compte);
+  var rows=shown.map(function(m){
+    var letBadge=m.lettre?'<span style="background:#0E7A5F;color:#fff;border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700">'+esc(m.lettre)+'</span>':'';
+    return '<tr style="border-bottom:1px solid #F0EDE3;font-size:12.5px"'+(m.lettre?' style="background:#F2F8F5"':'')+'>'
+      +'<td style="padding:5px 6px;text-align:center">'+(m.lettre?letBadge:'<input type="checkbox" class="let-chk" data-key="'+esc(m.key)+'" data-debit="'+m.debit+'" data-credit="'+m.credit+'" style="width:16px;height:16px;accent-color:#0E7A5F">')+'</td>'
+      +'<td style="padding:5px 6px" class="mono">'+esc(m.date)+'</td>'
+      +'<td style="padding:5px 6px">'+esc(m.journal)+'</td>'
+      +'<td style="padding:5px 6px">'+esc(m.piece)+'</td>'
+      +'<td style="padding:5px 6px">'+esc(m.lib)+'</td>'
+      +'<td style="padding:5px 6px;text-align:right" class="mono">'+(m.debit?fmtDH2(m.debit):"")+'</td>'
+      +'<td style="padding:5px 6px;text-align:right" class="mono">'+(m.credit?fmtDH2(m.credit):"")+'</td>'
+      +'<td style="padding:5px 6px;text-align:right">'+(m.lettre?'<button class="chip" data-act="let_undo" data-id="'+cid+'" data-code="'+esc(m.lettre)+'" data-compte="'+esc(compte)+'" style="color:#B42318;font-size:11px;padding:2px 7px">délettrer '+esc(m.lettre)+'</button>':'')+'</td>'
+      +'</tr>';
+  }).join("");
+  var letres={}; mv.forEach(function(m){ if(m.lettre){letres[m.lettre]=letres[m.lettre]||{d:0,c:0};letres[m.lettre].d+=m.debit;letres[m.lettre].c+=m.credit;} });
+  var nLet=Object.keys(letres).length;
+  return '<div class="ov"><div class="modal" data-stop style="max-width:920px;width:100%">'
+    +'<div class="mh"><div><h3 class="ff">Lettrage — compte '+esc(compte)+'</h3><div class="meta"><span>'+ic("link")+esc(nom||"")+'</span><span>'+esc(c.dossier)+' · '+S.year+'</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="padding:18px">'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'
+      +'<button class="chip" data-act="let_auto" data-id="'+cid+'" data-compte="'+esc(compte)+'">⚡ Lettrage automatique (montants égaux)</button>'
+      +'<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="let_onlyopen"'+(onlyOpen?" checked":"")+' style="width:15px;height:15px;accent-color:#0E7A5F"> N\'afficher que les non lettrés</label>'
+      +'<span style="margin-left:auto;font-size:12px;color:var(--muted)">Solde non lettré : <b class="mono" style="color:'+(Math.abs(nonLet)<0.01?"#0E7A5F":"#B5530A")+'">'+fmtDH2(Math.abs(nonLet))+(Math.abs(nonLet)<0.01?" (soldé)":(nonLet>0?" D":" C"))+'</b></span>'
+    +'</div>'
+    +'<div style="background:#F7F4EC;border-radius:9px;padding:9px 14px;margin-bottom:10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13px">'
+      +'<span>Sélection — Débit : <b id="let_seldeb" class="mono">0,00</b> · Crédit : <b id="let_selcred" class="mono">0,00</b></span>'
+      +'<span id="let_selstat"></span>'
+      +'<button class="btn-primary" id="let_do" data-act="let_apply" data-id="'+cid+'" data-compte="'+esc(compte)+'" disabled style="opacity:.5;padding:5px 14px">Lettrer la sélection</button>'
+    +'</div>'
+    +(shown.length?'<div style="overflow:auto;max-height:48vh"><table style="width:100%;border-collapse:collapse"><tr style="color:var(--faint);text-align:left;font-size:12px;position:sticky;top:0;background:#fff"><th style="padding:5px 6px;width:34px"></th><th style="padding:5px 6px">Date</th><th style="padding:5px 6px">Jrnl</th><th style="padding:5px 6px">Pièce</th><th style="padding:5px 6px">Libellé</th><th style="padding:5px 6px;text-align:right">Débit</th><th style="padding:5px 6px;text-align:right">Crédit</th><th></th></tr>'+rows
+      +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="5" style="padding:6px">TOTAUX ('+mv.length+' mouvements · '+nLet+' lettre'+(nLet>1?"s":"")+')</td><td class="mono" style="text-align:right;padding:6px">'+fmtDH2(sd)+'</td><td class="mono" style="text-align:right;padding:6px">'+fmtDH2(sc)+'</td><td></td></tr>'
+      +'</table></div>':'<div class="note">'+(onlyOpen&&mv.length?"Tous les mouvements sont lettrés ✓ — décochez le filtre pour les revoir.":"Aucun mouvement sur ce compte.")+'</div>')
+    +'<div class="note" style="font-size:11px;margin-top:10px">Cochez des lignes dont le total <b>débit = crédit</b> (une facture et son/ses règlement·s) puis cliquez « Lettrer ». Le code lettre marque ces lignes comme <b>soldées</b>. Le solde non lettré correspond au reste dû / à recevoir.</div>'
+    +'</div></div></div>';
+}
+// Interactivité de la modale de lettrage : somme de la sélection + activation du bouton
+function lettrageModalSetup(){
+  var chks=Array.prototype.slice.call(document.querySelectorAll(".let-chk"));
+  var onlyOpen=document.getElementById("let_onlyopen");
+  if(onlyOpen)onlyOpen.addEventListener("change",function(){ S._letOpen=onlyOpen.checked; renderModal(); });
+  function recalc(){
+    var d=0,cr=0,n=0;
+    chks.forEach(function(ch){ if(ch.checked){ d+=+ch.dataset.debit||0; cr+=+ch.dataset.credit||0; n++; } });
+    d=Math.round(d*100)/100; cr=Math.round(cr*100)/100;
+    var de=document.getElementById("let_seldeb"),ce=document.getElementById("let_selcred"),stat=document.getElementById("let_selstat"),btn=document.getElementById("let_do");
+    if(de)de.textContent=fmtDH2(d); if(ce)ce.textContent=fmtDH2(cr);
+    var bal=Math.abs(d-cr)<0.01, ok=bal&&n>=2;
+    if(stat)stat.innerHTML=n<2?'<span style="color:var(--faint)">sélectionnez au moins 2 lignes</span>':(bal?'<span style="color:#0E7A5F;font-weight:600">✓ équilibré</span>':'<span style="color:#B5530A">écart '+fmtDH2(Math.abs(d-cr))+'</span>');
+    if(btn){ btn.disabled=!ok; btn.style.opacity=ok?"1":".5"; }
+  }
+  chks.forEach(function(ch){ ch.addEventListener("change",recalc); });
+  recalc();
 }
 // ===== Relevés bancaires =====
 var BANK_ACCOUNT="5141000000"; // Banques
@@ -7807,7 +7928,11 @@ function editorBody(p){
     +'<tr style="border-top:1px solid #14201C;font-weight:700"><td colspan="2" style="padding:4px 6px">Totaux</td><td class="mono" style="text-align:right;padding:4px 6px">'+fmtDH2(td)+'</td><td class="mono" style="text-align:right;padding:4px 6px">'+fmtDH2(tc)+'</td></tr></table>'
     +(Math.abs(td-tc)>0.01?'<div style="color:#C0392B;font-size:11.5px;margin-top:4px">⚠️ Écriture déséquilibrée</div>':'<div style="color:#0E7A5F;font-size:11.5px;margin-top:4px">✓ Équilibrée</div>')
     +'</div>';
-  return s1+s2+s3+s4+sReg+ecHtml;
+  // Section 6 — Notes / informations complémentaires (ajout / suppression libre)
+  var sNotes='<div class="ed-sec"><div class="ed-tit">Notes / informations complémentaires</div>'
+    +'<textarea class="ipt" data-ed="'+p.id+':notes" rows="2" placeholder="Ajoutez une information libre (objet, référence interne, remarque…). Videz le champ pour la retirer." style="resize:vertical;min-height:48px">'+esc(p.notes||"")+'</textarea>'
+    +'</div>';
+  return s1+s2+s3+s4+sReg+sNotes+ecHtml;
 }
 // aperçu de l'écriture de règlement (mis à jour en live)
 function reglementPreviewHtml(p){
@@ -7932,6 +8057,21 @@ function banqueValidate(oid){
   save("compta");renderView();
   showOk("Opération comptabilisée (journal BQ).");
 }
+// Repasse une opération bancaire en brouillon (retire son écriture comptable)
+function banqueDraft(oid){
+  var cid=String(S.curClient),g=comptaGet(cid),o=g.operations.find(function(x){return String(x.id)===String(oid);});if(!o)return;
+  if(o.ecritureId){ g.ecritures=g.ecritures.filter(function(e){return e.id!==o.ecritureId;}); }
+  o.ecritureId=null; o.status="nouveau";
+  save("compta");
+  if(S.modal&&S.modal.type==="banqueop"){renderModal();} renderView();
+  showOk("Opération repassée en brouillon (écriture retirée).");
+}
+// Repasse TOUTES les opérations bancaires comptabilisées en brouillon
+function banqueDraftAll(){
+  var cid=String(S.curClient),g=comptaGet(cid),n=0;
+  (g.operations||[]).forEach(function(o){ if(opYear(o)===S.year&&o.status==="valide"){ if(o.ecritureId)g.ecritures=g.ecritures.filter(function(e){return e.id!==o.ecritureId;}); o.ecritureId=null;o.status="nouveau";n++; } });
+  save("compta");renderView();showOk(n+" opération(s) repassée(s) en brouillon.");
+}
 function banqueValidateAll(){
   var cid=String(S.curClient),g=comptaGet(cid),fl=S.comptaList,ok=0;
   var rows=g.operations.filter(function(o){return opYear(o)===S.year && (o.status||"nouveau")!=="valide" && comptaOpMatch(o,fl) && ((+o.debit>0)||(+o.credit>0));});
@@ -8024,7 +8164,11 @@ function modalBanqueOp(oid){
       +'<div style="margin-top:10px"><div class="flbl">Compte de contrepartie</div><input class="ipt mono" list="od_plan" data-opf="'+esc(o.id)+':contrepartie" value="'+esc(o.contrepartie||"4711")+'" placeholder="6111, 3421, 4711…"></div>'
       +commBox
       +'<datalist id="od_plan">'+odPlanOptions()+'</datalist>'
-      +'<button class="btn-primary" data-act="op_save" data-id="'+esc(o.id)+'" style="margin-top:16px;width:100%">'+ic("check","width:15px;height:15px;vertical-align:-2px")+' Enregistrer</button>'
+      +'<div style="margin-top:10px"><div class="flbl">Notes / informations complémentaires</div><textarea class="ipt" data-opf="'+esc(o.id)+':notes" rows="2" placeholder="Ajoutez une note libre… (laisser vide pour ne rien afficher)" style="resize:vertical;min-height:46px">'+esc(o.notes||"")+'</textarea></div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">'
+      +'<button class="btn-primary" data-act="op_save" data-id="'+esc(o.id)+'" style="flex:1;min-width:150px">'+ic("check","width:15px;height:15px;vertical-align:-2px")+' Enregistrer</button>'
+      +(o.status==="valide"?'<button class="chip" data-act="op_draft" data-id="'+esc(o.id)+'" style="color:#B5530A">↩ Repasser en brouillon</button>':'<button class="chip" data-act="op_validate" data-id="'+esc(o.id)+'" style="color:#0E7A5F">'+ic("check","width:13px;height:13px;vertical-align:-2px")+' Comptabiliser</button>')
+      +'</div>'
     +'</div>'
     +'<div style="flex:1;min-width:300px;padding:18px">'
       +'<div class="flbl">Aperçu du relevé bancaire</div>'+prev
@@ -9197,6 +9341,7 @@ function renderModal(){
   if(S.modal.type==="suivi"){o.innerHTML=modalSuivi(S.modal.cid,S.modal.eid);return;}
   if(S.modal.type==="balgl"){o.innerHTML=modalBalGL(S.modal.cid,S.modal.compte);return;}
   if(S.modal.type==="banqueop"){o.innerHTML=modalBanqueOp(S.modal.oid);setTimeout(function(){comptaOpPrev(S.modal.oid);},30);return;}
+  if(S.modal.type==="lettrage"){o.innerHTML=modalLettrage(S.modal.cid,S.modal.compte);setTimeout(lettrageModalSetup,20);return;}
   if(S.modal.type==="creds"){o.innerHTML=modalCreds();return;}
   if(S.modal.type==="notif"){o.innerHTML=modalNotif(S.modal.key);return;}
   if(S.modal.type==="notifgroup"){o.innerHTML=modalNotifGroup();return;}
@@ -9517,10 +9662,21 @@ document.addEventListener("click",e=>{
   else if(a==="comptalist_validateall"){comptaListValidateAll();}
   else if(a==="banque_validate"){banqueValidate(t.dataset.id);}
   else if(a==="banque_validateall"){banqueValidateAll();}
+  else if(a==="banque_draftall"){banqueDraftAll();}
   else if(a==="banque_del"){banqueDel(t.dataset.id);}
   else if(a==="banque_edit"){banqueEdit(t.dataset.id);}
   else if(a==="op_save"){comptaOpSave(t.dataset.id);}
   else if(a==="op_opendoc"){comptaOpenDoc(t.dataset.id);}
+  else if(a==="op_draft"){banqueDraft(t.dataset.id);}
+  else if(a==="op_validate"){banqueValidate(t.dataset.id);if(S.modal&&S.modal.type==="banqueop")renderModal();}
+  else if(a==="lettrage_open"){S._letOpen=true;S.modal={type:"lettrage",cid:+t.dataset.id,compte:t.dataset.compte};renderModal();}
+  else if(a==="let_apply"){
+    var keys=Array.prototype.slice.call(document.querySelectorAll(".let-chk")).filter(function(ch){return ch.checked;}).map(function(ch){return ch.dataset.key;});
+    if(keys.length<2){showErr("Sélectionnez au moins 2 lignes équilibrées.");return;}
+    var code=lettrerSelection(+t.dataset.id,keys);renderModal();renderView();showOk("Lettre « "+code+" » attribuée à "+keys.length+" mouvements.");
+  }
+  else if(a==="let_auto"){var n=lettrageAuto(+t.dataset.id,t.dataset.compte);renderModal();renderView();showOk(n?(n+" rapprochement(s) automatique(s) lettré(s)."):"Aucun montant égal à apparier automatiquement.");}
+  else if(a==="let_undo"){delettrerCode(+t.dataset.id,t.dataset.code);renderModal();renderView();showOk("Lettre « "+t.dataset.code+" » retirée.");}
   else if(a==="banque_match"){banqueMatch(t.dataset.id);}
   else if(a==="aff_auto"){affAuto(t.dataset.id,t.dataset.montant);}
   else if(a==="aff_clear"){affClear(t.dataset.id);}
