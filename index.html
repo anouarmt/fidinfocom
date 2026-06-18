@@ -2478,19 +2478,75 @@ function liasseRegCardHtml(d){
     +'<input class="ipt mono" type="number" data-liasse="acomptesIS" placeholder="0" value="'+esc(d.acomptesIS||"")+'" style="max-width:240px">'
     +'<div id="liasseRegBody">'+liasseRegBodyHtml(d)+'</div></div>';
 }
+/* ----- Catalogue des postes courants de réintégration / déduction (CGI 2026) ----- */
+/* pct (optionnel) : poste calculé en % d'une base saisie. À valider selon le CGI en vigueur avant dépôt. */
+var LIASSE_PRESETS={
+  reint:[
+    {code:"amendes",   lib:"Amendes, pénalités et majorations",                 art:"Art. 11-I CGI",       note:"Infractions aux dispositions légales, fiscales ou sociales — non déductibles à 100 %."},
+    {code:"is",        lib:"Impôt sur les sociétés (IS)",                         art:"Art. 11-III CGI",     note:"L'IS n'est pas déductible de sa propre base."},
+    {code:"especes",   lib:"Règlements en espèces — fraction non déductible",     art:"Art. 11-II CGI",      note:"Charges réglées en espèces au-delà de 5 000 DH/jour/fournisseur ou 50 000 DH/mois/fournisseur. Saisir la fraction excédentaire. Amende de 6 % en sus."},
+    {code:"carburant", lib:"Carburant non justifié — quote-part (estimation)",    art:"Pratique · Art. 10",  note:"Estimation de la part non professionnelle / non justifiée. Aucun taux légal : ajustez le %.", pct:50},
+    {code:"cadeaux",   lib:"Cadeaux publicitaires non conformes",                 art:"Art. 11 CGI",         note:"Valeur unitaire > 100 DH, ou sans nom / sigle / marque de la société."},
+    {code:"nonjustif", lib:"Charges non justifiées (facture sans IF/ICE)",        art:"Art. 11-IV / 146",    note:"Achats, travaux ou prestations sans facture régulière au nom du contribuable."},
+    {code:"dons",      lib:"Dons hors limite ou non éligibles",                   art:"Art. 10-I-B-2° CGI",  note:"Dons non éligibles (100 %) ou fraction excédant les plafonds : 2 ‰ du CA (œuvres reconnues) ; 20 % du bénéfice net plafonné 5 M DH (sociétés sportives, LF 2026)."},
+    {code:"vehic",     lib:"Amortissement véhicule de tourisme — excédent",       art:"Art. 10-I-F CGI",     note:"Quote-part au-delà de 300 000 DH TTC, ou taux > 20 %/an sur 5 ans."},
+    {code:"locvehic",  lib:"Location véhicule de tourisme — part excédentaire",   art:"Art. 10-I-F CGI",     note:"Part de la redevance correspondant au prix > 300 000 DH (location > 3 mois)."},
+    {code:"ccassoc",   lib:"Intérêts comptes courants associés — excédent",       art:"Art. 10-II-A CGI",    note:"Au-delà du taux réglementaire et du capital social libéré ; intérêts non déductibles si capital non intégralement libéré."},
+    {code:"provnd",    lib:"Provisions non déductibles",                          art:"Art. 10-I-F CGI",     note:"Provisions sans objet nettement précisé, non probables, ou exclues par la loi."},
+    {code:"perso",     lib:"Charges personnelles / libéralités",                  art:"Art. 11 CGI",         note:"Dépenses étrangères à l'intérêt de l'exploitation."},
+    {code:"anterieur", lib:"Charges d'exercices antérieurs",                      art:"Rattachement",        note:"Charges ne se rattachant pas à l'exercice."}
+  ],
+  deduc:[
+    {code:"dividendes",lib:"Abattement 100 % sur dividendes (participations)",    art:"Art. 6-I-C-1° CGI",   note:"Produits de participation de source marocaine déjà soumis à l'IS — déduction extra-comptable de 100 %."},
+    {code:"repprov",   lib:"Reprises sur provisions antérieurement réintégrées",  art:"Art. 10-I-F CGI",     note:"Provision taxée lors de sa dotation : sa reprise (comptabilisée en produit) est déduite."},
+    {code:"degrev",    lib:"Dégrèvements d'impôts non déductibles",               art:"—",                   note:"Restitution / reprise d'un impôt antérieurement réintégré (ex. IS)."},
+    {code:"pvreinv",   lib:"Abattement plus-value de cession (réinvestissement)", art:"Art. 247-XXXV CGI",   note:"Sous conditions de réinvestissement et de conservation des biens."}
+  ]
+};
+function liassePresetDef(kind,code){var l=LIASSE_PRESETS[kind]||[];for(var i=0;i<l.length;i++){if(l[i].code===code)return l[i];}return null;}
+function liassePresetMt(r){return Math.round(num(r.base)*(parseFloat(r.pct)||0))/100;}
+function liasseChecklist(kind,arr){
+  var present={};(arr||[]).forEach(function(r){if(r.code)present[r.code]=true;});
+  var chips=(LIASSE_PRESETS[kind]||[]).map(function(p){
+    var on=!!present[p.code];
+    var st=on?"background:"+(kind==="reint"?"#B5530A":"#0E7A5F")+";color:#fff;border-color:transparent":"";
+    return '<button class="chip" data-act="liassepreset" data-kind="'+kind+'" data-code="'+p.code+'" title="'+esc(p.art+" — "+p.note)+'" style="font-size:11.5px;'+st+'">'+(on?"✓ ":"+ ")+esc(p.lib)+'</button>';
+  }).join("");
+  return '<div style="font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin:2px 0 6px">Postes courants — cochez pour ajouter</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+chips+'</div>';
+}
 function liasseISBody(d){
   var calc=liasseCalc(d);
   function lines(kind,arr,phl){return (arr||[]).map(function(r,i){
-    return '<div class="rowline" style="grid-template-columns:1fr 130px 40px"><input class="ipt" data-liasse="'+kind+':'+i+':lib" placeholder="'+phl+'" value="'+esc(r.lib)+'"><input class="ipt mono" type="number" data-liasse="'+kind+':'+i+':mt" placeholder="0" value="'+esc(r.mt)+'"><button class="iconbtn" data-act="liasse'+kind+'del" data-i="'+i+'" style="color:#cfccc0">'+ic("trash")+'</button></div>';
+    var base="data-liasse=\""+kind+":"+i+":";
+    var del='<button class="iconbtn" data-act="liasse'+kind+'del" data-i="'+i+'" style="color:#cfccc0">'+ic("trash")+'</button>';
+    if(r.pct!=null){ // poste calculé en % d'une base
+      var p=liassePresetDef(kind,r.code);
+      return '<div class="rowline" style="grid-template-columns:1fr 40px"><div style="font-size:12.5px;font-weight:600;color:#14201C">'+esc(r.lib||(p?p.lib:""))+'</div>'+del+'</div>'
+        +'<div class="rowline" style="grid-template-columns:1.2fr 70px 1fr;margin-top:-4px"><div><div class="flbl" style="margin:0 0 2px">Base (DH)</div><input class="ipt mono" type="number" '+base+'base" placeholder="0" value="'+esc(r.base)+'"></div>'
+        +'<div><div class="flbl" style="margin:0 0 2px">%</div><input class="ipt mono" type="number" step="1" '+base+'pct" value="'+esc(r.pct)+'"></div>'
+        +'<div><div class="flbl" style="margin:0 0 2px">'+(kind==="reint"?"Réintégration":"Déduction")+'</div><div class="ipt mono" style="background:#F7F4EC;display:flex;align-items:center" id="presetmt_'+kind+'_'+i+'">'+fmtDH(liassePresetMt(r))+'</div></div></div>'
+        +(p?'<div style="font-size:11px;color:var(--faint);margin:-4px 0 10px;padding-left:2px">'+esc(p.art)+' · '+esc(p.note)+'</div>':"");
+    }
+    if(r.code){ // poste prédéfini, montant simple
+      var p2=liassePresetDef(kind,r.code);
+      return '<div class="rowline" style="grid-template-columns:1fr 130px 40px"><div style="display:flex;align-items:center;font-size:12.5px;font-weight:600;color:#14201C">'+esc(r.lib||(p2?p2.lib:""))+'</div><input class="ipt mono" type="number" '+base+'mt" placeholder="0" value="'+esc(r.mt)+'">'+del+'</div>'
+        +(p2?'<div style="font-size:11px;color:var(--faint);margin:-4px 0 10px;padding-left:2px">'+esc(p2.art)+' · '+esc(p2.note)+'</div>':"");
+    }
+    return '<div class="rowline" style="grid-template-columns:1fr 130px 40px"><input class="ipt" '+base+'lib" placeholder="'+phl+'" value="'+esc(r.lib)+'"><input class="ipt mono" type="number" '+base+'mt" placeholder="0" value="'+esc(r.mt)+'">'+del+'</div>';
   }).join("");}
   var isOpts=[["20","20 % (bénéfice < 100 M)"],["35","35 % (≥ 100 M)"],["40","40 % (banques/assur.)"]].map(function(o){return '<option value="'+o[0]+'"'+(d.tauxIS===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("");
   return '<div class="grid mt4" style="grid-template-columns:1.25fr 1fr;align-items:start">'
     +'<div class="card" style="padding:20px">'
       +'<div class="flbl">Résultat comptable avant impôt (DH — négatif si déficit)</div><input class="ipt mono" type="number" data-liasse="rc" placeholder="0" value="'+esc(d.rc)+'" style="max-width:260px">'
-      +'<div class="sectit" style="margin:18px 0 8px;color:#B5530A">+ Réintégrations (charges non déductibles)</div>'+lines("reint",d.reint,"Libellé (ex. amendes, IS, dons…)")
-      +'<button class="chip" data-act="liassereintadd">'+ic("plus")+'Ligne</button>'
-      +'<div class="sectit" style="margin:18px 0 8px;color:#0E7A5F">− Déductions (produits non imposables, abattements)</div>'+lines("deduc",d.deduc,"Libellé (ex. abattement participations…)")
-      +'<button class="chip" data-act="liassededucadd">'+ic("plus")+'Ligne</button>'
+      +'<div class="sectit" style="margin:18px 0 8px;color:#B5530A">+ Réintégrations (charges non déductibles)</div>'
+      +liasseChecklist("reint",d.reint)
+      +lines("reint",d.reint,"Libellé (ex. amendes, IS, dons…)")
+      +'<button class="chip" data-act="liassereintadd">'+ic("plus")+'Ligne libre</button>'
+      +'<div class="sectit" style="margin:18px 0 8px;color:#0E7A5F">− Déductions (produits non imposables, abattements)</div>'
+      +liasseChecklist("deduc",d.deduc)
+      +lines("deduc",d.deduc,"Libellé (ex. abattement participations…)")
+      +'<button class="chip" data-act="liassededucadd">'+ic("plus")+'Ligne libre</button>'
       +'<div style="margin-top:16px"><div class="flbl">Déficits fiscaux antérieurs imputables (DH)</div><input class="ipt mono" type="number" data-liasse="deficit" placeholder="0" value="'+esc(d.deficit)+'" style="max-width:260px"></div>'
       +'<div class="sectit" style="margin:18px 0 8px">Cotisation minimale & taux</div>'
       +'<div class="grid g3"><div><div class="flbl">CA HT</div><input class="ipt mono" type="number" data-liasse="ca" placeholder="0" value="'+esc(d.ca)+'"></div><div><div class="flbl">Produits financiers</div><input class="ipt mono" type="number" data-liasse="pf" placeholder="0" value="'+esc(d.pf)+'"></div><div><div class="flbl">Subventions</div><input class="ipt mono" type="number" data-liasse="subv" placeholder="0" value="'+esc(d.subv)+'"></div></div>'
@@ -2506,7 +2562,9 @@ function liasseISBody(d){
 function liasseInput(t){
   var key=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[key]||{});d.reint=(d.reint||[]).slice();d.deduc=(d.deduc||[]).slice();
   var f=t.dataset.liasse.split(":");
-  if(f[0]==="reint"||f[0]==="deduc"){var arr=d[f[0]];arr[+f[1]]=Object.assign({},arr[+f[1]]);arr[+f[1]][f[2]]=t.value;}
+  if(f[0]==="reint"||f[0]==="deduc"){var arr=d[f[0]];var i=+f[1];arr[i]=Object.assign({},arr[i]);arr[i][f[2]]=t.value;
+    if((f[2]==="base"||f[2]==="pct")&&arr[i].pct!=null){arr[i].mt=liassePresetMt(arr[i]);var mc=document.getElementById("presetmt_"+f[0]+"_"+i);if(mc)mc.textContent=fmtDH(arr[i].mt);}
+  }
   else d[f[0]]=t.value;
   S.liasse[key]=d;save("liasse");
   var calc=liasseCalc(d);
@@ -8548,6 +8606,15 @@ document.addEventListener("click",e=>{
   else if(a==="paie_livre_pdf"){paieLivrePDF();}
   else if(a==="paie_cnss_excel"){paieCnssExcel();}
   else if(a==="paie_compta"){paieComptabiliser();}
+  else if(a==="liassepreset"){var k=liasseKey();var kind=t.dataset.kind,code=t.dataset.code;var d=Object.assign({},liasseGet(),S.liasse[k]||{});var arr=(d[kind]||[]).slice();
+    var idx=arr.findIndex(function(r){return r.code===code;});
+    if(idx>-1){arr.splice(idx,1);}
+    else{var p=liassePresetDef(kind,code);if(p){var row=p.pct!=null?{code:code,lib:p.lib,pct:p.pct,base:"",mt:0}:{code:code,lib:p.lib,mt:""};
+      var emptyAt=arr.findIndex(function(r){return !r.code&&!r.lib&&!r.mt&&r.pct==null;});
+      if(emptyAt>-1)arr.splice(emptyAt,1);
+      arr.push(row);}}
+    if(!arr.length)arr=[{lib:"",mt:""}];
+    d[kind]=arr;S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liassereintadd"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.reint=(d.reint||[]).concat([{lib:"",mt:""}]);S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liassereintdel"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.reint=(d.reint||[]).filter(function(_,i){return i!==+t.dataset.i;});if(!d.reint.length)d.reint=[{lib:"",mt:""}];S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liassededucadd"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.deduc=(d.deduc||[]).concat([{lib:"",mt:""}]);S.liasse[k]=d;save("liasse");renderView();}
