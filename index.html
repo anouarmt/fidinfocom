@@ -365,8 +365,8 @@ const LS={flags:"fid_flags",done:"fid_done",pay:"fid_pay",jur:"fid_jur",custom:"
 function ld(k){try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){return {}}}
 function lda(k){try{const v=JSON.parse(localStorage.getItem(k));return Array.isArray(v)?v:[]}catch(e){return []}}
 const S={tab:"dash",flags:ld(LS.flags),done:ld(LS.done),pay:ld(LS.pay),jur:ld(LS.jur),
-  custom:lda(LS.custom),deleted:ld(LS.deleted),years:lda(LS.years),receipts:lda(LS.receipts),tva:ld(LS.tva),sal:ld(LS.sal),liasse:ld(LS.liasse),docs:ld(LS.docs),compta:ld(LS.compta),emprunts:ld(LS.emprunts),factures:lda(LS.factures),cabinet:ld(LS.cabinet),paie:ld(LS.paie),portal:ld(LS.portal),team:ld(LS.team),paieSel:{id:null,mois:null,emp:null},paieView:"bulletins",facSel:{id:null},facDraft:null,year:YEAR,curClient:(function(){try{var v=localStorage.getItem("fid_curclient");return v?+v:null;}catch(e){return null;}})(),comptaView:"saisie",comptaList:{type:null,statut:"",q:"",dmin:"",dmax:"",mmin:"",mmax:""},tvaSel:{id:null,period:null},salSel:{id:null},liasseSel:{id:null},liasseView:"is",docsSel:{id:null},empSel:{id:null},
-  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",modal:null,jurForm:null,grpSel:{},grpTpl:null,notiflog:lda(LS.notiflog),tsType:"tva",tsPeriod:null};
+  custom:lda(LS.custom),deleted:ld(LS.deleted),years:lda(LS.years),receipts:lda(LS.receipts),tva:ld(LS.tva),sal:ld(LS.sal),liasse:ld(LS.liasse),docs:ld(LS.docs),compta:ld(LS.compta),emprunts:ld(LS.emprunts),factures:lda(LS.factures),cabinet:ld(LS.cabinet),paie:ld(LS.paie),portal:ld(LS.portal),team:ld(LS.team),paieSel:{id:null,mois:null,emp:null},paieView:"bulletins",facSel:{id:null},facDraft:null,year:YEAR,curClient:(function(){try{var v=localStorage.getItem("fid_curclient");return v?+v:null;}catch(e){return null;}})(),comptaView:"saisie",comptaList:{type:null,statut:"",q:"",dmin:"",dmax:"",mmin:"",mmax:""},ageRef:"",cptFilter:{q:"",cpt:"",jrn:"",dmin:"",dmax:"",mmin:"",mmax:"",sens:"",hideZero:false},tvaSel:{id:null,period:null},salSel:{id:null},liasseSel:{id:null},liasseView:"is",docsSel:{id:null},empSel:{id:null},
+  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",echMois:"all",echReg:"all",gq:"",modal:null,jurForm:null,grpSel:{},grpTpl:null,notiflog:lda(LS.notiflog),tsType:"tva",tsPeriod:null};
 if(!S.years.length){S.years=[YEAR-1,YEAR,YEAR+1];}
 S.years.sort((a,b)=>a-b);
 if(S.years.indexOf(S.year)<0)S.year=S.years[S.years.length-1];
@@ -1084,11 +1084,15 @@ function tvaAuto(cid,period){
   (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0&&o.status==="valide";}).forEach(function(o){
     rc+=(+o.tvaComm||0);detail.banque.push({nom:o.libelle,tva:+o.tvaComm});
   });
-  // INTÉRÊTS D'EMPRUNTS COMPTABILISÉS -> TVA 10% déductible (échéances validées de la période)
+  // INTÉRÊTS D'EMPRUNTS RÉGLÉS PAR BANQUE -> TVA 10% déductible à la date du paiement bancaire (régime encaissement)
   (empList(cid)||[]).forEach(function(emp){
     empAmortir(emp).forEach(function(r){
-      if(r.valide && (+r.tva>0) && opYear({date:r.date})===S.year && pieceInPeriod({date:r.date},period)){
-        rc+=(+r.tva||0); detail.banque.push({nom:"Intérêts "+(emp.organisme||"emprunt"),tva:+r.tva});
+      var pdate=empPmtDate(r), parBanque=((r.modeReg||"Banque")==="Banque");
+      if(r.valide && parBanque && (+r.tva>0) && opYear({date:pdate})===S.year && pieceInPeriod({date:pdate},period)){
+        rc+=(+r.tva||0); detail.banque.push({nom:"Intérêts "+(emp.organisme||"emprunt")+" (banque)",tva:+r.tva});
+      }
+      if(r.valide && parBanque && (+r.penTva>0) && opYear({date:pdate})===S.year && pieceInPeriod({date:pdate},period)){
+        rc+=(+r.penTva||0); detail.banque.push({nom:"Pénalités "+(emp.organisme||"emprunt")+" (banque)",tva:+r.penTva});
       }
     });
   });
@@ -1475,6 +1479,48 @@ var TVA_CODES={
 function tvaCodeByCode(code){if(code==null)return null;code=String(code);var all=TVA_CODES.collectee.concat(TVA_CODES.deductible);for(var i=0;i<all.length;i++){if(all[i].code===code)return all[i];}var a=TVA_CODES_ALIAS[code];if(a){for(var j=0;j<all.length;j++){if(all[j].code===a)return all[j];}}return null;}
 function tvaCodeForRate(rate){var m={20:"81",18:"68",16:"72",15:"67",14:"104",13:"64",12:"71",11:"70",10:"118",9:"66",8:"69",7:"119"};return m[+rate]||"";}      // case collectee par defaut d'un taux
 function tvaCodeDed(rate,isImmo){var r=+rate;if(isImmo){var mi={20:"163",14:"168",10:"160",7:"169"};return mi[r]||"163";}var mc={20:"146",18:"159",16:"134",15:"161",14:"135",13:"171",12:"136",11:"137",10:"150",9:"61",8:"138",7:"139"};return mc[r]||"146";}
+
+
+// ===== Détection AUTOMATIQUE du code TVA déductible selon la NATURE =====
+// Priorité : compte comptable (le plus fiable) -> mots-clés du libellé -> taux.
+// service -> 140/153 · banque -> 142 · transport -> 141 · hôtel/restau -> 143
+// marchandise/fourniture -> 146/150 · import -> 145/149 · travaux -> 155/156 · immo -> 16x
+function tvaNature(p){
+  p=p||{};
+  var cpt=comptaCanon(p.compte||""), t4=cgncTrim(cpt).slice(0,4);
+  if(/^2/.test(cpt))return "immo";
+  var txt=_norm([p.designation,p.libelle,p.description,p.objet,p.nature,p.categorie,p.fournisseur].filter(Boolean).join(" "));
+  // 1) par compte comptable (CGNC)
+  if(/^6147/.test(t4)||/^61475/.test(cpt))return "banque";          // services bancaires
+  if(/^6311/.test(t4))return "banque";                              // intérêts (opérations de banque)
+  if(/^6142/.test(t4))return "transport";                           // transports
+  if(/^6143/.test(t4))return "hotel";                               // déplacements, missions et réceptions
+  if(/^611/.test(t4)||/^612[1-5]/.test(t4))return "achat";          // marchandises, matières, fournitures
+  if(/^6126/.test(t4))return "service";                             // achats de prestations
+  if(/^613/.test(t4)||/^6141/.test(t4)||/^6144/.test(t4)||/^6145/.test(t4)||/^6146/.test(t4)||/^6148/.test(t4))return "service"; // études, loc., entretien, pub, télécom, autres charges externes
+  if(/^6157|^6158|^61(55|56)/.test(t4))return "travaux";            // travaux / sous-traitance
+  // 2) par mots-clés (si le compte ne tranche pas)
+  if(/banqu|commission banc|agios|frais bancaire|interet|intérêt/.test(txt))return "banque";
+  if(/transport|fret|messageri|logistiqu|livraison de marchand/.test(txt))return "transport";
+  if(/hotel|hôtel|restau|voyage|sejour|séjour|nuitee|nuitée|hebergement|hébergement/.test(txt))return "hotel";
+  if(/travaux a facon|travaux à façon|sous-traitance|sous traitance/.test(txt))return "travaux";
+  if(/marchandis|fournitur|matiere|matière|matériel|materiel|stock|consommable|piece detach|pièce détach|carburant|gasoil|gazoil|essence|achat de bien/.test(txt))return "achat";
+  if(/service|prestation|honorair|conseil|maintenance|abonnement|location|loyer|leasing|assurance|publicit|telecom|télécom|internet|reparation|réparation|entretien|etude|étude|formation|audit|expertise/.test(txt))return "service";
+  return "";   // inconnu -> fallback par taux
+}
+// Renvoie le code TVA déductible détecté pour une pièce
+function tvaCodeDetect(p){
+  p=p||{};
+  var taux=pieceTaux(p)||20, cpt=comptaCanon(p.compte||""), isImmo=/^2/.test(cpt), nat=tvaNature(p);
+  if(nat==="immo"||isImmo){ var mi={20:"163",14:"168",10:"160",7:"169"}; return mi[taux]||"163"; }
+  if(nat==="banque")  return taux>=20?"140":"142";                  // banque = 10% -> 142
+  if(nat==="transport")return "141";
+  if(nat==="hotel")   return "143";
+  if(nat==="travaux") return "155";
+  if(nat==="service"){ var ms={20:"140",18:"62",16:"154",14:"133",13:"171",12:"172",10:"153"}; return ms[taux]||"140"; }
+  if(nat==="achat"){   var ma={20:"146",18:"159",16:"134",15:"161",14:"135",13:"171",12:"136",11:"137",10:"150",9:"61",8:"138",7:"139"}; return ma[taux]||"146"; }
+  return tvaCodeDed(taux,false);                                    // inconnu -> achats par taux
+}
 /* ===== MOTEUR DE CALCUL DES BALISES PIVOTS — déclaration 3122 (Art. 110 du CGI) =====
    Validé contre la déclaration My7 SARL AU (Fév. 2026) :
    L060=53 660,00 · L130=10 732,00 · L182=159 379,70 · L190=482 586,72 · L201=471 854,72 · L205=148 647,70 (crédit). */
@@ -1708,7 +1754,7 @@ function releveDeductionsRows(cid,period){
         var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
         rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
           if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":"Achat/charge")+" (réglé)",
-          ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDed(taux,isImmo)),tva:tva,prorata:100,recup:tva,
+          ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDetect(p)),tva:tva,prorata:100,recup:tva,
           regDate:o.date||"",regMode:o.isCommission?"Banque":"Virement/Chèque",cr:o.reference||"",compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
       });
     });
@@ -1720,7 +1766,7 @@ function releveDeductionsRows(cid,period){
       var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
       rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
         if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":"Achat/charge")+" (réglé)",
-        ttc:mt,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDed(taux,isImmo)),tva:tva,prorata:100,recup:tva,
+        ttc:mt,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDetect(p)),tva:tva,prorata:100,recup:tva,
         regDate:regDateOf(p),regMode:p.modeReg||"",cr:p.refReg||"",compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
     });
   }else{
@@ -1733,21 +1779,26 @@ function releveDeductionsRows(cid,period){
       if(op){regDate=op.date||"";regMode="Virement/Chèque";cr=op.reference||"";}
       rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
         if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:isImmo?"Immobilisation":"Achat/charge",
-        ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDed(taux,isImmo)),tva:tva,prorata:100,recup:tva,
+        ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDetect(p)),tva:tva,prorata:100,recup:tva,
         regDate:regDate,regMode:regMode,cr:cr,compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
     });
   }
   // Commissions bancaires COMPTABILISÉES (statut « valide ») -> TVA déductible
   (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0&&o.status==="valide";}).forEach(function(o){
     var ht=+o.htComm||0,tva=+o.tvaComm||0,ttc=ht+tva;
-    rows.push({journal:"BQ",num:o.reference||"",date:o.date||"",tiers:o.libelle||"Banque",if_:"",ice:"",design:"Commission bancaire",ttc:ttc,ht:ht,taux:o.tauxComm||10,code:(o.codeTva||tvaCodeDed(o.tauxComm||10,false)),tva:tva,prorata:100,recup:tva,regDate:o.date||"",regMode:"Banque",cr:o.reference||"",compteTva:"34552000",src:"op",srcId:o.id});
+    rows.push({journal:"BQ",num:o.reference||"",date:o.date||"",tiers:o.libelle||"Banque",if_:"",ice:"",design:"Commission bancaire",ttc:ttc,ht:ht,taux:o.tauxComm||10,code:(o.codeTva||"142"),tva:tva,prorata:100,recup:tva,regDate:o.date||"",regMode:"Banque",cr:o.reference||"",compteTva:"34552000",src:"op",srcId:o.id});
   });
-  // Intérêts d'emprunts COMPTABILISÉS (échéances validées) -> TVA 10% déductible
+  // Intérêts d'emprunts RÉGLÉS PAR BANQUE -> TVA 10% déductible à la date du paiement bancaire
   (empList(c.id)||[]).forEach(function(emp){
     empAmortir(emp).forEach(function(r){
-      if(!(r.valide && (+r.tva>0) && opYear({date:r.date})===S.year && pieceInPeriod({date:r.date},period)))return;
+      var pdate=empPmtDate(r), parBanque=((r.modeReg||"Banque")==="Banque");
+      if(!(r.valide && parBanque && (+r.tva>0) && opYear({date:pdate})===S.year && pieceInPeriod({date:pdate},period)))return;
       var ht=+r.interet||0,tva=+r.tva||0,ttc=ht+tva;
-      rows.push({journal:"BQ",num:"éch. "+r.n,date:r.date||"",tiers:emp.organisme||"Emprunt",if_:"",ice:"",design:"Intérêts d'emprunt",ttc:ttc,ht:ht,taux:10,code:(emp.codeTvaInteret||"142"),tva:tva,prorata:100,recup:tva,regDate:r.date||"",regMode:"Banque",cr:"",compteTva:comptaCanon(emp.cptTva||EMP_TVA),src:"emp",srcId:String(emp.id)});
+      rows.push({journal:"BQ",num:"éch. "+r.n,date:pdate,tiers:emp.organisme||"Emprunt",if_:"",ice:"",design:"Intérêts d'emprunt (réglé banque)",ttc:ttc,ht:ht,taux:10,code:(emp.codeTvaInteret||"142"),tva:tva,prorata:100,recup:tva,regDate:pdate,regMode:"Banque",cr:"",compteTva:comptaCanon(emp.cptTva||EMP_TVA),src:"emp",srcId:String(emp.id)});
+      if(+r.penTva>0){
+        var pht=+r.penalite||0,pt=+r.penTva||0;
+        rows.push({journal:"BQ",num:"éch. "+r.n,date:pdate,tiers:emp.organisme||"Emprunt",if_:"",ice:"",design:"Pénalités de retard (réglé banque)",ttc:pht+pt,ht:pht,taux:10,code:(emp.codeTvaInteret||"142"),tva:pt,prorata:100,recup:pt,regDate:pdate,regMode:"Banque",cr:"",compteTva:comptaCanon(emp.cptTva||EMP_TVA),src:"emp",srcId:String(emp.id)});
+      }
     });
   });
   rows.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
@@ -5211,6 +5262,120 @@ function ecritureAchat(p){
   }
   return {journal:"AC",lignes:lignes};
 }
+/* ========== MODULE IMPORT / DOUANE (DUM) ==========
+   Un dossier d'importation = facture étrangère (marchandise) + DUM (droits + TVA import) + transitaire.
+   Écriture unique, équilibrée, au journal AC. Les droits de douane sont, au choix (interrupteur par
+   pièce), incorporés au coût de la marchandise/immo, ou passés en charge séparée. */
+function ecritureImport(p){
+  var march=+p.valeurMarch||0;
+  var di=+p.droitsDouane||0;
+  var diInc=(p.diIncorpore!==false);            // défaut : incorporé au coût
+  var tvaImp=+p.tvaImport||0;
+  var immo=!!p.tvaImportImmo;
+  var autres=+p.autresTaxes||0;
+  var trHT=+p.transitHT||0, trTVA=+p.transitTVA||0;
+  var cptMarch=p.compte||"6111";
+  var cptDI=p.compteDI||cptMarch;
+  var cptAutres=p.compteAutresTaxes||"61678";
+  var cptTransit=p.compteTransit||"6142";
+  var cptTvaImp=immo?"34551":"34552";
+  var frsCpt=pieceTiersCompte(p);               // fournisseur étranger (marchandise)
+  var credImport=p.compteCredImport||"4411";    // douane / transitaire (avances)
+  var fEtr=(p.fournisseur||"Fournisseur étranger");
+  var trName=(p.transitaire||"Douane / Transitaire");
+  var num=p.numero?(" DUM "+p.numero):"";
+  var L=[];
+  // débits
+  L.push({compte:cptMarch,libelle:"Marchandises import "+fEtr+num,debit:march+(diInc?di:0),credit:0});
+  if(!diInc && di>0) L.push({compte:cptDI,libelle:"Droits de douane"+num,debit:di,credit:0});
+  if(autres>0)       L.push({compte:cptAutres,libelle:"Taxes import (TPI…)"+num,debit:autres,credit:0});
+  if(tvaImp>0)       L.push({compte:cptTvaImp,libelle:"TVA à l'importation déductible"+num,debit:tvaImp,credit:0});
+  if(trHT>0)         L.push({compte:cptTransit,libelle:"Honoraires transit "+trName,debit:trHT,credit:0});
+  if(trTVA>0)        L.push({compte:"34552",libelle:"TVA sur transit",debit:trTVA,credit:0});
+  // crédits
+  if(march>0)        L.push({compte:frsCpt,libelle:"Frs "+fEtr,debit:0,credit:march});
+  var credDouane=di+tvaImp+autres+trHT+trTVA;
+  if(credDouane>0)   L.push({compte:credImport,libelle:trName+num,debit:0,credit:credDouane});
+  return {journal:"AC",lignes:L};
+}
+// Formulaire de révision spécifique à un dossier d'import (DUM)
+function reviewFieldsImport(p){
+  function f(lbl,field,val,num){return '<div style="flex:1;min-width:110px"><div class="flbl">'+lbl+'</div><input class="ipt'+(num?" mono":"")+'" '+(num?'type="number" ':'')+'data-cp="'+p.id+':'+field+'" value="'+esc(val==null?"":val)+'"></div>';}
+  var diInc=(p.diIncorpore!==false), immo=!!p.tvaImportImmo;
+  var opts='<option value="">— compte marchandise / immo —</option>'+PLAN_COMPTABLE.map(function(a){return '<option value="'+a[0]+'"'+(comptaCanon(p.compte)===comptaCanon(a[0])?" selected":"")+'>'+a[0]+" · "+esc(a[1])+'</option>';}).join("")+(typeof cgncOptgroup!=="undefined"?cgncOptgroup(/^[26]/,p.compte):"");
+  var ec=ecritureFor(p);
+  var preview=ec.lignes.map(function(l){return '<tr><td style="padding:2px 6px;color:var(--muted)">'+esc(l.compte)+'</td><td style="padding:2px 6px">'+esc(l.libelle)+'</td><td class="mono" style="text-align:right;padding:2px 6px">'+(l.debit?fmtDH2(l.debit):"")+'</td><td class="mono" style="text-align:right;padding:2px 6px">'+(l.credit?fmtDH2(l.credit):"")+'</td></tr>';}).join("");
+  var totD=ec.lignes.reduce(function(s,l){return s+(+l.debit||0);},0), totC=ec.lignes.reduce(function(s,l){return s+(+l.credit||0);},0);
+  var bal=Math.abs(totD-totC);
+  function tg(act,on,labOn,labOff,col){return '<button class="chip" data-act="'+act+'" data-id="'+p.id+'" style="border:0;background:'+(on?col:"#EDEAE0")+';color:'+(on?"#fff":"#44423c")+'">'+(on?labOn:labOff)+'</button>';}
+  return '<div style="background:#F5F0FE;border:1px solid #E4D9FB;border-radius:10px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#5B21B6;font-weight:600">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Dossier d\'importation — DUM'+(p.devise?' · devise '+esc(p.devise):'')+(p.ocrError?' · ⚠️ OCR : '+esc(p.ocrError):'')+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'+f("Date","date",p.date)+f("N° DUM","numero",p.numero)+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("Fournisseur étranger","fournisseur",p.fournisseur)+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("ICE frs","ice",p.ice)+f("Transitaire","transitaire",p.transitaire)+'</div>'
+    +'<div style="margin-top:10px"><div class="flbl">Compte marchandise / immo</div><select class="ipt" data-cp="'+p.id+':compte">'+opts+'</select></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("Valeur marchandise","valeurMarch",p.valeurMarch,1)+f("Droits de douane","droitsDouane",p.droitsDouane,1)+'</div>'
+    +'<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="flbl" style="margin:0">Droits de douane :</span>'+tg("impdi",diInc,"✓ Incorporés au coût","Charge séparée","#7C3AED")+(diInc?'':f("Compte droits (charge)","compteDI",p.compteDI||"6111"))+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:flex-end">'+f("TVA à l'import","tvaImport",p.tvaImport,1)+'<div style="flex:1;min-width:110px"><div class="flbl">TVA import sur</div>'+tg("impimmo",!immo,"Charges · 34552","Immo · 34551","#0E7A5F")+'</div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("Autres taxes (TPI…)","autresTaxes",p.autresTaxes,1)+f("Compte autres taxes","compteAutresTaxes",p.compteAutresTaxes||"61678")+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("Transit HT","transitHT",p.transitHT,1)+f("TVA transit","transitTVA",p.transitTVA,1)+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("Compte transit","compteTransit",p.compteTransit||"6142")+f("Compte crédit douane / transitaire","compteCredImport",p.compteCredImport||"4411")+'</div>'
+    +'<div style="margin-top:10px;background:#F7F4EC;border-radius:10px;padding:8px"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Écriture (journal Achats) — débit '+fmtDH2(totD)+' / crédit '+fmtDH2(totC)+(bal>1?' · ⚠️ déséquilibre '+fmtDH2(bal):' ✓')+'</div><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--faint)"><td style="padding:0 6px">Compte</td><td style="padding:0 6px">Libellé</td><td style="text-align:right;padding:0 6px">Débit</td><td style="text-align:right;padding:0 6px">Crédit</td></tr>'+preview+'</table></div>';
+}
+// Carte « Import / Douane (DUM) » dans l'écran Saisie / Import
+function comptaDumCard(btn){
+  var cid=S.curClient,g=cid?comptaGet(cid):null;
+  var n=g?g.pieces.filter(function(p){return p.isImport&&pieceYear(p)===S.year;}).length:0;
+  var av=g?g.pieces.filter(function(p){return p.isImport&&p.status==="avalider"&&pieceYear(p)===S.year;}).length:0;
+  function l(lbl,v,strong){return '<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:1px 0'+(strong?";font-weight:700":"")+'"><span style="opacity:.92">'+lbl+'</span><span class="mono">'+v+'</span></div>';}
+  return '<div style="border-radius:16px;padding:18px;color:#fff;background:#7C3AED;box-shadow:0 6px 18px rgba(0,0,0,.10)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-family:Fraunces,serif;font-size:20px;font-weight:600">Import / Douane (DUM)</div>'
+    +(btn?'<button onclick="comptaImportClick(event,\'import\')" style="background:rgba(255,255,255,.92);color:#14201C;border:0;border-radius:9px;padding:7px 12px;font-weight:600;font-size:12.5px;cursor:pointer">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Scanner DUM</button>':'')
+    +'</div>'
+    +l("Dossiers d'import",n)+l("À valider",av,av>0)
+    +'<div style="margin-top:10px;font-size:11.5px;opacity:.85">Facture étrangère + DUM + transitaire → écriture AC complète, TVA import récupérable détectée</div></div>';
+}
+// Scan d'un dossier d'importation (DUM) -> pièce d'import « à valider » via la fonction extract-dum
+async function comptaUploadDum(files){
+  files=Array.prototype.slice.call(files||[]);if(!files.length)return;
+  if(!CLOUD||!sb||!session){showErr("Connectez-vous au cloud pour scanner une DUM.");return;}
+  if(S.curClient==null){showErr("Sélectionnez d'abord un dossier.");return;}
+  var c=clients().find(function(x){return x.id===S.curClient;})||{},cid=String(S.curClient);
+  var soc=((S.flags[c.id]||{}).societe)||{};
+  var st=document.getElementById("comptastatus");setSync("saving");
+  var g=comptaGet(cid),ok=0,errLast=null;
+  for(var i=0;i<files.length;i++){
+    var f=files[i];if(f.size>52428800){continue;}
+    if(st)st.textContent="DUM "+(i+1)+"/"+files.length+" : "+f.name+" — lecture douane en cours…";
+    var safe=f.name.replace(/[^a-zA-Z0-9._-]/g,"_"),path=cid+"/compta/dum_"+Date.now()+"_"+i+"_"+safe;
+    var x={},err=null;
+    try{
+      var up=await sb.storage.from(DOC_BUCKET).upload(path,f,{upsert:false,contentType:f.type||undefined});if(up.error)throw up.error;
+      var b64=await blobToB64(f),mt=f.type||(/\.pdf$/i.test(f.name)?"application/pdf":"image/jpeg");
+      var resp=await sb.functions.invoke("extract-dum",{body:{fileBase64:b64,mediaType:mt,clientNom:c.dossier||"",clientIce:soc.ice||""}});
+      if(resp.error)throw resp.error;
+      x=resp.data||{};
+    }catch(e){err=(e.message||e);errLast=err;}
+    var march=(x.valeur_marchandise!=null&&x.valeur_marchandise!=="")?x.valeur_marchandise:(x.valeur_douane!=null?x.valeur_douane:"");
+    var piece={id:Date.now()+"_dum_"+i,type:"achat",isImport:true,name:"DUM "+(x.numero_dum||f.name),path:path,status:"avalider",
+      date:x.date||"",numero:x.numero_dum||"",fournisseur:x.fournisseur||"",ice:x.fournisseur_ice||"",if_fournisseur:x.fournisseur_if||"",if_:x.fournisseur_if||"",
+      transitaire:x.transitaire||"",compte:"6111",compteAuto:true,
+      valeurMarch:march,droitsDouane:(x.droits_douane!=null?x.droits_douane:""),diIncorpore:true,compteDI:"6111",
+      tvaImport:(x.tva_import!=null?x.tva_import:""),tvaImportImmo:false,
+      autresTaxes:(x.autres_taxes!=null?x.autres_taxes:""),compteAutresTaxes:"61678",
+      transitHT:(x.transit_ht!=null?x.transit_ht:""),transitTVA:(x.transit_tva!=null?x.transit_tva:""),compteTransit:"6142",
+      compteCredImport:"4411",devise:x.devise||"",extracted:x};
+    if(err)piece.ocrError=err;
+    g.pieces.push(piece);ok++;
+  }
+  comptaAutoPost(g);save("compta");
+  S.comptaView="saisie";
+  if(st)st.textContent="";
+  setSync("synced");
+  if(errLast)showErr("Lecture DUM : "+errLast+" — la fonction « extract-dum » est-elle déployée dans Supabase ?");
+  else if(ok)showOk(ok+" dossier(s) d'import ajouté(s) — vérifiez les montants puis validez.");
+  renderView();
+}
+
 /* ========== MODULE AMORTISSEMENT DES IMMOBILISATIONS (CGNC marocain) ==========
    Plan d'amortissement linéaire avec prorata temporis (30/360) à partir de la date
    de mise en service. Dotation de l'exercice -> écriture OD au 31/12 :
@@ -5384,15 +5549,15 @@ function vCompta(){
   if(S.curClient&&cs.find(function(c){return c.id===S.curClient;})){} else S.curClient=(cs[0]||{}).id||null;
   var c=cs.find(function(x){return x.id===S.curClient;});
   // Réconciliation : génère/nettoie automatiquement les écritures des pièces dès l'ouverture du dossier
-  if(c && !_AP_DONE[String(c.id)]){ var _g=comptaGet(c.id); comptaAutoPost(_g); _AP_DONE[String(c.id)]=1; save("compta"); }
+  if(c && !_AP_DONE[String(c.id)]){ var _g=comptaGet(c.id); comptaAutoPost(_g); comptaPurgeOrphanEmp(c.id); _AP_DONE[String(c.id)]=1; save("compta"); }
   var head='<div class="wrap">'+header("Comptabilité","Saisie, journal et grand livre · Exercice "+S.year);
   if(!cs.length)return head+'<div class="empty">Aucun client.</div></div>';
   var clientOpts=cs.map(function(x){return '<option value="'+x.id+'"'+(x.id===S.curClient?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("");
-  var tabs=[["saisie","Saisie / Import"],["manuel","Saisie manuelle"],["tiers","Tiers (frs/clients)"],["anouveau","À-nouveaux N-1"],["immos","Amortissements"],["emprunts","Emprunts"],["journal","Journal général"],["gl","Grand livre"],["balance","Balance"],["controles","Anomalies"],["plan","Plan comptable"],["recap","Toutes sociétés"]];
+  var tabs=[["saisie","Saisie / Import"],["manuel","Saisie manuelle"],["tiers","Tiers (frs/clients)"],["age","Balance âgée"],["anouveau","À-nouveaux N-1"],["immos","Amortissements"],["emprunts","Emprunts"],["journal","Journal général"],["gl","Grand livre"],["balance","Balance"],["controles","Anomalies"],["plan","Plan comptable"],["recap","Toutes sociétés"]];
   var toggle='<div style="display:flex;gap:6px;background:#EDEAE0;border-radius:10px;padding:3px;flex-wrap:wrap">'+tabs.map(function(t){return '<button data-act="comptaview" data-v="'+t[0]+'" class="chip" style="border:0;'+(S.comptaView===t[0]?"background:#14201C;color:#fff":"background:transparent")+'">'+t[1]+'</button>';}).join("")+'</div>';
   var bar='<div class="card mt5" style="padding:16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div class="flbl">Société</div><select class="ipt" id="comptaclient">'+clientOpts+'</select></div>'+toggle+'</div>';
   // hidden file inputs
-  var hidden='<input type="file" id="compta_file_achat" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none"><input type="file" id="compta_file_vente" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none"><input type="file" id="compta_file_banque" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none"><input type="file" id="compta_file_achat_multi" multiple accept=".pdf" style="display:none"><input type="file" id="compta_file_vente_multi" multiple accept=".pdf" style="display:none"><input type="file" id="compta_file_an" accept=".txt,.csv,.tsv,.fec,.xlsx,.xls,.pdf" style="display:none">';
+  var hidden='<input type="file" id="compta_file_achat" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none"><input type="file" id="compta_file_vente" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none"><input type="file" id="compta_file_banque" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none"><input type="file" id="compta_file_achat_multi" multiple accept=".pdf" style="display:none"><input type="file" id="compta_file_vente_multi" multiple accept=".pdf" style="display:none"><input type="file" id="compta_file_an" accept=".txt,.csv,.tsv,.fec,.xlsx,.xls,.pdf" style="display:none"><input type="file" id="compta_file_import" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none">';
   var body;
   if(S.comptaView==="journal") body=comptaJournalBody(c);
   else if(S.comptaView==="manuel") body=comptaManuelBody(c);
@@ -5405,6 +5570,7 @@ function vCompta(){
   else if(S.comptaView==="recap") body=comptaRecapBody();
   else if(S.comptaView==="controles") body=comptaControlesBody(c);
   else if(S.comptaView==="tiers") body=comptaTiersBody(c);
+  else if(S.comptaView==="age") body=comptaAgeBody(c);
   else if(S.comptaView==="list") body=comptaListBody(c);
   else body=comptaSaisieBody(c);
   return head+bar+hidden+body+'</div>';
@@ -5416,7 +5582,8 @@ function comptaSaisieBody(c){
   var cards='<div class="grid mt4" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">'
     +comptaCard("achat","Achats","#2563EB",true)
     +comptaCard("vente","Ventes","#0E7A5F",true)
-    +comptaCard("banque","Rel. bancaires","#C0392B",true)+'</div>'
+    +comptaCard("banque","Rel. bancaires","#C0392B",true)
+    +comptaDumCard(true)+'</div>'
     +'<div id="comptastatus" style="font-size:12px;color:var(--muted);margin-top:10px"></div>';
   // pieces à valider (achats)
   var g=comptaGet(c.id),av=g.pieces.filter(function(p){return p.status==="avalider"&&pieceYear(p)===S.year;});
@@ -5727,8 +5894,34 @@ function comptaOpMatch(o,fl){
   if(fl.mmax!=="" && fl.mmax!=null && mont>+fl.mmax)return false;
   return true;
 }
+function soldeInitBanque(cid){ var g=comptaGet(cid); return (g.soldeInit&&g.soldeInit[String(S.year)]!=null)?+g.soldeInit[String(S.year)]:0; }
+function setSoldeInitBanque(cid,val){ var g=comptaGet(cid); if(!g.soldeInit)g.soldeInit={}; if(val===""||val==null||isNaN(+val))delete g.soldeInit[String(S.year)]; else g.soldeInit[String(S.year)]=Math.round((+val)*100)/100; save("compta"); }
+// Bloc « report » : solde initial saisissable + solde final calculé (pointage du relevé)
+function banqueReportBox(c,all){
+  var si=soldeInitBanque(c.id);
+  var tD=all.reduce(function(a,o){return a+(+o.debit||0);},0);
+  var tC=all.reduce(function(a,o){return a+(+o.credit||0);},0);
+  var soldeFinal=Math.round((si+tC-tD)*100)/100;
+  // dernier solde lu sur le relevé (pour rapprochement), s'il existe
+  var withSolde=all.filter(function(o){return o.solde!==""&&o.solde!=null&&o.date;}).sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
+  var lastReleve=withSolde.length?+withSolde[withSolde.length-1].solde:null;
+  var ecart=(lastReleve!=null)?Math.round((soldeFinal-lastReleve)*100)/100:null;
+  function cell(lbl,val,col){return '<div style="min-width:150px"><div class="flbl">'+lbl+'</div><div class="mono" style="font-size:18px;font-weight:700;'+(col?"color:"+col:"")+'">'+fmtDH2(val)+'</div></div>';}
+  var rappro="";
+  if(lastReleve!=null){
+    if(Math.abs(ecart)<0.01)rappro='<div style="flex-basis:100%;font-size:12px;color:#0a5f4a;background:#E7F4EF;border-radius:9px;padding:8px 12px">\u2713 Rapprochement OK : le solde calcul\u00e9 correspond au dernier solde du relev\u00e9 ('+fmtDH2(lastReleve)+').</div>';
+    else rappro='<div style="flex-basis:100%;font-size:12px;color:#8a3a30;background:#FBEAE8;border-radius:9px;padding:8px 12px">\u26A0 \u00c9cart de '+fmtDH2(ecart)+' entre le solde calcul\u00e9 et le dernier solde du relev\u00e9 ('+fmtDH2(lastReleve)+'). V\u00e9rifiez le solde initial ou une op\u00e9ration manquante.</div>';
+  }
+  return '<div class="card mt4" style="padding:14px;display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap">'
+    +'<div style="min-width:210px"><div class="flbl">Solde initial banque au 01/01/'+S.year+' (report)</div>'
+    +'<input class="ipt mono" id="banque_soldeinit" type="number" step="0.01" value="'+(si?si:"")+'" placeholder="0,00" style="text-align:right;min-width:160px"></div>'
+    +cell("Total débits",tD,"#B42318")+cell("Total crédits",tC,"#0E7A5F")
+    +cell("Solde final calculé",soldeFinal,soldeFinal<0?"#B42318":"#14201C")
+    +rappro+'</div>';
+}
 function comptaBanqueList(c,rows,all){
-  if(!all.length)return '<div class="empty mt4">Aucune opération bancaire pour '+S.year+'. Cliquez « Importer » sur la carte Rel. bancaires pour déposer un relevé (OCR).</div>';
+  var reportBox=banqueReportBox(c,all);
+  if(!all.length)return reportBox+'<div class="empty mt4">Aucune opération bancaire pour '+S.year+'. Saisissez le solde initial ci-dessus, puis cliquez « Importer » sur la carte Rel. bancaires pour déposer un relevé (OCR).</div>';
   var nNouveau=rows.filter(function(o){return (o.status||"nouveau")==="nouveau";}).length;
   var nValide=rows.filter(function(o){return o.status==="valide";}).length;
   var bulk='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">'
@@ -5757,7 +5950,7 @@ function comptaBanqueList(c,rows,all){
   var tD=rows.reduce(function(a,o){return a+(+o.debit||0);},0),tC=rows.reduce(function(a,o){return a+(+o.credit||0);},0);
   var foot='<tr style="border-top:2px solid #14201C;font-weight:700;color:#14201C"><td colspan="2" style="padding:10px 6px">TOTAL ('+rows.length+')</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tD)+'</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tC)+'</td><td colspan="3"></td></tr>';
   var tbl='<div class="card" style="padding:14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:680px">'+head+body+foot+'</table></div>';
-  return bulk+tbl;
+  return reportBox+bulk+tbl;
 }
 function comptaListBody(c){
   var type=S.comptaList.type||"achat";
@@ -5839,10 +6032,55 @@ function comptaListBody(c){
 }
 /* ========== CONTRÔLES & ANOMALIES (récap dossier à revoir avec le client) ========== */
 function ctrlRank(s){return s==="err"?0:s==="warn"?1:2;}
+// Propose le compte le plus plausible pour un compte de gestion « au sens inhabituel »
+// (charge classe 6 au crédit -> RRR obtenus ; produit classe 7 au débit -> RRR accordés).
+function suggestCompteSens(account){
+  var t=comptaCanon(account), r3=String(t).slice(0,3), d0=String(t).charAt(0), c=null;
+  if(d0==="6"){
+    c=(r3==="611")?"6119000000":(r3==="612")?"6129000000":"6149000000";
+    return {compte:cgncTrim(c),full:c,label:libCompte(c)||"RRR obtenus",
+      reason:"Solde créditeur sur un compte de charges : le plus souvent des Rabais, Remises et Ristournes obtenus — ou une vente/un produit imputé par erreur en charge. Reclassez le montant concerné."};
+  }
+  if(d0==="7"){
+    c=(r3==="711")?"7119000000":(r3==="712")?"7129000000":"7119000000";
+    return {compte:cgncTrim(c),full:c,label:libCompte(c)||"RRR accordés",
+      reason:"Solde débiteur sur un compte de produits : le plus souvent des Rabais, Remises et Ristournes accordés aux clients — ou un achat/une charge imputé par erreur en produit. Reclassez le montant concerné."};
+  }
+  return null;
+}
+/* ----- Lecture robuste des identifiants fiscaux d'une pièce (ICE / IF) -----
+   Cherche dans les champs de tête, le champ éditeur if_fournisseur, et en
+   dernier recours scanne les données OCR brutes (p.extracted) — quels que
+   soient les noms de champ renvoyés par la fonction d'extraction. */
+function _idKeyTokens(key){ return String(key).toLowerCase().split(/[^a-z]+/).filter(Boolean); }
+function _isIceKey(k){ return _idKeyTokens(k).indexOf("ice")>=0; }
+function _isIfKey(k){ var p=_idKeyTokens(k); return p.indexOf("if")>=0 || (p.indexOf("identifiant")>=0&&p.indexOf("fiscal")>=0); }
+function _scanIdField(obj,test){
+  if(!obj||typeof obj!=="object")return "";
+  for(var k in obj){ if(!Object.prototype.hasOwnProperty.call(obj,k))continue;
+    if(test(k)){ var v=obj[k]; if(v!=null){ var s=(""+v).trim(); if(s && s.replace(/\D/g,"").length>=4) return s; } } }
+  return "";
+}
+function pieceIce(p){
+  if(!p)return ""; var v=(p.ice||p.ice_fournisseur||p.fournisseur_ice||p.ice_client||p.client_ice||"").toString().trim(); if(v)return v;
+  v=_scanIdField(p,_isIceKey); if(v)return v;
+  if(p.extracted){ v=_scanIdField(p.extracted,_isIceKey); }
+  return v||"";
+}
+function pieceIf(p){
+  if(!p)return ""; var v=(p.if_fournisseur||p.if_client||p.if_||p.if||p.identifiant_fiscal||"").toString().trim(); if(v)return v;
+  v=_scanIdField(p,_isIfKey); if(v)return v;
+  if(p.extracted){ v=_scanIdField(p.extracted,_isIfKey); }
+  return v||"";
+}
+// Facture d'achat « identifiée » dès lors qu'un identifiant fiscal du fournisseur (ICE OU IF) est présent.
+function pieceAchatIdentifiee(p){ return !!(pieceIce(p)||pieceIf(p)); }
 function comptaControles(c){
   var g=comptaGet(c.id),out=[],rows=comptaBalanceRows(c);
   function soldeRoots(roots){var t=0;rows.forEach(function(r){var tr=cgncTrim(r.c);if(roots.some(function(rt){return String(r.c).indexOf(rt)===0||String(tr).indexOf(rt)===0;}))t+=r.solde;});return Math.round(t*100)/100;}
-  function add(sev,cat,titre,detail,montant,action){out.push({sev:sev,cat:cat,titre:titre,detail:detail||"",montant:(montant==null?null:Math.round(montant*100)/100),action:action||""});}
+  function add(sev,cat,titre,detail,montant,action,fix,items){out.push({sev:sev,cat:cat,titre:titre,detail:detail||"",montant:(montant==null?null:Math.round(montant*100)/100),action:action||"",fix:fix||null,items:(items&&items.length)?items:null});}
+  // Construit une ligne « document concerné » : localise précisément la pièce et ce qui lui manque.
+  function pieceItem(p,manque){ return {pieceId:p.id,name:p.name||("Pièce "+p.id),type:p.type||"achat",fournisseur:p.fournisseur||"",numero:p.numero||"",date:p.date||"",ht:Math.round((+p.ht||0)*100)/100,ttc:Math.round((+p.ttc||((+p.ht||0)+(+p.tva||0)))*100)/100,manque:manque||"",ice:pieceIce(p),if_:pieceIf(p),hasDoc:!!p.path}; }
   var pieces=(g.pieces||[]).filter(function(p){return !p.rejected && pieceYear(p)===S.year;});
   var rejected=(g.pieces||[]).filter(function(p){return p.rejected && pieceYear(p)===S.year;});
   var ecs=(g.ecritures||[]).filter(function(e){return (e.date&&/^\d{4}/.test(e.date)?+e.date.slice(0,4):S.year)===S.year;});
@@ -5851,40 +6089,109 @@ function comptaControles(c){
   var totD=0,totC=0;rows.forEach(function(r){totD+=r.mvDeb;totC+=r.mvCred;});
   var ecart=Math.round((totD-totC)*100)/100;
   if(Math.abs(ecart)>0.5)add("err","Balance","Balance déséquilibrée","Total débit "+fmtDH(totD)+" ≠ total crédit "+fmtDH(totC)+".",ecart,"Identifier et corriger l'écriture non équilibrée.");
-  // 2) compte d'attente bancaire
-  var att=soldeRoots(["4711"]);if(Math.abs(att)>1)add("warn","Banque","Compte d'attente 4711 non soldé","Mouvements bancaires non affectés à un compte définitif.",att,"Affecter chaque opération bancaire (rapprochement).");
+  // 2) compte d'attente bancaire — on cible précisément les mouvements logés en 4711 (pas tout le journal banque)
+  var att=soldeRoots(["4711"]);
+  if(Math.abs(att)>1){
+    var waitCanon=comptaCanon(BANK_WAIT);
+    var attItems=[];
+    ecrituresOf(c).forEach(function(e){
+      (e.lignes||[]).forEach(function(l){
+        if(comptaCanon((l.compte||"").trim())!==waitCanon)return;
+        var amt=(+l.debit||0)+(+l.credit||0); if(amt<=0.005)return;
+        var acts;
+        if(e.opId)         acts=[{act:"banque_edit",id:e.opId,label:'✎ Imputer le compte'},{act:"banque_match",id:e.opId,label:'↔ Affecter'}];
+        else if(e.pieceId) acts=[{act:"comptaeditpiece",id:e.pieceId,label:'✎ Corriger la pièce'}];
+        else               acts=[{act:"comptaeditecr",id:e.id,label:"✎ Corriger l'écriture"}];
+        attItems.push({pieceId:(e.opId||e.pieceId||e.id),name:(l.libelle||e.piece||"Mouvement 4711"),fournisseur:"",numero:e.piece||"",date:e.date||"",ht:Math.round(amt*100)/100,manque:"À imputer (logée en 4711)",actions:acts});
+      });
+    });
+    attItems.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
+    var detailTxt=attItems.length?(attItems.length+" mouvement(s) logé(s) au compte d'attente 4711 — à imputer à leur compte définitif."):"Mouvements logés au compte d'attente 4711 (voir le grand livre du compte).";
+    add("warn","Banque","Compte d'attente 4711 non soldé",detailTxt,att,"Imputer chaque opération à son compte définitif (rapprochement), ou ouvrir le grand livre du 4711.",{kind:"gl",compte:BANK_WAIT},attItems);
+  }
   // 3) caisse créditrice
-  var caisse=soldeRoots(["5161"]);if(caisse<-1)add("err","Caisse","Caisse créditrice (impossible)","Solde de caisse négatif.",caisse,"Justifier les apports en caisse ou corriger les sorties.");
+  var caisse=soldeRoots(["5161"]);if(caisse<-1)add("err","Caisse","Caisse créditrice (impossible)","Solde de caisse négatif.",caisse,"Justifier les apports en caisse ou corriger les sorties.",{kind:"gl",compte:"5161"});
   // 4) tiers au sens inhabituel
-  var frs=soldeRoots(["4411"]);if(frs>1)add("warn","Tiers","Fournisseurs au solde débiteur","Solde débiteur global du compte fournisseurs.",frs,"Justifier (avances/avoirs) ou corriger les imputations.");
-  var cli=soldeRoots(["3421"]);if(cli<-1)add("warn","Tiers","Clients au solde créditeur","Solde créditeur global du compte clients.",cli,"Justifier (avances reçues) ou corriger les imputations.");
+  var frs=soldeRoots(["4411"]);if(frs>1)add("warn","Tiers","Fournisseurs au solde débiteur","Solde débiteur global du compte fournisseurs.",frs,"Justifier (avances/avoirs) ou corriger les imputations.",{kind:"gl",compte:"4411"});
+  var cli=soldeRoots(["3421"]);if(cli<-1)add("warn","Tiers","Clients au solde créditeur","Solde créditeur global du compte clients.",cli,"Justifier (avances reçues) ou corriger les imputations.",{kind:"gl",compte:"3421"});
   // 5) charges créditrices / produits débiteurs
   var sens=[];rows.forEach(function(r){var d0=String(r.c).charAt(0);if(d0==="6"&&r.solde<-1)sens.push(r);else if(d0==="7"&&r.solde>1)sens.push(r);});
-  if(sens.length)add("info","Cohérence",sens.length+" compte(s) de gestion au sens inhabituel",sens.slice(0,6).map(function(x){return cgncTrim(x.c)+" "+(x.lib||"")+" ("+fmtDH(x.solde)+")";}).join(" · ")+(sens.length>6?" …":""),null,"Vérifier les charges créditrices / produits débiteurs.");
-  // 6) factures sans IF/ICE
-  var noIF=pieces.filter(function(p){return (p.type==="achat"||!p.type)&&(+p.ht>0)&&!(((p.if_fournisseur||p.if_||"").trim())&&((p.ice||"").trim()));});
-  if(noIF.length){var htIF=noIF.reduce(function(s,p){return s+(+p.ht||0);},0);add("warn","Justificatifs",noIF.length+" facture(s) d'achat sans IF/ICE conforme","Charges potentiellement non déductibles (facture irrégulière, art. 11-IV).",htIF,"Réclamer au client les factures conformes (IF + ICE du fournisseur).");}
+  if(sens.length)add("info","Cohérence",sens.length+" compte(s) de gestion au sens inhabituel",sens.slice(0,6).map(function(x){return cgncTrim(x.c)+" "+(x.lib||"")+" ("+fmtDH(x.solde)+")";}).join(" · ")+(sens.length>6?" …":""),null,"Vérifier les charges créditrices / produits débiteurs.",{kind:"sens",items:sens.slice(0,8).map(function(x){return {c:cgncTrim(x.c),full:comptaCanon(x.c),lib:(x.lib||""),solde:x.solde,sugg:suggestCompteSens(x.c)};})});
+  // 6) factures sans identifiant fiscal fournisseur (ni ICE ni IF)
+  var noIF=pieces.filter(function(p){return (p.type==="achat"||!p.type)&&(+p.ht>0)&&!pieceAchatIdentifiee(p);});
+  if(noIF.length){var htIF=noIF.reduce(function(s,p){return s+(+p.ht||0);},0);
+    var noIFitems=noIF.map(function(p){var ice=pieceIce(p),iff=pieceIf(p);return pieceItem(p,(!ice&&!iff)?"ICE + IF":(!ice?"ICE":"IF"));});
+    add("warn","Justificatifs",noIF.length+" facture(s) d'achat sans ICE ni IF fournisseur","Aucun identifiant fiscal du fournisseur (ICE ou IF) trouvé — charge potentiellement non déductible (art. 11-IV / 145 CGI).",htIF,"Réclamer au client les factures conformes (ICE — et si possible IF — du fournisseur), ou compléter l'identifiant dans la pièce.",{kind:"list",ctype:"achat"},noIFitems);}
   // 7) pièces incomplètes
   var incomp=pieces.filter(function(p){return !((p.compte||"").trim())||!(+p.ht>0)||!((p.date||"").trim());});
-  if(incomp.length)add("warn","Saisie",incomp.length+" pièce(s) incomplète(s)","Compte d'imputation, montant HT ou date manquant.",null,"Compléter compte, montant et date.");
+  if(incomp.length){
+    var incompItems=incomp.map(function(p){var m=[];if(!((p.compte||"").trim()))m.push("Compte");if(!(+p.ht>0))m.push("Montant HT");if(!((p.date||"").trim()))m.push("Date");return pieceItem(p,m.join(" + "));});
+    add("warn","Saisie",incomp.length+" pièce(s) incomplète(s)","Compte d'imputation, montant HT ou date manquant.",null,"Compléter compte, montant et date.",{kind:"saisie"},incompItems);
+  }
   // 8) pièces rejetées
   if(rejected.length)add("info","Saisie",rejected.length+" pièce(s) rejetée(s)","Pièces écartées de la comptabilisation.",null,"Vérifier et réintégrer si nécessaire.");
   // 9) règlements en espèces > seuil
   var cashJour=pieces.filter(function(p){return p.regle&&p.modeReg==="Espèces"&&pieceRegDirect(p)>OD_CASH_LIMIT;});
   var moisFrs={};pieces.forEach(function(p){if(p.regle&&p.modeReg==="Espèces"){var k=(p.fournisseur||"?")+"|"+((regDateOf(p)||"").slice(0,7));moisFrs[k]=(moisFrs[k]||0)+pieceRegDirect(p);}});
   var cashMois=Object.keys(moisFrs).filter(function(k){return moisFrs[k]>50000;});
-  if(cashJour.length||cashMois.length){var exc=cashJour.reduce(function(s,p){return s+Math.max(0,pieceRegDirect(p)-OD_CASH_LIMIT);},0);add("warn","Espèces",cashJour.length+" règlement(s) espèces > 5 000 DH/jour"+(cashMois.length?" · "+cashMois.length+" cumul mensuel > 50 000 DH":""),"Fraction non déductible (art. 11-II) + TVA non récupérable sur l'excédent ; amende de 6 %.",exc,"Privilégier un moyen traçable ; réintégrer la fraction non déductible.");}
+  if(cashJour.length||cashMois.length){var exc=cashJour.reduce(function(s,p){return s+Math.max(0,pieceRegDirect(p)-OD_CASH_LIMIT);},0);
+    var cashItems=cashJour.map(function(p){var it=pieceItem(p,"Espèces "+fmtDH(pieceRegDirect(p))+" > 5 000 DH/j");it.date=regDateOf(p)||p.date||"";return it;});
+    add("warn","Espèces",cashJour.length+" règlement(s) espèces > 5 000 DH/jour"+(cashMois.length?" · "+cashMois.length+" cumul mensuel > 50 000 DH":""),"Fraction non déductible (art. 11-II) + TVA non récupérable sur l'excédent ; amende de 6 %.",exc,"Privilégier un moyen traçable ; réintégrer la fraction non déductible.",null,cashItems);}
   // 10) doublons potentiels
-  var seen={},dup=0;pieces.forEach(function(p){if(!((p.numero||"").trim()))return;var ttc=+p.ttc||((+p.ht||0)+(+p.tva||0));var k=(p.type||"achat")+"|"+(p.fournisseur||"").toLowerCase().trim()+"|"+(p.numero||"").toLowerCase().trim()+"|"+Math.round(ttc);if(seen[k])dup++;else seen[k]=1;});
-  if(dup)add("warn","Doublons",dup+" doublon(s) potentiel(s)","Même fournisseur, n° de facture et montant TTC.",null,"Vérifier une double comptabilisation.");
+  var seen={},dupItems=[];pieces.forEach(function(p){if(!((p.numero||"").trim()))return;var ttc=+p.ttc||((+p.ht||0)+(+p.tva||0));var k=(p.type||"achat")+"|"+(p.fournisseur||"").toLowerCase().trim()+"|"+(p.numero||"").toLowerCase().trim()+"|"+Math.round(ttc);if(seen[k]){dupItems.push(pieceItem(p,"Doublon possible (même n° / montant que « "+(seen[k].name||"")+" »)"));}else seen[k]=p;});
+  if(dupItems.length)add("warn","Doublons",dupItems.length+" doublon(s) potentiel(s)","Même fournisseur, n° de facture et montant TTC.",null,"Vérifier une double comptabilisation.",{kind:"list",ctype:"achat"},dupItems);
   // 11) liasse : IS non comptabilisé / résultat non affecté
   var ld=S.liasse[S.year+"|"+c.id];
   if(ld){var lc=liasseCalc(ld);
-    if(lc.isDu>0 && !liasseRegExists(c.id,S.year))add("info","Liasse","IS non comptabilisé","IS dû estimé "+fmtDH(lc.isDu)+" non régularisé au journal.",lc.isDu,"Comptabiliser la régularisation IS (onglet Liasse).");
-    if(Math.abs(num(ld.rc))>0.5 && !liasseAffExists(c.id,S.year))add("info","Liasse","Résultat non affecté","Résultat net "+fmtDH(num(ld.rc))+" non encore affecté.",num(ld.rc),"Comptabiliser l'affectation du résultat (report à nouveau).");
+    if(lc.isDu>0 && !liasseRegExists(c.id,S.year))add("info","Liasse","IS non comptabilisé","IS dû estimé "+fmtDH(lc.isDu)+" non régularisé au journal.",lc.isDu,"Comptabiliser la régularisation IS (onglet Liasse).",{kind:"tab",tab:"liasse"});
+    if(Math.abs(num(ld.rc))>0.5 && !liasseAffExists(c.id,S.year))add("info","Liasse","Résultat non affecté","Résultat net "+fmtDH(num(ld.rc))+" non encore affecté.",num(ld.rc),"Comptabiliser l'affectation du résultat (report à nouveau).",{kind:"tab",tab:"liasse"});
   }
   out.sort(function(a,b){return ctrlRank(a.sev)-ctrlRank(b.sev);});
   return out;
+}
+// Bouton(s) « Corriger » menant droit à l'endroit où régler l'anomalie (compte à modifier, pièce, etc.)
+function ctrlFixHtml(fix,cid){
+  if(!fix)return "";
+  function b(kind,label,extra){return '<button class="chip" data-act="ctrl_fix" data-kind="'+kind+'" data-cid="'+cid+'"'+(extra||"")+' style="color:#0E7A5F;border-color:#9ed3bf;font-size:11.5px;margin-top:6px;margin-right:6px">'+label+'</button>';}
+  if(fix.kind==="gl")    return b("gl","✎ Corriger le compte "+esc(fix.compte),' data-compte="'+esc(fix.compte)+'"');
+  if(fix.kind==="sens"){
+    return (fix.items||[]).map(function(it){
+      var sn=it.solde<0?"solde créditeur":"solde débiteur";
+      var sug=it.sugg?('<span style="color:#0E7A5F">→ compte suggéré : <b class="mono">'+esc(it.sugg.compte)+'</b> '+esc(it.sugg.label)+'</span>'):'<span style="color:var(--muted)">vérifier l\'imputation</span>';
+      return '<div style="margin-top:7px;padding:7px 9px;background:#F7F6F1;border-radius:8px;font-size:11.5px;line-height:1.5">'
+        +'<b class="mono">'+esc(it.c)+'</b> '+esc(it.lib)+' <span style="color:#B5530A">('+sn+')</span><br>'+sug
+        +' '+b("gl","✎ Corriger ce compte",' data-compte="'+esc(it.full)+'"'+(it.sugg?' data-sugg="'+esc(it.sugg.full)+'"':''))
+        +(it.sugg?'<div style="color:var(--faint);font-size:10.5px;margin-top:3px">'+esc(it.sugg.reason)+'</div>':'')
+        +'</div>';
+    }).join("");
+  }
+  if(fix.kind==="glmulti")return (fix.comptes||[]).map(function(cp){return b("gl","✎ Compte "+esc(cp),' data-compte="'+esc(cp)+'"');}).join("");
+  if(fix.kind==="list"){var lbl=fix.ctype==="banque"?"opérations bancaires":fix.ctype==="vente"?"ventes":"achats";return b("list","→ Ouvrir la liste des "+lbl,' data-ctype="'+esc(fix.ctype)+'"');}
+  if(fix.kind==="saisie") return b("saisie","→ Compléter en Saisie / Import");
+  if(fix.kind==="tab")    return b("tab",fix.tab==="liasse"?"→ Ouvrir la Liasse / IS":"→ Ouvrir",' data-tab="'+esc(fix.tab)+'"');
+  return "";
+}
+// Détail dépliable : liste précise des documents concernés par une anomalie, avec bouton « Ouvrir & corriger »
+// (la modale affiche l'aperçu du document ET les champs éditables côte à côte → emplacement exact de l'anomalie).
+function ctrlItemsHtml(items){
+  if(!items||!items.length)return "";
+  var rows=items.map(function(it){
+    var acts=(it.actions!==undefined)?it.actions:[{act:"comptafull",id:it.pieceId,label:"Ouvrir & corriger"}];
+    var btns=(acts&&acts.length)?acts.map(function(a){return '<button class="chip" data-act="'+esc(a.act)+'" data-id="'+esc(a.id)+'" style="color:#0E7A5F;border-color:#9ed3bf;font-size:11px;white-space:nowrap;margin:1px 0 1px 4px">'+(a.label.indexOf("<")>=0?a.label:esc(a.label))+'</button>';}).join(""):'<span style="color:var(--faint)">—</span>';
+    return '<tr style="border-top:1px solid #ece8db">'
+      +'<td style="padding:5px 7px">'+esc(it.name||"—")+'</td>'
+      +'<td style="padding:5px 7px">'+esc(it.fournisseur||"—")+'</td>'
+      +'<td style="padding:5px 7px" class="mono">'+esc(it.numero||"—")+'</td>'
+      +'<td style="padding:5px 7px;white-space:nowrap">'+esc(it.date||"—")+'</td>'
+      +'<td style="padding:5px 7px;text-align:right;white-space:nowrap" class="mono">'+(it.ht?fmtDH(it.ht):"—")+'</td>'
+      +'<td style="padding:5px 7px;color:#B5530A;font-weight:600">'+esc(it.manque||"")+'</td>'
+      +'<td style="padding:5px 7px;text-align:right">'+btns+'</td></tr>';
+  }).join("");
+  return '<tr><td colspan="5" style="padding:0 8px 12px;background:#FCFBF6">'
+    +'<details><summary style="cursor:pointer;color:#0E7A5F;font-size:12px;font-weight:600;padding:6px 0">'+ic("folder","width:13px;height:13px;vertical-align:-2px")+' Voir les '+items.length+' document(s) concerné(s) — emplacement exact</summary>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:680px;margin-top:4px">'
+    +'<tr style="color:var(--faint);text-align:left"><th style="padding:5px 7px">Pièce / fichier</th><th style="padding:5px 7px">Fournisseur</th><th style="padding:5px 7px">N° / Réf.</th><th style="padding:5px 7px">Date</th><th style="padding:5px 7px;text-align:right">Montant</th><th style="padding:5px 7px">Ce qui manque</th><th style="padding:5px 7px;text-align:right">Action</th></tr>'
+    +rows+'</table></div></details></td></tr>';
 }
 function comptaControlesBody(c){
   if(!c)return '<div class="note mt5">Aucune société.</div>';
@@ -5896,16 +6203,17 @@ function comptaControlesBody(c){
   function pill(t){var m=sevMeta[t];return '<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:'+m[1]+';color:'+m[0]+'">'+m[2]+'</span>';}
   var head='<div class="card mt4" style="padding:18px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
     +'<div class="sectit">'+ic("alert")+' Contrôles & anomalies — '+esc(c.dossier)+' · '+S.year+'</div>'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="ctrl_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button><button class="chip" data-act="ctrl_pdf">'+ic("receipt","width:13px;height:13px;vertical-align:-2px")+' Imprimer (PDF)</button></div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="ctrl_client_xlsx" style="color:#0E7A5F;border-color:#9ed3bf">'+ic("users","width:13px;height:13px;vertical-align:-2px")+' Détail pour le client (Excel)</button><button class="chip" data-act="ctrl_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button><button class="chip" data-act="ctrl_pdf">'+ic("receipt","width:13px;height:13px;vertical-align:-2px")+' Imprimer (PDF)</button></div></div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+pill("err")+' '+nE+' &nbsp; '+pill("warn")+' '+nW+' &nbsp; '+pill("info")+' '+nI+'</div></div>';
   if(!list.length)return head+(comptaImbalanceDiag(c).equilibre?"":comptaImbalancePanel(c))+'<div class="card mt4" style="padding:24px;text-align:center;color:#0E7A5F;font-weight:600">'+ic("check")+' Aucune anomalie détectée pour cet exercice. La saisie semble cohérente.</div>';
   var rowsH=list.map(function(x){var m=sevMeta[x.sev];
-    return '<tr style="border-bottom:1px solid var(--line)">'
+    var main='<tr style="border-bottom:1px solid var(--line)">'
       +'<td style="padding:8px 6px;white-space:nowrap">'+m[2]+'</td>'
       +'<td style="padding:8px 6px;color:var(--muted);white-space:nowrap">'+esc(x.cat)+'</td>'
       +'<td style="padding:8px 6px;font-weight:600;color:#14201C">'+esc(x.titre)+'<div style="font-weight:400;color:var(--muted);font-size:12px;margin-top:2px">'+esc(x.detail)+'</div></td>'
       +'<td class="mono" style="padding:8px 6px;text-align:right;white-space:nowrap">'+(x.montant==null?"—":fmtDH(x.montant))+'</td>'
-      +'<td style="padding:8px 6px;color:#14201C">'+esc(x.action)+'</td></tr>';
+      +'<td style="padding:8px 6px;color:#14201C">'+esc(x.action)+ctrlFixHtml(x.fix,c.id)+'</td></tr>';
+    return main+ctrlItemsHtml(x.items);
   }).join("");
   var table='<div class="card mt4" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:820px">'
     +'<tr style="background:#14201C;color:#fff;text-align:left"><th style="padding:8px 6px">Gravité</th><th style="padding:8px 6px">Catégorie</th><th style="padding:8px 6px">Contrôle</th><th style="padding:8px 6px;text-align:right">Montant</th><th style="padding:8px 6px">À compléter avec le client</th></tr>'
@@ -5925,6 +6233,37 @@ async function controlesExcel(){
     var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,"Anomalies");
     window.XLSX.writeFile(wb,"Anomalies_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+S.year+".xlsx");
     showOk("Récapitulatif des anomalies exporté ("+list.length+" ligne(s)).");
+  }catch(e){showErr("Export Excel impossible (connexion requise) : "+e.message);}
+}
+// Export détaillé par document — une feuille listant chaque pièce concernée, avec colonnes vides
+// (ICE / IF à fournir, commentaire) que le client remplit puis nous renvoie.
+async function controlesClientExcel(){
+  var c=clients().find(function(x){return x.id===S.curClient;});if(!c)return;
+  var list=comptaControles(c);
+  var withItems=list.filter(function(x){return x.items&&x.items.length;});
+  if(!withItems.length){showErr("Aucun document précis à détailler : les anomalies actuelles ne portent pas sur des factures identifiables (ou il n'y en a pas).");return;}
+  try{
+    if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    var soc=socOf(c.id);
+    var aoa=[["DÉTAIL DES ANOMALIES — DOCUMENTS À COMPLÉTER PAR LE CLIENT"],
+             [c.dossier+(soc.ice?"  ·  ICE "+soc.ice:"")+"  ·  Exercice "+S.year],
+             ["Merci de compléter les colonnes en gris (ICE / IF du fournisseur, commentaire) et de nous retourner ce fichier."],[]];
+    var merges=[]; var rowIdx=4; var nTot=0;
+    withItems.forEach(function(x){
+      aoa.push([x.titre+"  ("+x.items.length+" document"+(x.items.length>1?"s":"")+")"]);
+      merges.push({s:{r:rowIdx,c:0},e:{r:rowIdx,c:8}}); rowIdx++;
+      aoa.push(["Pièce / fichier","Fournisseur","N° facture","Date","Montant HT (DH)","Ce qui manque","ICE fournisseur (à compléter)","IF fournisseur (à compléter)","Commentaire client"]); rowIdx++;
+      x.items.forEach(function(it){
+        aoa.push([it.name,it.fournisseur,it.numero,it.date,(it.ht||""),it.manque,it.ice||"",it.if_||"",""]); rowIdx++; nTot++;
+      });
+      aoa.push([]); rowIdx++;
+    });
+    var ws=window.XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=[{wch:30},{wch:24},{wch:16},{wch:12},{wch:15},{wch:22},{wch:26},{wch:26},{wch:30}];
+    ws["!merges"]=merges;
+    var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,"À compléter");
+    window.XLSX.writeFile(wb,"Detail_anomalies_client_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+S.year+".xlsx");
+    showOk("Détail client exporté ("+nTot+" document(s) sur "+withItems.length+" anomalie(s)) — à transmettre au client pour complément.");
   }catch(e){showErr("Export Excel impossible (connexion requise) : "+e.message);}
 }
 function controlesPDF(){
@@ -6234,7 +6573,7 @@ function ecritureVente(p){
   if(tva>0)lignes.push({compte:"4455",libelle:"TVA facturée",debit:0,credit:tva});
   return {journal:"VE",lignes:lignes};
 }
-function ecritureFor(p){ return canonLignes(p.type==="vente"?ecritureVente(p):ecritureAchat(p)); }
+function ecritureFor(p){ return canonLignes(p.isImport?ecritureImport(p):(p.type==="vente"?ecritureVente(p):ecritureAchat(p))); }
 /* ===== LIAISON AUTOMATIQUE : pièce (facture scannée ou saisie) -> écriture -> Journal / Grand Livre / Balance =====
    Fonction idempotente. Elle reconstruit UNIQUEMENT les écritures issues des pièces (e.pieceId),
    sans jamais toucher aux écritures manuelles (e.manuel), bancaires ni d'emprunt (qui n'ont pas de pieceId).
@@ -6310,6 +6649,7 @@ function comptaRedetect(pid){
   renderView();
 }
 function reviewFields(p,isV){
+  if(p.isImport) return reviewFieldsImport(p);
   function f(lbl,field,val,num){return '<div style="flex:1;min-width:100px"><div class="flbl">'+lbl+'</div><input class="ipt'+(num?" mono":"")+'" '+(num?'type="number" ':'')+'data-cp="'+p.id+':'+field+'" value="'+esc(val==null?"":val)+'"></div>';}
   var plan=isV?PLAN_VENTES:PLAN_COMPTABLE;
   var opts='<option value="">— '+(isV?"compte de produit":"compte de charge / immo")+' —</option>'+plan.map(function(a){return '<option value="'+a[0]+'"'+(comptaCanon(p.compte)===comptaCanon(a[0])?" selected":"")+'>'+a[0]+" · "+esc(a[1])+'</option>';}).join("")
@@ -6327,7 +6667,7 @@ function reviewFields(p,isV){
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("HT","ht",p.ht,1)+f("TVA","tva",p.tva,1)+f("TTC","ttc",p.ttc,1)+'</div>'
     +(bal>1?'<div style="font-size:11.5px;color:#B5530A;margin-top:6px">⚠️ HT + TVA ≠ TTC (écart '+fmtDH2(bal)+')</div>':'')
     +'<div style="margin-top:10px"><div class="flbl">Compte ('+(isV?"produit":"charge / immo")+')</div><select class="ipt" data-cp="'+p.id+':compte">'+opts+'</select>'+compteHintHtml(p)+'</div>'
-    +(isV?"":'<div style="margin-top:10px"><div class="flbl">Code TVA (relevé de déductions) — modifiable</div><select class="ipt mono" data-cp="'+p.id+':codeTva">'+tvaDedCodeOptions(p.codeTva||tvaCodeDed((+p.ht>0?Math.round((+p.tva||0)/(+p.ht)*100):20),/^2/.test(p.compte||"")))+'</select><div class="note" style="font-size:11px;margin-top:3px">Laissez vide pour le code automatique selon le taux ; corrigez-le ici si nécessaire (ex. 142 ↔ 150 pour les opérations de banque).</div></div>')
+    +(isV?"":'<div style="margin-top:10px"><div class="flbl">Code TVA (relevé de déductions) — détecté automatiquement, modifiable</div><select class="ipt mono" data-cp="'+p.id+':codeTva">'+tvaDedCodeOptions(p.codeTva||tvaCodeDetect(p))+'</select><div class="note" style="font-size:11px;margin-top:3px">Détecté selon la <b>nature</b> (compte + libellé) : service → 140, marchandise/fourniture → 146/150, banque → 142… Corrigez si besoin.</div></div>')
     +'<div style="margin-top:10px;background:#F7F4EC;border-radius:10px;padding:8px"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Écriture (journal '+(isV?"Ventes":"Achats")+')</div><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--faint)"><td style="padding:0 6px">Compte</td><td style="padding:0 6px">Libellé</td><td style="text-align:right;padding:0 6px">Débit</td><td style="text-align:right;padding:0 6px">Crédit</td></tr>'+preview+'</table></div>';
 }
 function reviewCard(p){
@@ -6434,18 +6774,92 @@ function exportFEC(){
   if(Math.abs(td-tc)>0.01)showErr("FEC exporté MAIS déséquilibré : débit "+fmtDH2(td)+" ≠ crédit "+fmtDH2(tc)+".");
   else showOk("FEC exporté ("+num+" écritures) — "+fname+".");
 }
+/* ============================================================
+   FILTRES de recherche — Journal · Grand livre · Balance
+   Filtre partagé S.cptFilter ; barre adaptée à chaque vue.
+   ============================================================ */
+function cptF(){ if(!S.cptFilter)S.cptFilter={q:"",cpt:"",jrn:"",dmin:"",dmax:"",mmin:"",mmax:"",sens:"",hideZero:false}; return S.cptFilter; }
+function cptDig(c){ return (""+(c==null?"":c)).replace(/\D/g,""); }
+// Préfixe compte : "6" -> toutes les charges, "4411" -> fournisseurs, "342" -> clients…
+function cptMatchCompte(compte,pref){ pref=cptDig(pref); if(!pref)return true; return cptDig(compte).indexOf(pref)===0; }
+function cptDateOk(d,dmin,dmax){ d=(d||""); if(dmin&&d<dmin)return false; if(dmax&&d>dmax)return false; return true; }
+function cptNum(s){ s=(""+(s==null?"":s)).replace(/\s/g,"").replace(",","."); if(s==="")return null; var n=parseFloat(s); return isNaN(n)?null:n; }
+function cptMontantOk(m,mmin,mmax){ m=Math.abs(+m||0); var lo=cptNum(mmin),hi=cptNum(mmax); if(lo!=null&&m<lo-0.005)return false; if(hi!=null&&m>hi+0.005)return false; return true; }
+function cptFilterActive(view){
+  var f=cptF(), base=!!((f.q||"").trim()||(f.cpt||"").trim());
+  if(view==="journal")return base||!!(f.jrn||f.dmin||f.dmax||(f.mmin||"").trim()||(f.mmax||"").trim());
+  if(view==="gl")return base||!!(f.dmin||f.dmax||(f.mmin||"").trim()||(f.mmax||"").trim());
+  if(view==="balance")return base||!!(f.sens||f.hideZero);
+  return base;
+}
+function comptaFilterBar(view,jset){
+  var f=cptF();
+  function fld(label,inner){ return '<div style="display:flex;flex-direction:column;gap:3px"><label class="flbl" style="font-size:10px;margin:0">'+label+'</label>'+inner+'</div>'; }
+  var fields=[];
+  fields.push(fld("Recherche libre",'<input class="ipt" data-cf="q" value="'+esc(f.q||"")+'" placeholder="libellé, tiers, pièce…" style="min-width:190px">'));
+  fields.push(fld("Compte / préfixe",'<input class="ipt mono" data-cf="cpt" value="'+esc(f.cpt||"")+'" placeholder="ex. 6111 · 4411 · 342" style="min-width:140px">'));
+  if(view==="journal"){
+    var jopts='<option value="">Tous les journaux</option>'+Object.keys(jset||{}).sort().map(function(j){return '<option value="'+esc(j)+'"'+(f.jrn===j?" selected":"")+'>'+esc(j)+' · '+esc(JOURNAL_LIB[j]||j)+'</option>';}).join("");
+    fields.push(fld("Journal",'<select class="ipt" data-cf="jrn" style="min-width:170px">'+jopts+'</select>'));
+  }
+  if(view==="journal"||view==="gl"){
+    fields.push(fld("Date début",'<input class="ipt" type="date" data-cf="dmin" value="'+esc(f.dmin||"")+'">'));
+    fields.push(fld("Date fin",'<input class="ipt" type="date" data-cf="dmax" value="'+esc(f.dmax||"")+'">'));
+    fields.push(fld("Montant min",'<input class="ipt mono" data-cf="mmin" inputmode="decimal" value="'+esc(f.mmin||"")+'" placeholder="0" style="width:95px">'));
+    fields.push(fld("Montant max",'<input class="ipt mono" data-cf="mmax" inputmode="decimal" value="'+esc(f.mmax||"")+'" placeholder="∞" style="width:95px">'));
+  }
+  if(view==="balance"){
+    var sopts=[["","Tous les soldes"],["deb","Soldes débiteurs"],["cred","Soldes créditeurs"]].map(function(o){return '<option value="'+o[0]+'"'+(f.sens===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("");
+    fields.push(fld("Sens du solde",'<select class="ipt" data-cf="sens" style="min-width:165px">'+sopts+'</select>'));
+    fields.push(fld("&nbsp;",'<label class="chip" style="cursor:pointer;white-space:nowrap"><input type="checkbox" data-cf="hideZero"'+(f.hideZero?" checked":"")+' style="vertical-align:-2px;margin-right:5px">Masquer comptes soldés</label>'));
+  }
+  var active=cptFilterActive(view);
+  var reset=active?'<button class="chip" data-act="cptfilter_reset" style="color:#B42318;border-color:#f0c9c4">'+ic("x","width:13px;height:13px;vertical-align:-2px")+' Réinitialiser</button>':'';
+  return '<div class="card mt4" style="padding:12px 16px">'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px"><span style="font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--faint);text-transform:uppercase">'+ic("search","width:13px;height:13px;vertical-align:-2px")+' Filtres de recherche</span>'+(active?'<span style="font-size:11px;color:#0a5f4a;font-weight:600">• actifs</span>':'')+'</div>'
+    +'<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">'+fields.join("")+(reset?'<div style="display:flex;flex-direction:column;justify-content:flex-end">'+reset+'</div>':'')+'</div></div>';
+}
+function comptaFilterInput(t){
+  var k=t.dataset.cf; if(k==null)return; var f=cptF();
+  if(t.type==="checkbox")f[k]=t.checked; else f[k]=t.value;
+  renderView();
+  if(k==="q"||k==="cpt"||k==="mmin"||k==="mmax"){
+    var el=document.querySelector('[data-cf="'+k+'"]');
+    if(el){ el.focus(); try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){} }
+  }
+}
+function comptaFilterReset(){
+  S.cptFilter={q:"",cpt:"",jrn:"",dmin:"",dmax:"",mmin:"",mmax:"",sens:"",hideZero:false};
+  renderView();
+}
 function comptaJournalBody(c){
   var ecs=ecrituresOf(c);
   if(!ecs.length)return '<div class="note mt5">Aucune écriture pour '+esc(c.dossier)+' ('+S.year+'). Validez des factures dans « Saisie / Import ».</div>';
-  var rows="",td=0,tc=0;
+  var f=cptF(), active=cptFilterActive("journal");
+  var jset={}; ecs.forEach(function(e){ jset[e.journal||"OD"]=1; });
+  var bar=comptaFilterBar("journal",jset);
+  var rows="",td=0,tc=0,nEcr=0,nLig=0;
   ecs.slice().sort(function(a,b){return (a.date||"").localeCompare(b.date||"");}).forEach(function(e){
-    e.lignes.forEach(function(l,i){td+=+l.debit||0;tc+=+l.credit||0;
+    if(f.jrn && (e.journal||"OD")!==f.jrn)return;
+    if(!cptDateOk(e.date,f.dmin,f.dmax))return;
+    var matched=(e.lignes||[]).filter(function(l){
+      if(!cptMatchCompte(l.compte,f.cpt))return false;
+      if(!cptMontantOk(Math.max(+l.debit||0,+l.credit||0),f.mmin,f.mmax))return false;
+      if((f.q||"").trim()){ var hay=(l.libelle||"")+" "+(e.piece||"")+" "+(e.journal||"")+" "+(l.compte||"")+" "+libCompte(comptaCanon(l.compte)); if(!smartMatch(f.q,hay))return false; }
+      return true;
+    });
+    if(!matched.length)return;
+    nEcr++;
+    matched.forEach(function(l,i){ td+=+l.debit||0; tc+=+l.credit||0; nLig++;
       rows+='<tr><td style="padding:4px 8px;color:var(--muted)">'+(i===0?esc(e.date||""):"")+'</td><td style="padding:4px 8px"><span class="mono">'+esc(e.journal)+'</span></td><td style="padding:4px 8px">'+(i===0?esc(e.piece||""):"")+'</td><td style="padding:4px 8px" class="mono">'+esc(l.compte)+'</td><td style="padding:4px 8px">'+esc(l.libelle)+'</td><td class="mono" style="text-align:right;padding:4px 8px">'+(l.debit?fmtDH2(l.debit):"")+'</td><td class="mono" style="text-align:right;padding:4px 8px">'+(l.credit?fmtDH2(l.credit):"")+'</td></tr>';});
     rows+='<tr><td colspan="7" style="border-bottom:1px solid var(--line)"></td></tr>';
   });
-  return '<div class="card mt4" style="padding:20px;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px"><div class="sectit">Journal général — '+esc(c.dossier)+' · '+S.year+'</div><button class="btn-primary" data-act="export_fec">'+ic("down","width:14px;height:14px;vertical-align:-2px")+' Exporter FEC (DGI)</button></div>'
+  if(!rows) rows='<tr><td colspan="7" style="padding:18px;text-align:center;color:var(--faint)">Aucune écriture ne correspond aux filtres.</td></tr>';
+  var meta=active?'<span class="note" style="font-size:11.5px">'+nEcr+' écriture(s) · '+nLig+' ligne(s) affichée(s)</span>':'';
+  var totLbl=active?'TOTAUX (sélection)':'TOTAUX';
+  return bar+'<div class="card mt4" style="padding:20px;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px"><div class="sectit">Journal général — '+esc(c.dossier)+' · '+S.year+'</div><div style="display:flex;gap:10px;align-items:center">'+meta+'<button class="btn-primary" data-act="export_fec">'+ic("down","width:14px;height:14px;vertical-align:-2px")+' Exporter FEC (DGI)</button></div></div>'
     +'<table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Date</th><th style="padding:4px 8px">Jrnl</th><th style="padding:4px 8px">Pièce</th><th style="padding:4px 8px">Compte</th><th style="padding:4px 8px">Libellé</th><th style="text-align:right;padding:4px 8px">Débit</th><th style="text-align:right;padding:4px 8px">Crédit</th></tr>'+rows
-    +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="5" style="padding:6px 8px">TOTAUX</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(td)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tc)+'</td></tr></table></div>';
+    +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="5" style="padding:6px 8px">'+totLbl+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(td)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tc)+'</td></tr></table></div>';
 }
 /* ============================================================
    À-NOUVEAUX N-1 — Import FEC / grand livre & fusion des comptes tiers
@@ -6933,16 +7347,35 @@ function comptaANBody(c){
 function comptaGLBody(c){
   var ecs=ecrituresOf(c);
   if(!ecs.length)return '<div class="note mt5">Aucune écriture pour le grand livre.</div>';
+  var f=cptF(), active=cptFilterActive("gl");
+  var bar=comptaFilterBar("gl");
   var byCompte={};
-  ecs.forEach(function(e){e.lignes.forEach(function(l){ var k=comptaCanon(l.compte); (byCompte[k]=byCompte[k]||[]).push({date:e.date,piece:e.piece,lib:l.libelle,debit:+l.debit||0,credit:+l.credit||0}); });});
+  ecs.forEach(function(e){e.lignes.forEach(function(l){ var k=comptaCanon(l.compte); (byCompte[k]=byCompte[k]||[]).push({date:e.date,piece:e.piece,jrn:e.journal,lib:l.libelle,debit:+l.debit||0,credit:+l.credit||0}); });});
   var comptes=Object.keys(byCompte).sort();
+  var qActive=(f.q||"").trim();
+  var nComptes=0,nMvt=0;
   var html=comptes.map(function(cp){
-    var mv=byCompte[cp],sd=0,sc=0,solde=0;
-    var rows=mv.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");}).map(function(m){sd+=m.debit;sc+=m.credit;solde+=m.debit-m.credit;return '<tr><td style="padding:2px 8px;color:var(--muted)">'+esc(m.date||"")+'</td><td style="padding:2px 8px">'+esc(m.lib)+'</td><td class="mono" style="text-align:right;padding:2px 8px">'+(m.debit?fmtDH2(m.debit):"")+'</td><td class="mono" style="text-align:right;padding:2px 8px">'+(m.credit?fmtDH2(m.credit):"")+'</td><td class="mono" style="text-align:right;padding:2px 8px">'+fmtDH2(solde)+'</td></tr>';}).join("");
+    if(!cptMatchCompte(cp,f.cpt))return "";
     var nom=libCompte(cp);
-    return '<div class="card" style="padding:16px;margin-bottom:12px"><div class="sectit mb2">'+esc(cp)+(nom?" · "+esc(nom):"")+'</div><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--faint)"><td style="padding:2px 8px">Date</td><td style="padding:2px 8px">Libellé</td><td style="text-align:right;padding:2px 8px">Débit</td><td style="text-align:right;padding:2px 8px">Crédit</td><td style="text-align:right;padding:2px 8px">Solde</td></tr>'+rows+'<tr style="font-weight:700;border-top:1px solid #14201C"><td colspan="2" style="padding:4px 8px">Totaux</td><td class="mono" style="text-align:right;padding:4px 8px">'+fmtDH2(sd)+'</td><td class="mono" style="text-align:right;padding:4px 8px">'+fmtDH2(sc)+'</td><td class="mono" style="text-align:right;padding:4px 8px">'+fmtDH2(sd-sc)+'</td></tr></table></div>';
+    var compteHay=cp+" "+(nom||"");
+    var compteMatchesQ = qActive ? smartMatch(f.q,compteHay) : true;
+    var mv=byCompte[cp].filter(function(m){
+      if(!cptDateOk(m.date,f.dmin,f.dmax))return false;
+      if(!cptMontantOk(Math.max(m.debit,m.credit),f.mmin,f.mmax))return false;
+      // si le compte (n° ou intitulé) matche la recherche, on garde tous ses mouvements ; sinon on filtre par libellé
+      if(qActive && !compteMatchesQ && !smartMatch(f.q,m.lib||""))return false;
+      return true;
+    });
+    if(!mv.length)return "";
+    nComptes++;
+    var sd=0,sc=0,solde=0;
+    var rows=mv.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");}).map(function(m){nMvt++;sd+=m.debit;sc+=m.credit;solde+=m.debit-m.credit;return '<tr><td style="padding:2px 8px;color:var(--muted)">'+esc(m.date||"")+'</td><td style="padding:2px 8px">'+esc(m.lib)+'</td><td class="mono" style="text-align:right;padding:2px 8px">'+(m.debit?fmtDH2(m.debit):"")+'</td><td class="mono" style="text-align:right;padding:2px 8px">'+(m.credit?fmtDH2(m.credit):"")+'</td><td class="mono" style="text-align:right;padding:2px 8px">'+fmtDH2(solde)+'</td></tr>';}).join("");
+    var totLbl=active?'Totaux (sélection)':'Totaux';
+    return '<div class="card" style="padding:16px;margin-bottom:12px"><div class="sectit mb2">'+esc(cp)+(nom?" · "+esc(nom):"")+'</div><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--faint)"><td style="padding:2px 8px">Date</td><td style="padding:2px 8px">Libellé</td><td style="text-align:right;padding:2px 8px">Débit</td><td style="text-align:right;padding:2px 8px">Crédit</td><td style="text-align:right;padding:2px 8px">Solde</td></tr>'+rows+'<tr style="font-weight:700;border-top:1px solid #14201C"><td colspan="2" style="padding:4px 8px">'+totLbl+'</td><td class="mono" style="text-align:right;padding:4px 8px">'+fmtDH2(sd)+'</td><td class="mono" style="text-align:right;padding:4px 8px">'+fmtDH2(sc)+'</td><td class="mono" style="text-align:right;padding:4px 8px">'+fmtDH2(sd-sc)+'</td></tr></table></div>';
   }).join("");
-  return '<div class="mt4"><div class="sectit mb3">Grand livre — '+esc(c.dossier)+' · '+S.year+'</div>'+html+'</div>';
+  if(!html) html='<div class="note mt4" style="padding:18px;text-align:center;color:var(--faint)">Aucun compte ne correspond aux filtres.</div>';
+  var meta=active?'<span class="note" style="font-size:11.5px">'+nComptes+' compte(s) · '+nMvt+' mouvement(s)'+((f.dmin||f.dmax)?' · solde sur la période sélectionnée':'')+'</span>':'';
+  return bar+'<div class="mt4"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div class="sectit mb3">Grand livre — '+esc(c.dossier)+' · '+S.year+'</div>'+meta+'</div>'+html+'</div>';
 }
 // ===== Balance comptable générée depuis les écritures =====
 var COMPTE_LABELS={
@@ -7008,6 +7441,154 @@ function comptaTiersBody(c){
   return '<div class="note mt4" style="font-size:12px;background:#F2F8F5;border-radius:10px;padding:10px 14px;color:#0a5f4a">'
     +ic("building","width:14px;height:14px;vertical-align:-2px")+' <b>Un seul compte par tiers.</b> Chaque fournisseur reçoit un compte <b class="mono">4411xxxxxx</b> et chaque client un compte <b class="mono">3421xxxxxx</b>, créés automatiquement à partir des factures importées (identification par ICE / IF / nom). Les écritures d\'achat, de vente et de règlement sont imputées sur ces comptes auxiliaires.</div>'
     +'<div class="grid mt4" style="grid-template-columns:1fr;gap:14px">'+tbl(frs,"Fournisseurs — comptes 4411","#2563EB")+tbl(cli,"Clients — comptes 3421","#0E7A5F")+'</div>';
+}
+/* ============================================================
+   BALANCE ÂGÉE (créances clients 3421 / dettes fournisseurs 4411)
+   + lettres de relance. Antériorité calculée par lot : les
+   règlements non lettrés sont imputés FIFO sur les plus
+   anciennes factures non lettrées ; le reliquat est ventilé
+   par tranche d'âge depuis la date de facture.
+   ============================================================ */
+function ageRefDate(){
+  if(S.ageRef) return S.ageRef;
+  var t=new Date(), ty=t.getFullYear();
+  if(S.year===ty){ return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); }
+  return S.year+"-12-31";
+}
+function ageDays(dstr,ref){ if(!dstr)return 0; var d=new Date(dstr+"T00:00:00"), r=new Date(ref+"T00:00:00"); if(isNaN(d)||isNaN(r))return 0; return Math.floor((r-d)/86400000); }
+function ageBucketIndex(days){ if(days<=30)return 0; if(days<=60)return 1; if(days<=90)return 2; return 3; }
+var AGE_LABELS=["0–30 j","31–60 j","61–90 j","> 90 j"];
+// Reliquat non lettré ventilé par âge, pour un tiers donné
+function tiersAged(c,compte,type,ref){
+  var mv=tiersMovements(c,compte).filter(function(m){return !m.lettre;});
+  mv.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
+  var openSide=(type==="client")?"debit":"credit", oppSide=(type==="client")?"credit":"debit";
+  var lots=[]; // factures ouvertes : {date, rem}
+  mv.forEach(function(m){
+    var o=+m[openSide]||0, p=+m[oppSide]||0;
+    if(o>0.005) lots.push({date:m.date,rem:o});
+    if(p>0.005){ var pay=p; for(var i=0;i<lots.length&&pay>0.005;i++){ if(lots[i].rem<=0.005)continue; var take=Math.min(lots[i].rem,pay); lots[i].rem-=take; pay-=take; } if(pay>0.005) lots.push({date:m.date,rem:-pay}); }
+  });
+  var buckets=[0,0,0,0], total=0, advance=0, oldest=null;
+  lots.forEach(function(l){
+    if(l.rem>0.005){ var d=ageDays(l.date,ref); buckets[ageBucketIndex(d)]+=l.rem; total+=l.rem; if(oldest===null||(l.date||"")<oldest)oldest=l.date; }
+    else if(l.rem<-0.005){ advance+=(-l.rem); }
+  });
+  for(var i=0;i<4;i++)buckets[i]=Math.round(buckets[i]*100)/100;
+  return {buckets:buckets,total:Math.round(total*100)/100,advance:Math.round(advance*100)/100,oldest:oldest};
+}
+// Construit les lignes âgées pour un type de tiers
+function ageRows(c,type,ref){
+  var g=comptaGet(c.id);
+  var list=(g.tiers||[]).filter(function(t){return t.type===type;}).sort(function(a,b){return (a.seq||0)-(b.seq||0);});
+  var out=[];
+  list.forEach(function(t){
+    var a=tiersAged(c,t.compte,type,ref);
+    if(a.total>0.005||a.advance>0.005) out.push({id:t.id,nom:t.nom||comptaCanon(t.compte),compte:comptaCanon(t.compte),buckets:a.buckets,total:a.total,advance:a.advance,oldest:a.oldest});
+  });
+  out.sort(function(x,y){return (y.buckets[3]-x.buckets[3])||(y.total-x.total);});
+  return out;
+}
+function comptaAgeBody(c){
+  if(!c)return '<div class="note mt5">Aucune société.</div>';
+  var g=comptaGet(c.id); comptaResolveTiers(g);
+  var ref=ageRefDate();
+  var cliRows=ageRows(c,"client",ref), frsRows=ageRows(c,"fournisseur",ref);
+  function tableHtml(rows,type){
+    var titre=type==="client"?"Créances clients (comptes 3421)":"Dettes fournisseurs (comptes 4411)";
+    var coul=type==="client"?"#0E7A5F":"#2563EB";
+    if(!rows.length)return '<div class="card" style="padding:18px"><div class="sectit mb2" style="color:'+coul+'">'+titre+'</div><div class="note" style="font-size:12px">Aucun solde non lettré '+(type==="client"?"à recevoir":"à payer")+'. Tout est lettré (rapproché) ou nul.</div></div>';
+    var tot=[0,0,0,0],gtot=0;
+    var body=rows.map(function(r){
+      tot[0]+=r.buckets[0];tot[1]+=r.buckets[1];tot[2]+=r.buckets[2];tot[3]+=r.buckets[3];gtot+=r.total;
+      var od=r.oldest?ageDays(r.oldest,ref):0;
+      var cells=r.buckets.map(function(b,i){return '<td class="mono" style="text-align:right;padding:5px 8px'+(i===3&&b>0.005?";color:#B42318;font-weight:700":"")+'">'+(b>0.005?fmtDH2(b):'<span style="color:var(--faint)">—</span>')+'</td>';}).join("");
+      var relance=type==="client"?('<td style="padding:5px 8px;text-align:right;white-space:nowrap"><button class="chip" data-act="age_relance" data-id="'+esc(r.id)+'" data-lvl="1" style="font-size:11px;color:#0E7A5F;border-color:#9ed3bf">'+ic("receipt","width:11px;height:11px;vertical-align:-1px")+' Relance</button>'+(r.buckets[3]>0.005?' <button class="chip" data-act="age_relance" data-id="'+esc(r.id)+'" data-lvl="3" style="font-size:11px;color:#B42318;border-color:#f0c9c4">Mise en demeure</button>':'')+'</td>'):'';
+      return '<tr style="border-top:1px solid var(--line)">'
+        +'<td style="padding:5px 8px"><b>'+esc(r.nom)+'</b>'+(r.advance>0.005?' <span style="font-size:10.5px;color:#0a5f4a">(avance '+fmtDH2(r.advance)+')</span>':'')+'</td>'
+        +'<td class="mono" style="padding:5px 8px;color:var(--faint);font-size:11px">'+esc(r.compte)+'</td>'
+        +'<td class="mono" style="text-align:right;padding:5px 8px;font-weight:700">'+fmtDH2(r.total)+'</td>'
+        +cells
+        +'<td style="padding:5px 8px;text-align:center;color:'+(od>90?"#B42318":"var(--muted)")+';font-size:11.5px">'+(r.oldest?od+" j":"—")+'</td>'
+        +relance+'</tr>';
+    }).join("");
+    var totCells=tot.map(function(b,i){return '<td class="mono" style="text-align:right;padding:6px 8px'+(i===3&&b>0.005?";color:#B42318":"")+'">'+fmtDH2(b)+'</td>';}).join("");
+    return '<div class="card" style="padding:18px;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px"><div class="sectit" style="color:'+coul+'">'+titre+' ('+rows.length+')</div>'
+      +'<button class="chip" data-act="age_excel" data-type="'+type+'">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button></div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:'+(type==="client"?"860":"720")+'px"><tr style="color:var(--faint);text-align:left">'
+      +'<th style="padding:5px 8px">Tiers</th><th style="padding:5px 8px">Compte</th><th style="padding:5px 8px;text-align:right">Total dû</th>'
+      +AGE_LABELS.map(function(l){return '<th style="padding:5px 8px;text-align:right">'+l+'</th>';}).join("")
+      +'<th style="padding:5px 8px;text-align:center">Anc. max</th>'+(type==="client"?'<th style="padding:5px 8px;text-align:right">Relance</th>':'')+'</tr>'
+      +body
+      +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="2" style="padding:6px 8px">TOTAL</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(gtot)+'</td>'+totCells+'<td></td>'+(type==="client"?'<td></td>':'')+'</tr></table></div>';
+  }
+  var head='<div class="card mt4" style="padding:16px"><div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">'
+    +'<div class="sectit">'+ic("clock","width:16px;height:16px;vertical-align:-2px")+' Balance âgée — '+esc(c.dossier)+' · '+S.year+'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:3px"><label class="flbl" style="font-size:10.5px;margin:0">Date d\'arrêté (calcul de l\'âge)</label><input class="ipt" type="date" data-ageref value="'+esc(ref)+'" style="max-width:170px"></div></div>'
+    +'<div class="note" style="font-size:11.5px;margin-top:8px">Âge calculé depuis la date de facture jusqu\'à la date d\'arrêté. Les règlements non lettrés sont imputés sur les factures les plus anciennes. Seuls les soldes <b>non lettrés</b> apparaissent — lettrez (onglet Tiers) pour solder une facture réglée.</div></div>';
+  return head+'<div class="grid mt4" style="grid-template-columns:1fr;gap:14px">'+tableHtml(cliRows,"client")+tableHtml(frsRows,"fournisseur")+'</div>';
+}
+async function ageExportExcel(type){
+  var c=clients().find(function(x){return x.id===S.curClient;});if(!c)return;
+  var ref=ageRefDate(), rows=ageRows(c,type,ref);
+  if(!rows.length){showErr("Aucun solde non lettré à exporter.");return;}
+  try{
+    if(!window.XLSX){await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    var lbl=type==="client"?"Créances clients":"Dettes fournisseurs";
+    var aoa=[["BALANCE ÂGÉE — "+lbl+" — "+c.dossier+" · "+S.year],["Arrêtée au "+ref],[],
+      ["Tiers","Compte","Total dû"].concat(AGE_LABELS).concat(["Anc. max (j)","Avance"])];
+    var t=[0,0,0,0],gt=0;
+    rows.forEach(function(r){ t[0]+=r.buckets[0];t[1]+=r.buckets[1];t[2]+=r.buckets[2];t[3]+=r.buckets[3];gt+=r.total;
+      aoa.push([r.nom,r.compte,r.total].concat(r.buckets).concat([r.oldest?ageDays(r.oldest,ref):0,r.advance||0])); });
+    aoa.push(["TOTAL","",gt].concat(t).concat(["",""]));
+    var ws=window.XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=[{wch:30},{wch:14},{wch:14},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12}];
+    var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,lbl.slice(0,28));
+    window.XLSX.writeFile(wb,"Balance_agee_"+type+"_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+S.year+".xlsx");
+    showOk("Balance âgée exportée ("+rows.length+" tiers).");
+  }catch(e){showErr("Export impossible (connexion requise) : "+e.message);}
+}
+// Lettre de relance (niveau 1 = rappel courtois, 2 = relance ferme, 3 = mise en demeure)
+function ageRelance(tierId,level){
+  var c=clients().find(function(x){return x.id===S.curClient;});if(!c)return;
+  var g=comptaGet(c.id), t=(g.tiers||[]).find(function(x){return String(x.id)===String(tierId);}); if(!t){showErr("Tiers introuvable.");return;}
+  var ref=ageRefDate(), a=tiersAged(c,t.compte,"client",ref);
+  if(a.total<0.005){showErr("Ce client n'a aucun solde non lettré à relancer.");return;}
+  var soc=socOf(c.id);
+  var lvl=+level||1;
+  var today=ref.split("-").reverse().join("/");
+  var ville=(soc.ville||"")||"";
+  var entete='<div style="font-weight:700;font-size:15px">'+esc(c.dossier)+'</div><div style="font-size:11px;color:#555;line-height:1.5">'
+    +[soc.adresse||soc.siege||"",soc.ville||""].filter(Boolean).map(esc).join("<br>")
+    +([soc.ice?"ICE : "+soc.ice:"",soc.if?"IF : "+soc.if:"",soc.tel?"Tél : "+soc.tel:""].filter(Boolean).length?'<br>'+[soc.ice?"ICE : "+soc.ice:"",soc.if?"IF : "+soc.if:"",soc.tel?"Tél : "+soc.tel:""].filter(Boolean).map(esc).join(" · "):'')
+    +'</div>';
+  var detRows=AGE_LABELS.map(function(l,i){return a.buckets[i]>0.005?('<tr><td style="padding:3px 8px;border:1px solid #ccc">'+l+'</td><td style="padding:3px 8px;border:1px solid #ccc;text-align:right">'+fmtDH2(a.buckets[i])+' DH</td></tr>'):'';}).join("");
+  var objet=lvl===3?"Mise en demeure de payer":lvl===2?"Relance — facture(s) échue(s)":"Rappel d'échéance";
+  var corps;
+  if(lvl===3){
+    corps='<p>Sauf erreur ou omission de notre part, nous constatons que votre compte présente un solde débiteur de <b>'+fmtDH2(a.total)+' DH</b> à la date du '+esc(today)+', malgré nos précédentes relances.</p>'
+      +'<p>Par la présente, nous vous <b>mettons en demeure</b> de régler cette somme sous huitaine à compter de la réception de ce courrier. À défaut, nous nous réservons le droit d\'engager toute procédure de recouvrement, les intérêts de retard courant de plein droit.</p>';
+  }else if(lvl===2){
+    corps='<p>Nous revenons vers vous concernant le solde de votre compte, qui s\'élève à <b>'+fmtDH2(a.total)+' DH</b> à la date du '+esc(today)+', dont une partie est échue depuis plus de 60 jours.</p>'
+      +'<p>Nous vous remercions de bien vouloir procéder à son règlement dans les meilleurs délais, ou de nous contacter pour convenir d\'un échéancier.</p>';
+  }else{
+    corps='<p>Sauf règlement de votre part qui aurait croisé le présent courrier, nous vous rappelons que votre compte présente un solde de <b>'+fmtDH2(a.total)+' DH</b> à la date du '+esc(today)+'.</p>'
+      +'<p>Nous vous serions reconnaissants de bien vouloir procéder à sa régularisation. Si le règlement a déjà été effectué, merci de ne pas tenir compte de ce rappel.</p>';
+  }
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(objet)+' — '+esc(t.nom||"")+'</title>'
+    +'<style>body{font-family:Arial,sans-serif;color:#1a1a1a;padding:40px;font-size:13px;line-height:1.6;max-width:720px;margin:auto}'
+    +'.r{text-align:right}.box{margin:16px 0}table{border-collapse:collapse;margin:10px 0}h2{font-size:15px;margin:18px 0 8px}@media print{button{display:none}}</style></head><body>'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px">'+entete+'<div class="r" style="font-size:12px">'+esc(ville)+(ville?", le ":"Le ")+esc(today)+'</div></div>'
+    +'<div class="box" style="margin-top:30px"><b>'+esc(t.nom||"Client")+'</b>'+(t.ice?'<br><span style="font-size:11px;color:#555">ICE : '+esc(t.ice)+'</span>':'')+'<br>……………………………………<br>……………………………………</div>'
+    +'<h2>Objet : '+esc(objet)+'</h2>'
+    +'<p>Madame, Monsieur,</p>'+corps
+    +(detRows?'<p style="margin-top:14px">Détail par antériorité :</p><table><tr><th style="padding:3px 8px;border:1px solid #ccc;background:#f0f0f0;text-align:left">Tranche</th><th style="padding:3px 8px;border:1px solid #ccc;background:#f0f0f0;text-align:right">Montant</th></tr>'+detRows+'<tr><td style="padding:3px 8px;border:1px solid #ccc;font-weight:700">Total dû</td><td style="padding:3px 8px;border:1px solid #ccc;text-align:right;font-weight:700">'+fmtDH2(a.total)+' DH</td></tr></table>':'')
+    +'<p style="margin-top:18px">Dans l\'attente de votre règlement, nous vous prions d\'agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.</p>'
+    +'<p style="margin-top:30px" class="r">Pour '+esc(c.dossier)+'<br><br>……………………………</p>'
+    +'<div style="margin-top:24px;text-align:center"><button onclick="window.print()" style="padding:8px 18px;font-size:13px;cursor:pointer;background:#14201C;color:#fff;border:0;border-radius:8px">Imprimer / PDF</button></div>'
+    +'</body></html>';
+  var w=window.open("","_blank");if(!w){showErr("Autorisez les fenêtres popup pour ouvrir la lettre.");return;}
+  w.document.open();w.document.write(html);w.document.close();
 }
 // agrège toutes les lignes d'écriture de l'exercice par n° de compte
 function comptaBalanceRows(c){
@@ -7179,6 +7760,18 @@ function comptaBalanceBody(c){
   var extra=[];
   if(showN1) n1keys.forEach(function(k){ if(!nset[k] && Math.abs(n1[k])>0.005) extra.push({c:k,lib:libCompte(k),mvDeb:0,mvCred:0,sDeb:0,sCred:0,solde:0}); });
   var allRows=rows.concat(extra.sort(function(a,b){return a.c.localeCompare(b.c);}));
+  var f=cptF(), active=cptFilterActive("balance"), totalComptes=allRows.length;
+  var bar=comptaFilterBar("balance");
+  if(active){
+    allRows=allRows.filter(function(r){
+      if(!cptMatchCompte(r.c,f.cpt))return false;
+      if((f.q||"").trim() && !smartMatch(f.q,(r.c||"")+" "+(r.lib||"")))return false;
+      if(f.sens==="deb" && !(r.sDeb>0.005))return false;
+      if(f.sens==="cred" && !(r.sCred>0.005))return false;
+      if(f.hideZero && Math.abs(r.solde)<0.005)return false;
+      return true;
+    });
+  }
   var tDeb=0,tCred=0,tSDeb=0,tSCred=0,tN1D=0,tN1C=0;
   var body=allRows.map(function(r){
     tDeb+=r.mvDeb;tCred+=r.mvCred;tSDeb+=r.sDeb;tSCred+=r.sCred;
@@ -7191,8 +7784,12 @@ function comptaBalanceBody(c){
       +'<td class="mono" style="text-align:right;padding:3px 8px;color:#14201C;font-weight:600">'+(r.sDeb?fmtDH2(r.sDeb):"")+'</td>'
       +'<td class="mono" style="text-align:right;padding:3px 8px;color:#0a5f4a;font-weight:600">'+(r.sCred?fmtDH2(r.sCred):"")+'</td></tr>';
   }).join("");
+  var colspanFull = 6 + (showN1?2:0);
+  if(!body) body='<tr><td colspan="'+colspanFull+'" style="padding:18px;text-align:center;color:var(--faint)">Aucun compte ne correspond aux filtres.</td></tr>';
   var eqMvt=Math.abs(tDeb-tCred)<0.01, eqSolde=Math.abs(tSDeb-tSCred)<0.01, ok=eqMvt&&eqSolde;
-  var badge='<div style="margin:12px 0;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;background:'+(ok?"#E3F1EB":"#FBEAE8")+';color:'+(ok?"#0E7A5F":"#B42318")+'">'+(ok?"✅ Balance équilibrée — Total Débit = Total Crédit = "+fmtDH2(tDeb):"⚠️ Déséquilibre — Mouvements : Débit "+fmtDH2(tDeb)+" ≠ Crédit "+fmtDH2(tCred)+(eqSolde?"":" · Soldes : D "+fmtDH2(tSDeb)+" / C "+fmtDH2(tSCred)))+'</div>';
+  var badge = active
+    ? '<div style="margin:12px 0;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;background:#F2F6FB;color:#1E4D8C">'+ic("search","width:14px;height:14px;vertical-align:-2px")+' '+allRows.length+' compte(s) sur '+totalComptes+' · Total débiteur '+fmtDH2(tSDeb)+' · Total créditeur '+fmtDH2(tSCred)+'</div>'
+    : '<div style="margin:12px 0;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;background:'+(ok?"#E3F1EB":"#FBEAE8")+';color:'+(ok?"#0E7A5F":"#B42318")+'">'+(ok?"✅ Balance équilibrée — Total Débit = Total Crédit = "+fmtDH2(tDeb):"⚠️ Déséquilibre — Mouvements : Débit "+fmtDH2(tDeb)+" ≠ Crédit "+fmtDH2(tCred)+(eqSolde?"":" · Soldes : D "+fmtDH2(tSDeb)+" / C "+fmtDH2(tSCred)))+'</div>';
   var actions='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
     +'<button class="btn-primary" data-act="comptabal_inject" data-id="'+c.id+'">'+ic("down","width:15px;height:15px;vertical-align:-2px")+' Injecter dans la liasse (Bilan / CPC / ESG)</button>'
     +(hasN1?'<button class="chip" data-act="baln1" data-id="'+c.id+'" style="'+(showN1?"background:#14201C;color:#fff;border-color:#14201C":"")+'">'+ic("book","width:13px;height:13px;vertical-align:-2px")+' '+(showN1?"Masquer N-1":"Comparer N-1 ("+(S.year-1)+")")+'</button>':'')
@@ -7200,13 +7797,13 @@ function comptaBalanceBody(c){
     +'<button class="chip" data-act="comptabal_xlsx" data-id="'+c.id+'">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Export Excel</button></div>';
   var n1th = showN1 ? ('<th style="text-align:right;padding:4px 8px;background:#FBF9F2">Solde Débiteur N-1 ('+(S.year-1)+')</th><th style="text-align:right;padding:4px 8px;background:#FBF9F2;border-right:2px solid #E6DFC9">Solde Créditeur N-1 ('+(S.year-1)+')</th>') : '';
   var n1tot = showN1 ? ('<td class="mono" style="text-align:right;padding:6px 8px;background:#F5F1E4">'+fmtDH2(tN1D)+'</td><td class="mono" style="text-align:right;padding:6px 8px;background:#F5F1E4;border-right:2px solid #E6DFC9">'+fmtDH2(tN1C)+'</td>') : '';
-  return '<div class="card mt4" style="padding:20px;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px"><div class="sectit">Balance comptable — '+esc(c.dossier)+' · '+S.year+(showN1?' (comparée à '+(S.year-1)+')':'')+'</div><span class="note" style="font-size:11.5px">'+allRows.length+' comptes · générée depuis les écritures de l\'exercice'+(hasN1&&!showN1?' · comparaison N-1 disponible':'')+'</span></div>'
+  return bar+'<div class="card mt4" style="padding:20px;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px"><div class="sectit">Balance comptable — '+esc(c.dossier)+' · '+S.year+(showN1?' (comparée à '+(S.year-1)+')':'')+'</div><span class="note" style="font-size:11.5px">'+(active?allRows.length+' / '+totalComptes+' comptes (filtrés)':allRows.length+' comptes · générée depuis les écritures de l\'exercice')+(hasN1&&!showN1?' · comparaison N-1 disponible':'')+'</span></div>'
     +badge
-    +(ok?"":comptaImbalancePanel(c))
-    +comptaClotureCard(c)
+    +(active?"":(ok?"":comptaImbalancePanel(c)))
+    +(active?"":comptaClotureCard(c))
     +actions
     +'<table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte</th><th style="padding:4px 8px">Intitulé</th>'+n1th+'<th style="text-align:right;padding:4px 8px">Mvt Débit</th><th style="text-align:right;padding:4px 8px">Mvt Crédit</th><th style="text-align:right;padding:4px 8px">Solde Débiteur</th><th style="text-align:right;padding:4px 8px">Solde Créditeur</th></tr>'+body
-    +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="2" style="padding:6px 8px">TOTAUX</td>'+n1tot+'<td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tDeb)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tCred)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tSDeb)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tSCred)+'</td></tr></table>'
+    +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="2" style="padding:6px 8px">'+(active?'TOTAUX (sélection)':'TOTAUX')+'</td>'+n1tot+'<td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tDeb)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tCred)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tSDeb)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(tSCred)+'</td></tr></table>'
     +'<div class="note" style="margin-top:10px;font-size:11.5px">💡 Cliquez sur une ligne pour afficher le détail du compte dans le grand livre. '+(hasN1?'Les colonnes <b>'+(S.year-1)+'</b> proviennent du FEC / grand livre N-1 importé dans « À-nouveaux N-1 ».':'Importez un FEC / grand livre N-1 dans « À-nouveaux N-1 » pour afficher les colonnes de comparaison '+(S.year-1)+'.')+' « Injecter dans la liasse » remplit le module Liasse / IS (Bilan, CPC, ESG).</div></div>';
 }
 function comptaBalInject(cid){
@@ -7251,13 +7848,14 @@ async function comptaBalXlsx(cid){
   }catch(e){showErr("Export Excel impossible : "+(e&&e.message?e.message:e));}
 }
 // ===== Détail d'un compte de la balance dans le grand livre (modale) =====
-function modalBalGL(cid,compte){
+function modalBalGL(cid,compte,sugg){
   var c=clients().find(function(x){return x.id===+cid;}); if(!c)return '';
+  var suggBanner=sugg?('<div class="card" style="margin:0 0 12px;padding:10px 14px;background:#E7F4EF;border:1px solid #cfe6dd;color:#0a5f4a;font-size:12.5px;line-height:1.5">'+ic("alert","width:14px;height:14px;vertical-align:-2px")+' Pour reclasser le montant au sens inhabituel, ouvrez la pièce concernée (bouton « ✎ pièce ») et remplacez le compte par <b class="mono">'+esc(cgncTrim(sugg))+'</b> '+esc(libCompte(sugg)||"")+'.</div>'):"";
   compte=String(compte);
   var ecs=ecrituresOf(c),mv=[],_g=comptaGet(c.id),_st=lettrageStore(_g);
   ecs.forEach(function(e){(e.lignes||[]).forEach(function(l,li){
     if(comptaCanon((l.compte||"").trim())===comptaCanon(compte)){
-      mv.push({date:e.date||"",journal:e.journal||"",piece:e.piece||"",lib:l.libelle||"",debit:+l.debit||0,credit:+l.credit||0,lettre:_st[movKey(e.id,li)]||""});
+      mv.push({date:e.date||"",journal:e.journal||"",piece:e.piece||"",lib:l.libelle||"",debit:+l.debit||0,credit:+l.credit||0,lettre:_st[movKey(e.id,li)]||"",eid:e.id,pieceId:e.pieceId||null,manuel:!!e.manuel});
     }
   });});
   mv.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
@@ -7276,6 +7874,7 @@ function modalBalGL(cid,compte){
       +'<td class="mono" style="text-align:right;padding:5px 8px">'+(m.debit?fmtDH2(m.debit):"")+'</td>'
       +'<td class="mono" style="text-align:right;padding:5px 8px">'+(m.credit?fmtDH2(m.credit):"")+'</td>'
       +'<td class="mono" style="text-align:right;padding:5px 8px;font-weight:600;color:'+(solde<0?"#0a5f4a":"#14201C")+'">'+fmtDH2(solde)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;white-space:nowrap">'+(m.pieceId?'<button class="chip" data-act="comptaeditpiece" data-id="'+esc(String(m.pieceId))+'" title="Ouvrir la pièce pour changer son compte d\'imputation" style="font-size:11px;padding:2px 8px;color:#0E7A5F">✎ pièce</button>':(m.manuel?'<button class="chip" data-act="comptaeditecr" data-id="'+esc(String(m.eid))+'" title="Modifier l\'écriture manuelle" style="font-size:11px;padding:2px 8px;color:#0E7A5F">✎ écriture</button>':'<span style="font-size:10.5px;color:var(--faint)">auto</span>'))+'</td>'
       +'</tr>';
   }).join("");
   var soldeFinal=Math.round((sd-sc)*100)/100;
@@ -7284,12 +7883,12 @@ function modalBalGL(cid,compte){
   return '<div class="ov"><div class="modal" data-stop style="max-width:820px">'
     +'<div class="mh"><div><h3 class="ff">Grand livre — compte '+esc(compte)+'</h3><div class="meta"><span>'+ic("book")+esc(nom||"")+'</span><span>'+esc(c.dossier)+' · '+S.year+'</span></div></div>'
     +'<div style="display:flex;gap:8px;align-items:center">'+(isTiers?'<button class="chip" data-act="lettrage_open" data-id="'+c.id+'" data-compte="'+esc(comptaCanon(compte))+'">'+ic("link","width:13px;height:13px;vertical-align:-2px")+' Lettrer</button>':"")+'<button class="xbtn" data-act="close">'+ic("x")+'</button></div></div>'
-    +'<div class="mb">'
+    +'<div class="mb">'+suggBanner
     +(mv.length
       ? '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'
-        +'<tr style="color:var(--faint);text-align:left"><th style="padding:5px 8px">Date</th><th style="padding:5px 8px">Jrnl</th><th style="padding:5px 8px">Pièce</th><th style="padding:5px 8px">Libellé</th>'+(isTiers?'<th style="padding:5px 8px;text-align:center">Let.</th>':'')+'<th style="text-align:right;padding:5px 8px">Débit</th><th style="text-align:right;padding:5px 8px">Crédit</th><th style="text-align:right;padding:5px 8px">Solde</th></tr>'
+        +'<tr style="color:var(--faint);text-align:left"><th style="padding:5px 8px">Date</th><th style="padding:5px 8px">Jrnl</th><th style="padding:5px 8px">Pièce</th><th style="padding:5px 8px">Libellé</th>'+(isTiers?'<th style="padding:5px 8px;text-align:center">Let.</th>':'')+'<th style="text-align:right;padding:5px 8px">Débit</th><th style="text-align:right;padding:5px 8px">Crédit</th><th style="text-align:right;padding:5px 8px">Solde</th><th style="padding:5px 8px;text-align:right">Corriger</th></tr>'
         +rows
-        +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="'+colspanTot+'" style="padding:6px 8px">TOTAUX ('+mv.length+' mouvement'+(mv.length>1?"s":"")+')</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(sd)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(sc)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(soldeFinal)+'</td></tr>'
+        +'<tr style="font-weight:700;border-top:2px solid #14201C"><td colspan="'+colspanTot+'" style="padding:6px 8px">TOTAUX ('+mv.length+' mouvement'+(mv.length>1?"s":"")+')</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(sd)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(sc)+'</td><td class="mono" style="text-align:right;padding:6px 8px">'+fmtDH2(soldeFinal)+'</td><td></td></tr>'
         +'</table></div>'
         +'<div class="note" style="margin-top:12px;font-size:11.5px">Solde '+sens+' : <b>'+fmtDH2(Math.abs(soldeFinal))+'</b>. Détail issu des écritures de l\'exercice (achats, ventes, banque, OD) qui mouvementent le compte '+esc(compte)+'.'+(isTiers?' Utilisez « Lettrer » pour rapprocher factures et règlements.':'')+'</div>'
       : '<div class="note">Aucun mouvement pour ce compte sur l\'exercice '+S.year+'.</div>')
@@ -7471,7 +8070,7 @@ async function comptaUploadReleve(files){
         path:path,banque:meta.banque,compte:meta.compte,status:"nouveau",contrepartie:""};
       // détection automatique commission bancaire (HT vs TTC) + TVA 10%
       var com=detectCommission(op);
-      if(com){ op.isCommission=true;op.mode=com.mode;op.htComm=com.htComm;op.tvaComm=com.tvaComm;op.tauxComm=com.tauxComm;op.contrepartie="61475"; }
+      if(com){ op.isCommission=true;op.mode=com.mode;op.htComm=com.htComm;op.tvaComm=com.tvaComm;op.tauxComm=com.tauxComm;op.contrepartie="61475";op.codeTva="142"; }
       var sig=opSig(op);
       if(sig && seen[sig]){ dupSkip++; continue; }
       seen[sig]=true;
@@ -7496,13 +8095,17 @@ function ocrTiers(type,x){
 }
 function ocrTiersIce(type,x){
   x=x||{};
-  if(type==="vente"){ return x.ice_client||x.client_ice||x.iceClient||""; }
-  return x.ice_fournisseur||x.ice||x.fournisseur_ice||"";
+  var v = (type==="vente") ? (x.ice_client||x.client_ice||x.iceClient||"") : (x.ice_fournisseur||x.ice||x.fournisseur_ice||"");
+  v=(""+(v||"")).trim();
+  if(!v) v=_scanIdField(x,_isIceKey);   // repli : tout champe dont la clé contient « ice »
+  return v||"";
 }
 function ocrTiersIf(type,x){
   x=x||{};
-  if(type==="vente"){ return x.if_client||x.client_if||x.identifiant_fiscal_client||x.ifClient||""; }
-  return x.if_fournisseur||x.fournisseur_if||x.identifiant_fiscal||x.identifiant_fiscal_fournisseur||x.if_||x.if||"";
+  var v = (type==="vente") ? (x.if_client||x.client_if||x.identifiant_fiscal_client||x.ifClient||"") : (x.if_fournisseur||x.fournisseur_if||x.identifiant_fiscal||x.identifiant_fiscal_fournisseur||x.if_||x.if||"");
+  v=(""+(v||"")).trim();
+  if(!v) v=_scanIdField(x,_isIfKey);    // repli : champ « if » / « identifiant fiscal »
+  return v||"";
 }
 async function comptaUpload(type,files){
   if(!sb||!session){showErr("Connectez-vous (cloud) pour importer.");return;}
@@ -8097,6 +8700,7 @@ function comptaListValidateAll(){
 // ----- opérations bancaires : comptabilisation -----
 function banqueValidate(oid){
   var cid=String(S.curClient),g=comptaGet(cid),o=g.operations.find(function(x){return String(x.id)===String(oid);});if(!o)return;
+  if(o.empLink){showErr("Cette opération est déjà comptabilisée via l'échéance d'emprunt liée (pas de double écriture).");return;}
   if(!(+o.debit>0)&&!(+o.credit>0)){showErr("Cette opération n'a ni débit ni crédit.");return;}
   var ec=ecritureBanque(o,g);
   var ecriture={id:"EB"+Date.now(),opId:o.id,date:o.date||(S.year+"-01-01"),journal:"BQ",piece:o.reference||o.libelle||"Banque",lignes:ec.lignes};
@@ -8121,7 +8725,7 @@ function banqueDraftAll(){
 }
 function banqueValidateAll(){
   var cid=String(S.curClient),g=comptaGet(cid),fl=S.comptaList,ok=0;
-  var rows=g.operations.filter(function(o){return opYear(o)===S.year && (o.status||"nouveau")!=="valide" && comptaOpMatch(o,fl) && ((+o.debit>0)||(+o.credit>0));});
+  var rows=g.operations.filter(function(o){return opYear(o)===S.year && (o.status||"nouveau")!=="valide" && !o.empLink && comptaOpMatch(o,fl) && ((+o.debit>0)||(+o.credit>0));});
   rows.forEach(function(o){
     var ec=ecritureBanque(o,g);
     var ecriture={id:"EB"+Date.now()+"_"+ok,opId:o.id,date:o.date||(S.year+"-01-01"),journal:"BQ",piece:o.reference||o.libelle||"Banque",lignes:ec.lignes};
@@ -8181,7 +8785,7 @@ function modalBanqueOp(oid){
   var cid=String(S.curClient),g=comptaGet(cid),o=g.operations.find(function(x){return String(x.id)===String(oid);});
   if(!o)return '<div class="ov"><div class="modal" data-stop style="max-width:420px"><div class="mb" style="padding:24px">Opération introuvable.<div style="margin-top:14px"><button class="chip" data-act="close">Fermer</button></div></div></div></div>';
   var isComm=!!o.isCommission, taux=o.tauxComm||10;
-  var defCode=o.codeTva||tvaCodeDed(taux,false);
+  var defCode=o.codeTva||"142";
   var sens=(+o.debit||0)>0?"Débit (sortie)":((+o.credit||0)>0?"Crédit (entrée)":"—");
   var commBox=isComm?(''
     +'<div style="background:#FBFAF5;border:1px solid #E6E2D6;border-radius:10px;padding:12px;margin-top:12px">'
@@ -8241,7 +8845,7 @@ function comptaOpComm(oid){
   var ttc=+o.debit||0,taux=10,tva=ttc>0?ttc*taux/(100+taux):0;
   o.isCommission=true; o.tauxComm=taux; o.tvaComm=Math.round(tva*100)/100; o.htComm=Math.round((ttc-tva)*100)/100;
   if(!o.contrepartie||o.contrepartie==="4711")o.contrepartie="61475";
-  if(!o.codeTva)o.codeTva=tvaCodeDed(taux,false);
+  if(!o.codeTva)o.codeTva="142";
   save("compta"); S.modal={type:"banqueop",oid:oid}; renderModal();
 }
 // Enregistre et met à jour l'écriture si déjà comptabilisée
@@ -8408,6 +9012,33 @@ async function comptaPrintAll(){
   }catch(e){ setSync("synced"); if(st)st.textContent=""; showErr("Impression globale impossible : "+(e.message||e)); }
 }
 
+// Panneau d'action « À traiter maintenant » : toutes les échéances en retard ou urgentes (≤10j), avec notif + dépôt en un clic.
+function urgentDashPanel(){
+  const dls=allDeadlines().filter(d=>d.u.key==="retard"||d.u.key==="urgent");
+  if(!dls.length) return '<div class="card mt4" style="padding:20px;border-left:4px solid #0E7A5F"><div class="sectit" style="color:#0E7A5F;display:flex;align-items:center;gap:6px">'+ic("check")+' Rien d\'urgent à déposer</div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">Aucune déclaration en retard ni à échéance proche (≤ 10 jours). 🎉</div></div>';
+  const cols="1fr 150px 96px 78px 120px 84px";
+  const rows=dls.map(d=>{
+    const ni=notifSentInfo(d.key);
+    return '<div class="trow" style="grid-template-columns:'+cols+'">'+
+      '<div style="min-width:0"><div class="dossier">'+esc(d.client.dossier)+'</div><div class="tel">'+ic("phone")+esc(d.client.tel||"—")+'</div></div>'+
+      '<div style="color:#57534e;font-size:12px">'+esc(d.label)+'</div>'+
+      '<div class="mono" style="color:#57534e;font-size:12px">'+fmtDate(d.date)+'</div>'+
+      '<div class="mono" style="color:'+d.u.color+'">'+(d.u.j<0?d.u.j+" j":"+"+d.u.j+" j")+'</div>'+
+      '<div>'+badge(d.u.color,d.u.bg,d.u.dot+" "+d.u.label)+'</div>'+
+      '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
+        (ni?'<span title="Déjà notifié" style="color:#0E7A5F;display:inline-flex">'+ic("check","width:14px;height:14px")+'</span>':'')+
+        '<button class="iconbtn" data-act="notify" data-key="'+d.key+'" title="Notifier le client (WhatsApp / SMS)" style="color:#0E7A5F">'+ic("whatsapp")+'</button>'+
+        '<button class="iconbtn" data-act="toggle" data-key="'+d.key+'" title="Marquer comme déposé" style="color:#d6d3c8">'+ic("dashed")+'</button>'+
+      '</div></div>';
+  }).join("");
+  return '<div class="card mt4" style="padding:20px;border-left:4px solid #B42318">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center" class="mb3">'+
+      '<div class="sectit" style="color:#B42318;display:flex;align-items:center;gap:6px">'+ic("alert")+' À traiter maintenant ('+dls.length+')</div>'+
+      '<button data-act="echgo" data-v="active" style="color:var(--emerald);font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px">Toutes les échéances '+ic("chev","width:14px;height:14px")+'</button>'+
+    '</div>'+
+    '<div class="thead" style="grid-template-columns:'+cols+'"><div>DOSSIER</div><div>DÉCLARATION</div><div>ÉCHÉANCE</div><div>JOURS</div><div>STATUT</div><div style="text-align:right">ACTIONS</div></div>'+
+    '<div class="scroll">'+rows+'</div></div>';
+}
 function vDash(){
   const cs=clients(),dls=allDeadlines();
   const cnt=k=>cs.filter(x=>(x.statut||"").toUpperCase().startsWith(k)).length;
@@ -8415,11 +9046,11 @@ function vDash(){
   const honTrim=cs.reduce((s,x)=>s+(x.honTrim||0),0);
   const kp=[
     {l:"Dossiers",v:cs.length,s:"clients actifs",i:"users",c:"#14201C",bg:"#EEF1EF"},
-    {l:"En retard",v:retard,s:"déclarations",i:"alert",c:"#B42318",bg:"#FBEAE8"},
-    {l:"Urgent (≤10j)",v:urgent,s:"à traiter",i:"clock",c:"#B5530A",bg:"#FCEEE0"},
+    {l:"En retard",v:retard,s:"déclarations",i:"alert",c:"#B42318",bg:"#FBEAE8",go:"retard"},
+    {l:"Urgent (≤10j)",v:urgent,s:"à traiter",i:"clock",c:"#B5530A",bg:"#FCEEE0",go:"urgent"},
     {l:"Honoraires trim.",v:fmtDH(honTrim),s:"par trimestre",i:"wallet",c:"#0E7A5F",bg:"#E3F1EB",sm:true}
   ];
-  let kpis=kp.map(k=>'<div class="card kpi"><div class="ico" style="background:'+k.bg+';color:'+k.c+'">'+ic(k.i)+'</div><div class="v'+(k.sm?' sm':'')+' ff" style="color:'+k.c+'">'+k.v+'</div><div class="l">'+k.l+'</div><div class="s">'+k.s+'</div></div>').join("");
+  let kpis=kp.map(k=>'<div class="card kpi"'+(k.go?' data-act="echgo" data-v="'+k.go+'" style="cursor:pointer"':'')+'><div class="ico" style="background:'+k.bg+';color:'+k.c+'">'+ic(k.i)+'</div><div class="v'+(k.sm?' sm':'')+' ff" style="color:'+k.c+'">'+k.v+'</div><div class="l">'+k.l+'</div><div class="s">'+k.s+'</div></div>').join("");
   // pie
   const pm={};cs.forEach(c=>{const k=c.statut||"—";pm[k]=(pm[k]||0)+1;});
   const pie=Object.keys(pm).map(k=>({name:k,value:pm[k]}));
@@ -8440,6 +9071,7 @@ function vDash(){
     .map(r=>'<div style="display:flex;gap:12px;align-items:flex-start"><span style="font-size:15px;line-height:1.2">'+r[2]+'</span><div><div style="font-size:13px;font-weight:600;color:#33312c">'+r[0]+'</div><div style="font-size:11px;color:var(--muted)">'+r[1]+'</div></div></div>').join("");
   return '<div class="wrap">'+header("Tableau de bord","Suivi des déclarations · Exercice "+S.year)+
     '<div class="grid g4 mt5">'+kpis+'</div>'+
+    urgentDashPanel()+
     '<div class="grid mt4" style="grid-template-columns:1fr 2fr">'+
       '<div class="card" style="padding:20px"><div class="sectit mb3">Répartition des dossiers</div><div style="display:grid;place-items:center">'+donut(pie,pcol)+'</div><div class="legend">'+legend+'</div></div>'+
       '<div class="card" style="padding:20px"><div style="display:flex;justify-content:space-between;align-items:center" class="mb3"><div class="sectit">Charge à traiter par type</div><button data-act="tab" data-tab="ech" style="color:var(--emerald);font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px">Voir échéances '+ic("chev","width:14px;height:14px")+'</button></div>'+bars(bd)+'</div>'+
@@ -8469,8 +9101,23 @@ function echFiltered(){
     if(S.echUrg==="active"&&(d.u.key==="depose"||d.u.key==="planif"))return false;
     if(S.echUrg!=="active"&&S.echUrg!=="all"&&d.u.key!==S.echUrg)return false;
     if(S.echq&&!smartMatch(S.echq,d.client.dossier))return false;
+    if(S.echReg&&S.echReg!=="all"&&(d.client.reg||"")!==S.echReg)return false;
+    if(S.echMois&&S.echMois!=="all"){
+      var _dt=(d.date instanceof Date)?d.date:new Date(d.date),_now=new Date();
+      var _ref=new Date(_now.getFullYear(),_now.getMonth()+(S.echMois==="next"?1:0),1);
+      if(_dt.getFullYear()!==_ref.getFullYear()||_dt.getMonth()!==_ref.getMonth())return false;
+    }
     return true;
   });
+}
+// Résumé chiffré du filtre courant (total · en retard · urgentes).
+function echSummary(){
+  var dls=echFiltered();
+  var r=dls.filter(function(d){return d.u.key==="retard";}).length;
+  var u=dls.filter(function(d){return d.u.key==="urgent";}).length;
+  return '<b style="color:#14201C">'+dls.length+'</b> échéance'+(dls.length>1?'s':'')+
+    (r?' · <b style="color:#B42318">'+r+' en retard</b>':'')+
+    (u?' · <b style="color:#B5530A">'+u+' urgente'+(u>1?'s':'')+'</b>':'');
 }
 function echRows(){
   const dls=echFiltered();
@@ -8498,6 +9145,8 @@ function vEch(){
   const c=k=>dls.filter(d=>d.u.key===k).length;
   const urgs=[["active","À traiter"],["retard","En retard ("+c("retard")+")"],["urgent","Urgent ("+c("urgent")+")"],["venir","À venir ("+c("venir")+")"],["depose","Déposé ("+c("depose")+")"],["all","Tout"]];
   const cats=[["all","Tous"],["tva","TVA"],["sal","Salaires"],["bilan","Bilan"],["is","Acomptes IS"],["foncier","Fonciers"],["cm","Cot. min."],["ir","Rev. IR"],["tiers","Rém. tiers"],["tp","Taxe pro."],["ras","Ret. source"],["jur","Juridique"]];
+  const mois=[["all","Toutes périodes"],["this","Ce mois-ci"],["next","Mois prochain"]];
+  const regs=[["all","Tous régimes"],["mensuelle","Mensuel"],["trimestrielle","Trimestriel"],["neant","Néant"]];
   const seg=(arr,act,cur,onc)=>'<div class="seg">'+arr.map(a=>'<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:'+onc+';color:#fff':'')+'">'+a[1]+'</button>').join("")+'</div>';
   const cols="1fr 170px 120px 90px 140px 92px";
   return '<div class="wrap">'+header("Échéances &amp; Notifications","Calculées automatiquement selon les règles du cabinet")+
@@ -8505,6 +9154,11 @@ function vEch(){
       '<div class="search">'+ic("search")+'<input id="echq" placeholder="Rechercher un dossier…" value="'+esc(S.echq)+'"></div>'+
       seg(urgs,"echurg",S.echUrg,"#14201C")+
       '<div style="margin-left:auto;display:flex;gap:10px;align-items:center">'+seg(cats,"echcat",S.echCat,"#0E7A5F")+'<button class="btn-add" data-act="grp_open">'+ic("bell")+' Notifier en lot</button></div>'+
+    '</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mb4">'+
+      seg(mois,"echmois",S.echMois,"#0E7A5F")+
+      seg(regs,"echreg",S.echReg,"#0E7A5F")+
+      '<div style="margin-left:auto;font-size:12.5px;color:var(--muted)">'+echSummary()+'</div>'+
     '</div>'+
     '<div class="card"><div class="thead" style="grid-template-columns:'+cols+'"><div>DOSSIER</div><div>DÉCLARATION</div><div>ÉCHÉANCE</div><div>JOURS</div><div>STATUT</div><div style="text-align:right">ACTIONS</div></div><div class="scroll" id="echlist">'+echRows()+'</div></div>'+
     notifHistoryPanel()+
@@ -8970,11 +9624,12 @@ function vFac(){if(S.facDraft)return header("Facturation","STE FIDUCIAIRE FID IN
 
 
 // Libellés courts des modules (utilisés dans la barre de sous-onglets d'un volet).
-const TAB_LABELS={dash:"Tableau de bord",compta:"Comptabilité",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
+const TAB_LABELS={dash:"Tableau de bord",analyse:"Analyse financière",compta:"Comptabilité",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
 // Volets de navigation : chaque volet regroupe des modules qui se ressemblent.
 // Pour déplacer un module d'un volet à l'autre, change simplement sa place dans "tabs".
 const GROUPS=[
   {id:"g_dash",label:"Tableau de bord",icon:"dash",tabs:["dash"]},
+  {id:"g_pilotage",label:"Pilotage",icon:"scale",tabs:["analyse"]},
   {id:"g_compta",label:"Comptabilité",icon:"book",tabs:["compta"]},
   {id:"g_fiscal",label:"Fiscal",icon:"bank",tabs:["tva","liasse","ech","teledec"]},
   {id:"g_paie",label:"Paie · Social",icon:"users",tabs:["paie"]},
@@ -8995,7 +9650,8 @@ function voletToggle(){
   return '<div class="wrap" style="padding-top:18px;padding-bottom:0"><div class="psub" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;font-size:11px">'+esc(g.label)+'</div><div style="display:inline-flex;gap:6px;background:#EDEAE0;border-radius:10px;padding:3px;flex-wrap:wrap">'+chips+'</div></div>';
 }
 function renderNav(){
-  document.getElementById("nav").innerHTML=GROUPS.map(function(g){var active=g.tabs.indexOf(S.tab)>=0;var badge="";if(g.tabs.indexOf("portal")>=0){try{var u=portalGet().notifs.filter(function(x){return !x.read;}).length;if(u)badge='<span style="background:#B42318;color:#fff;border-radius:20px;padding:0 6px;font-size:10px;margin-left:auto;font-weight:700">'+u+'</span>';}catch(e){}}return '<button class="'+(active?"on":"")+'" data-act="volet" data-g="'+g.id+'">'+ic(g.icon)+'<span>'+g.label+'</span>'+badge+'</button>';}).join("");
+  var _gsBtn='<button data-act="gsearch_open" title="Recherche globale (Ctrl/Cmd + K)">'+ic("search")+'<span>Rechercher</span></button>';
+  document.getElementById("nav").innerHTML=_gsBtn+GROUPS.map(function(g){var active=g.tabs.indexOf(S.tab)>=0;var badge="";if(g.tabs.indexOf("portal")>=0){try{var u=portalGet().notifs.filter(function(x){return !x.read;}).length;if(u)badge='<span style="background:#B42318;color:#fff;border-radius:20px;padding:0 6px;font-size:10px;margin-left:auto;font-weight:700">'+u+'</span>';}catch(e){}}return '<button class="'+(active?"on":"")+'" data-act="volet" data-g="'+g.id+'">'+ic(g.icon)+'<span>'+g.label+'</span>'+badge+'</button>';}).join("");
   document.getElementById("foot").innerHTML='Exercice <b class="mono">'+S.year+'</b><br>'+clients().length+' dossiers suivis'+syncBadge()+(CLOUD?'':'<button data-act="cloudinfo" style="display:block;margin-top:8px;font-size:11px;color:var(--gold);text-decoration:underline">☁ Configurer la synchronisation</button>')+'<div style="margin-top:8px;font-size:10px;color:rgba(167,206,190,.5);letter-spacing:.04em">'+VERSION+'</div>';
 }
 /* ===== MODULE DÉLAIS DE PAIEMENT (loi marocaine) ===== */
@@ -9144,6 +9800,30 @@ function delaisExportPDF(){
 var EMP_CAPITAL="1481000000";  // Emprunts auprès des établissements de crédit
 var EMP_INTERET="6311000000";  // Intérêts des emprunts et dettes
 var EMP_TVA="3455200000";     // État TVA récupérable sur charges
+var EMP_PENALITE="6311500000"; // Intérêts/pénalités bancaires et sur opérations de financement
+var EMP_EFFET="4415000000";    // Fournisseurs - effets à payer (traite non encore prélevée)
+var EMP_CAISSE="5161000000";   // Caisse
+// Supprime les écritures d'emprunt « orphelines » : toute écriture d'emprunt (id préfixé « EMP »
+// ou portant un empId) qui n'est plus rattachée à AUCUN emprunt existant du dossier.
+// Corrige le cas des emprunts supprimés avant la mise à jour, dont les écritures polluaient
+// encore le journal, le grand livre et la balance. Idempotent.
+function comptaPurgeOrphanEmp(cid){
+  var g=comptaGet(cid), loans=empList(cid);
+  var liveEmpIds={}, ecrOwner={};
+  loans.forEach(function(emp){
+    liveEmpIds[String(emp.id)]=1;
+    (emp.echeances||[]).forEach(function(e){ if(e&&e.ecritureId)ecrOwner[String(e.ecritureId)]=String(emp.id); });
+  });
+  var before=g.ecritures.length;
+  g.ecritures=g.ecritures.filter(function(x){
+    var isLoan=(x.empId!=null)||(typeof x.id==="string"&&x.id.indexOf("EMP")===0);
+    if(!isLoan)return true;                                   // pas une écriture d'emprunt -> on garde
+    if(x.empId!=null&&liveEmpIds[String(x.empId)])return true;// rattachée à un emprunt existant
+    if(ecrOwner[String(x.id)]){ x.empId=ecrOwner[String(x.id)]; return true; } // ré-étiquette les anciennes
+    return false;                                             // orpheline -> suppression
+  });
+  return before-g.ecritures.length;
+}
 function empList(cid){ return (S.emprunts[cid]||[]).slice(); }
 function empSave(cid,arr){ S.emprunts[cid]=arr; save("emprunts"); }
 function empAddMonths(dateStr,n){
@@ -9153,8 +9833,10 @@ function empAddMonths(dateStr,n){
 // génère le tableau d'amortissement (mensualité constante) ou retourne les échéances manuelles
 function empAmortir(emp){
   if(emp.mode==="manuel") return (emp.echeances||[]).map(function(e,i){
-    var cap=+e.capital||0,intr=+e.interet||0,tva=emp.tvaInteret?Math.round(intr*0.10*100)/100:0;
-    return {n:i+1,date:e.date||"",capital:cap,interet:intr,tva:tva,total:Math.round((cap+intr+tva)*100)/100,crd:+e.crd||0,valide:!!e.valide,ecritureId:e.ecritureId||null};
+    var cap=+e.capital||0,intr=+e.interet||0,pen=+e.penalite||0;
+    var tva=emp.tvaInteret?Math.round(intr*0.10*100)/100:0;
+    var penTva=(emp.tvaPenalite!==false)?Math.round(pen*0.10*100)/100:0;
+    return {n:i+1,date:e.date||"",datePmt:e.datePmt||"",modeReg:e.modeReg||"Banque",capital:cap,interet:intr,tva:tva,penalite:pen,penTva:penTva,total:Math.round((cap+intr+tva+pen+penTva)*100)/100,crd:+e.crd||0,valide:!!e.valide,ecritureId:e.ecritureId||null};
   });
   // mode auto : mensualité constante
   var P=+emp.montant||0,taux=(+emp.taux||0)/100,per=emp.periodicite==="trimestrielle"?4:12,n=+emp.duree||0;
@@ -9169,28 +9851,92 @@ function empAmortir(emp){
     var tva=emp.tvaInteret?Math.round(intr*0.10*100)/100:0;
     crd=Math.round((crd-cap)*100)/100;
     var ex=(emp.echeances&&emp.echeances[k])||{};
-    rows.push({n:k+1,date:empAddMonths(emp.dateDebut,k*step),capital:cap,interet:intr,tva:tva,total:Math.round((cap+intr+tva)*100)/100,crd:crd<0?0:crd,valide:!!ex.valide,ecritureId:ex.ecritureId||null});
+    var pen=+ex.penalite||0, penTva=(emp.tvaPenalite!==false)?Math.round(pen*0.10*100)/100:0;
+    rows.push({n:k+1,date:empAddMonths(emp.dateDebut,k*step),datePmt:ex.datePmt||"",modeReg:ex.modeReg||"Banque",capital:cap,interet:intr,tva:tva,penalite:pen,penTva:penTva,total:Math.round((cap+intr+tva+pen+penTva)*100)/100,crd:crd<0?0:crd,valide:!!ex.valide,ecritureId:ex.ecritureId||null});
   }
   return rows;
 }
+// Contrepartie de l'échéance selon le mode de règlement choisi par l'utilisateur.
+// Banque -> 5141 (journal BQ) ; Caisse -> 5161 (journal CA) ; Effet/traite NON encore payée par banque -> 4415 effets à payer (journal OD).
+function empCounterpart(emp,mode){
+  mode=mode||"Banque";
+  if(mode==="Caisse")return {compte:emp.cptCaisse||EMP_CAISSE,journal:"CA",lib:"caisse"};
+  if(mode==="Effet") return {compte:emp.cptEffet||EMP_EFFET,journal:"OD",lib:"effet à payer"};
+  return {compte:emp.cptBanque||BANK_ACCOUNT,journal:"BQ",lib:"banque"};
+}
 function empEcriture(row,emp){
+  var cp=empCounterpart(emp,row.modeReg);
   var lignes=[
     {compte:emp.cptCapital||EMP_CAPITAL,libelle:"Remb. capital "+(emp.organisme||""),debit:row.capital,credit:0},
     {compte:emp.cptInteret||EMP_INTERET,libelle:"Intérêts "+(emp.organisme||""),debit:row.interet,credit:0}
   ];
   if(row.tva>0)lignes.push({compte:emp.cptTva||EMP_TVA,libelle:"TVA/intérêts",debit:row.tva,credit:0});
-  lignes.push({compte:BANK_ACCOUNT,libelle:"Échéance "+(emp.organisme||"")+" n°"+row.n,debit:0,credit:row.total});
-  return canonLignes({journal:"BQ",lignes:lignes});
+  if(+row.penalite>0)lignes.push({compte:emp.cptPenalite||EMP_PENALITE,libelle:"Pénalités de retard "+(emp.organisme||""),debit:row.penalite,credit:0});
+  if(+row.penTva>0)lignes.push({compte:emp.cptTva||EMP_TVA,libelle:"TVA/pénalités",debit:row.penTva,credit:0});
+  lignes.push({compte:cp.compte,libelle:"Échéance "+(emp.organisme||"")+" n°"+row.n+" ("+cp.lib+")",debit:0,credit:row.total});
+  return canonLignes({journal:cp.journal,lignes:lignes});
+}
+// Date du paiement bancaire d'une échéance (par défaut = date d'échéance prévue)
+function empPmtDate(r){ return (r.datePmt&&/^\d{4}-\d{2}-\d{2}/.test(r.datePmt))?r.datePmt:(r.date||(S.year+"-01-01")); }
+// Détection automatique des échéances dans le relevé bancaire :
+// apparie chaque échéance non comptabilisée à un débit bancaire de montant proche (±2 DH / 1%),
+// dans une fenêtre de ±25 jours autour de la date prévue, puis comptabilise au décaissement bancaire.
+function empDetectFromBank(empId){
+  var cid=String(S.curClient),arr=empList(cid),emp=arr.find(function(e){return String(e.id)===String(empId);});if(!emp)return;
+  var g=comptaGet(cid); if(!emp.echeances)emp.echeances=[];
+  var rows=empAmortir(emp).filter(function(r){return !r.valide && r.total>0 && (r.date||"").slice(0,4)===String(S.year);});
+  // débits bancaires de l'exercice, non déjà liés à un emprunt ni affectés à des factures
+  var ops=(g.operations||[]).filter(function(o){return opYear(o)===S.year && (+o.debit>0) && !o.empLink && !(o.affectations&&o.affectations.length);});
+  var used={},done=0;
+  function days(a,b){ if(!a||!b)return 9999; return Math.abs((new Date(a)-new Date(b))/86400000); }
+  rows.forEach(function(row){
+    var target=row.total, best=null,bestd=26;
+    ops.forEach(function(o){
+      if(used[o.id])return;
+      var amt=+o.debit||0, tol=Math.max(2,target*0.01);
+      if(Math.abs(amt-target)>tol)return;
+      var d=days(o.date,row.date);
+      if(d<bestd){bestd=d;best=o;}
+    });
+    if(!best)return;
+    used[best.id]=1;
+    row.modeReg="Banque";                                   // appariement à un débit bancaire réel -> contrepartie banque
+    var ec=empEcriture(row,emp);
+    var ecriture={id:"EMP"+Date.now()+"_"+row.n,empId:emp.id,date:best.date||row.date,journal:ec.journal,piece:"Échéance "+(emp.organisme||"")+" n°"+row.n,lignes:ec.lignes};
+    g.ecritures.push(ecriture);
+    emp.echeances[row.n-1]=Object.assign({},emp.echeances[row.n-1],{valide:true,ecritureId:ecriture.id,datePmt:best.date||row.date,modeReg:"Banque"});
+    // marque l'opération bancaire comme rapprochée à l'emprunt (sans double écriture : la compta vient de l'emprunt)
+    best.empLink={empId:emp.id,n:row.n}; best.matchLabel="Échéance "+(emp.organisme||"")+" n°"+row.n; if(best.status!=="valide")best.status="rapproche";
+    done++;
+  });
+  save("compta");empSave(cid,arr);renderView();
+  showOk(done?(done+" échéance(s) détectée(s) dans le relevé et comptabilisée(s) au décaissement bancaire."):"Aucun débit bancaire ne correspond à une échéance non comptabilisée (vérifiez montants et dates).");
 }
 function empValiderEcheance(empId,n){
   var cid=String(S.curClient),arr=empList(cid),emp=arr.find(function(e){return String(e.id)===String(empId);});if(!emp)return;
   var rows=empAmortir(emp),row=rows.find(function(r){return r.n===n;});if(!row)return;
   var g=comptaGet(cid),ec=empEcriture(row,emp);
-  var ecriture={id:"EMP"+Date.now(),date:row.date||(S.year+"-01-01"),journal:"BQ",piece:"Échéance "+(emp.organisme||"")+" n°"+n,lignes:ec.lignes};
+  var dpm=empPmtDate(row);                                   // date d'exigibilité / de règlement de l'échéance
+  var ecriture={id:"EMP"+Date.now(),empId:emp.id,date:dpm,journal:ec.journal,piece:"Échéance "+(emp.organisme||"")+" n°"+n,lignes:ec.lignes};
   g.ecritures.push(ecriture);save("compta");
   if(!emp.echeances)emp.echeances=[];
-  emp.echeances[n-1]=Object.assign({},emp.echeances[n-1],{valide:true,ecritureId:ecriture.id});
-  empSave(cid,arr);renderView();showOk("Échéance n°"+n+" comptabilisée (journal BQ).");
+  emp.echeances[n-1]=Object.assign({},emp.echeances[n-1],{valide:true,ecritureId:ecriture.id,datePmt:dpm,modeReg:row.modeReg||"Banque"});
+  empSave(cid,arr);renderView();showOk("Échéance n°"+n+" comptabilisée (paiement banque le "+dpm.split("-").reverse().join("/")+").");
+}
+// Ajoute / modifie une pénalité de retard sur une échéance DÉJÀ comptabilisée :
+// met à jour l'écriture existante (charge pénalité + TVA pénalité + crédit banque) et la TVA déductible.
+function empSetPenalite(empId,n,val){
+  var cid=String(S.curClient),arr=empList(cid),emp=arr.find(function(e){return String(e.id)===String(empId);});if(!emp)return;
+  if(!emp.echeances)emp.echeances=[];
+  emp.echeances[n-1]=Object.assign({},emp.echeances[n-1],{penalite:Math.round((+val||0)*100)/100});
+  empSave(cid,arr);
+  var rows=empAmortir(emp),row=rows.find(function(r){return r.n===n;});
+  if(row && row.valide && row.ecritureId){
+    var g=comptaGet(cid),e=g.ecritures.find(function(x){return x.id===row.ecritureId;});
+    if(e){ var ec=empEcriture(row,emp); e.lignes=ec.lignes; save("compta"); }
+  }
+  renderView();
+  showOk((+val>0)?("Pénalité de "+fmtDH2(+val)+" appliquée à l'échéance n°"+n+(emp.tvaPenalite!==false?" (+ TVA 10% déductible).":".")):("Pénalité retirée de l'échéance n°"+n+"."));
 }
 function empValiderAnnee(empId){
   var cid=String(S.curClient),arr=empList(cid),emp=arr.find(function(e){return String(e.id)===String(empId);});if(!emp)return;
@@ -9200,9 +9946,10 @@ function empValiderAnnee(empId){
     if(row.valide)return;
     if(row.date&&row.date.slice(0,4)!==String(S.year))return; // uniquement l'exercice courant
     var ec=empEcriture(row,emp);
-    var ecriture={id:"EMP"+Date.now()+"_"+row.n,date:row.date||(S.year+"-01-01"),journal:"BQ",piece:"Échéance "+(emp.organisme||"")+" n°"+row.n,lignes:ec.lignes};
+    var dpm=empPmtDate(row);
+    var ecriture={id:"EMP"+Date.now()+"_"+row.n,empId:emp.id,date:dpm,journal:ec.journal,piece:"Échéance "+(emp.organisme||"")+" n°"+row.n,lignes:ec.lignes};
     g.ecritures.push(ecriture);
-    emp.echeances[row.n-1]=Object.assign({},emp.echeances[row.n-1],{valide:true,ecritureId:ecriture.id});ok++;
+    emp.echeances[row.n-1]=Object.assign({},emp.echeances[row.n-1],{valide:true,ecritureId:ecriture.id,datePmt:dpm,modeReg:row.modeReg||"Banque"});ok++;
   });
   save("compta");empSave(cid,arr);renderView();showOk(ok+" échéance(s) "+S.year+" comptabilisée(s).");
 }
@@ -9214,8 +9961,25 @@ function empAdd(){
   empSave(cid,arr);S.empSel.id=arr[arr.length-1].id;renderView();
 }
 function empDel(empId){
-  var cid=String(S.curClient),arr=empList(cid).filter(function(e){return String(e.id)!==String(empId);});
-  empSave(cid,arr);if(String(S.empSel.id)===String(empId))S.empSel.id=null;renderView();showOk("Emprunt supprimé.");
+  var cid=String(S.curClient),arr=empList(cid);
+  if(!window.confirm("Supprimer cet emprunt ET toutes ses écritures comptables (journal, grand livre, balance) ? Cette action est définitive."))return;
+  var g=comptaGet(cid);
+  // 1) Délier les opérations du relevé bancaire rapprochées à cet emprunt (elles repassent en « à rapprocher »)
+  (g.operations||[]).forEach(function(o){
+    if(o.empLink&&String(o.empLink.empId)===String(empId)){
+      delete o.empLink;
+      if(o.matchLabel&&/Échéance/.test(o.matchLabel))o.matchLabel="";
+      if(o.status==="rapproche")o.status="nouveau";
+    }
+  });
+  // 2) Retirer l'emprunt de la liste
+  empSave(cid,arr.filter(function(e){return String(e.id)!==String(empId);}));
+  if(String(S.empSel.id)===String(empId))S.empSel.id=null;
+  // 3) Purger toutes les écritures d'emprunt désormais orphelines (celles de cet emprunt + d'anciens emprunts supprimés)
+  var removed=comptaPurgeOrphanEmp(cid);
+  save("compta");
+  renderView();
+  showOk("Emprunt supprimé"+(removed?(" \u2014 "+removed+" écriture(s) retirée(s) du journal / grand livre / balance."):"."));
 }
 function empField(empId,field,val){
   var cid=String(S.curClient),arr=empList(cid),emp=arr.find(function(e){return String(e.id)===String(empId);});if(!emp)return;
@@ -9279,7 +10043,7 @@ function comptaEmpruntsBody(c){
   var detail="";
   if(emp){
     var rows=empAmortir(emp);
-    var tCap=rows.reduce(function(a,r){return a+r.capital;},0),tInt=rows.reduce(function(a,r){return a+r.interet;},0),tTva=rows.reduce(function(a,r){return a+r.tva;},0),tTot=rows.reduce(function(a,r){return a+r.total;},0);
+    var tCap=rows.reduce(function(a,r){return a+r.capital;},0),tInt=rows.reduce(function(a,r){return a+r.interet;},0),tTva=rows.reduce(function(a,r){return a+r.tva;},0),tPen=rows.reduce(function(a,r){return a+(+r.penalite||0);},0),tTot=rows.reduce(function(a,r){return a+r.total;},0);
     var isManuel=emp.mode==="manuel";
     var paramForm='<div class="card" style="padding:18px;margin-bottom:14px"><div class="sectit mb3">Paramètres de l\'emprunt</div>'
       +'<div class="grid g2" style="gap:10px">'
@@ -9292,29 +10056,43 @@ function comptaEmpruntsBody(c){
       +'</div>'
       +'<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;align-items:center">'
       +'<label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" data-empchk="'+emp.id+':tvaInteret"'+(emp.tvaInteret?" checked":"")+' style="width:16px;height:16px;accent-color:#0E7A5F"> TVA 10% sur intérêts (récupérable)</label>'
+      +'<label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" data-empchk="'+emp.id+':tvaPenalite"'+(emp.tvaPenalite!==false?" checked":"")+' style="width:16px;height:16px;accent-color:#0E7A5F"> TVA 10% sur pénalités de retard</label>'
       +'<div style="display:flex;gap:6px"><button class="chip" data-act="emp_mode" data-id="'+emp.id+'" data-v="auto" style="'+(!isManuel?"background:#14201C;color:#fff":"")+'">Calcul auto</button><button class="chip" data-act="emp_mode" data-id="'+emp.id+'" data-v="manuel" style="'+(isManuel?"background:#14201C;color:#fff":"")+'">Saisie manuelle</button></div>'
       +'</div>'
-      +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><div style="flex:1;min-width:110px"><div class="flbl">Compte capital</div><input class="ipt mono" data-emp="'+emp.id+':cptCapital" value="'+esc(comptaCanon(emp.cptCapital||EMP_CAPITAL))+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte intérêts</div><input class="ipt mono" data-emp="'+emp.id+':cptInteret" value="'+esc(comptaCanon(emp.cptInteret||EMP_INTERET))+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte TVA</div><input class="ipt mono" data-emp="'+emp.id+':cptTva" value="'+esc(comptaCanon(emp.cptTva||EMP_TVA))+'"></div></div>'
-      +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn-primary" data-act="emp_scan_click" data-id="'+emp.id+'">'+ic("down","width:14px;height:14px;vertical-align:-2px")+' Scanner le tableau d\'amortissement</button><input type="file" id="emp_file_'+emp.id+'" accept="application/pdf,image/*" style="display:none"><button class="chip" data-act="emp_del" data-id="'+emp.id+'" style="color:#C0392B;border-color:#f0c9c4">'+ic("trash","width:14px;height:14px")+' Supprimer cet emprunt</button>'+(isManuel?'<button class="chip" data-act="emp_ech_add" data-id="'+emp.id+'">'+ic("plus")+' Ajouter une échéance</button>':'')+'</div>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><div style="flex:1;min-width:110px"><div class="flbl">Compte capital</div><input class="ipt mono" data-emp="'+emp.id+':cptCapital" value="'+esc(comptaCanon(emp.cptCapital||EMP_CAPITAL))+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte intérêts</div><input class="ipt mono" data-emp="'+emp.id+':cptInteret" value="'+esc(comptaCanon(emp.cptInteret||EMP_INTERET))+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte pénalités</div><input class="ipt mono" data-emp="'+emp.id+':cptPenalite" value="'+esc(comptaCanon(emp.cptPenalite||EMP_PENALITE))+'"></div><div style="flex:1;min-width:110px"><div class="flbl">Compte TVA</div><input class="ipt mono" data-emp="'+emp.id+':cptTva" value="'+esc(comptaCanon(emp.cptTva||EMP_TVA))+'"></div><div style="flex:1;min-width:110px"><div class="flbl" title="Contrepartie quand l\'échéance est réglée par effet/traite non encore prélevé">Compte effet à payer</div><input class="ipt mono" data-emp="'+emp.id+':cptEffet" value="'+esc(comptaCanon(emp.cptEffet||EMP_EFFET))+'"></div></div>'
+      +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn-primary" data-act="emp_scan_click" data-id="'+emp.id+'">'+ic("down","width:14px;height:14px;vertical-align:-2px")+' Scanner le tableau d\'amortissement</button><input type="file" id="emp_file_'+emp.id+'" accept="application/pdf,image/*" style="display:none"><button class="chip" data-act="emp_detect_bank" data-id="'+emp.id+'" style="color:#2563EB;border-color:#bcd3f5">'+ic("link","width:13px;height:13px;vertical-align:-2px")+' Détecter dans le relevé bancaire</button><button class="chip" data-act="emp_del" data-id="'+emp.id+'" style="color:#C0392B;border-color:#f0c9c4">'+ic("trash","width:14px;height:14px")+' Supprimer cet emprunt</button>'+(isManuel?'<button class="chip" data-act="emp_ech_add" data-id="'+emp.id+'">'+ic("plus")+' Ajouter une échéance</button>':'')+'</div>'
       +'</div>';
 
     // tableau d'amortissement
-    var thE='<tr style="background:#14201C;color:#fff;font-size:11px;text-align:left"><th style="padding:6px">N°</th><th style="padding:6px">Date</th><th style="padding:6px;text-align:right">Capital</th><th style="padding:6px;text-align:right">Intérêts</th><th style="padding:6px;text-align:right">TVA 10%</th><th style="padding:6px;text-align:right">Échéance totale</th><th style="padding:6px;text-align:right">Capital restant</th><th style="padding:6px;text-align:center">État</th><th style="padding:6px"></th></tr>';
+    var thE='<tr style="background:#14201C;color:#fff;font-size:11px;text-align:left"><th style="padding:6px">N°</th><th style="padding:6px">Date</th><th style="padding:6px;text-align:right">Capital</th><th style="padding:6px;text-align:right">Intérêts</th><th style="padding:6px;text-align:right">TVA 10%</th><th style="padding:6px;text-align:right">Pénalité retard</th><th style="padding:6px;text-align:right">Échéance totale</th><th style="padding:6px;text-align:right">Capital restant</th><th style="padding:6px;text-align:center">État / paiement</th><th style="padding:6px"></th></tr>';
     var bodyE=rows.map(function(r,i){
       var isYear=r.date&&r.date.slice(0,4)===String(S.year);
+      var enRetard=r.datePmt && r.date && (new Date(r.datePmt)>new Date(r.date));
       return '<tr style="border-bottom:1px solid #F0EDE3;font-size:12px;'+(r.valide?"background:#F0F7F4;":"")+'">'
-        +'<td style="padding:5px 6px">'+r.n+'</td>'
+        +'<td style="padding:5px 6px">'+r.n+(enRetard?' <span title="payée hors délai" style="background:#FBEAE8;color:#B42318;border-radius:4px;padding:0 5px;font-size:9.5px;font-weight:700">RETARD</span>':'')+'</td>'
         +'<td style="padding:5px 6px" class="mono">'+(isManuel?'<input class="ipt mono" type="date" data-empech="'+emp.id+':'+i+':date" value="'+esc(r.date)+'" style="width:130px;padding:2px 4px;font-size:11px">':esc(r.date))+'</td>'
         +'<td style="padding:5px 6px;text-align:right" class="mono">'+(isManuel?'<input class="ipt mono" type="number" data-empech="'+emp.id+':'+i+':capital" value="'+esc(r.capital)+'" style="width:90px;text-align:right;padding:2px 4px;font-size:11px">':fmtDH2(r.capital))+'</td>'
         +'<td style="padding:5px 6px;text-align:right" class="mono">'+(isManuel?'<input class="ipt mono" type="number" data-empech="'+emp.id+':'+i+':interet" value="'+esc(r.interet)+'" style="width:80px;text-align:right;padding:2px 4px;font-size:11px">':fmtDH2(r.interet))+'</td>'
         +'<td style="padding:5px 6px;text-align:right" class="mono">'+fmtDH2(r.tva)+'</td>'
+        +'<td style="padding:5px 6px;text-align:right" class="mono">'+(r.valide
+            ?'<input class="ipt mono" id="pen_'+emp.id+'_'+i+'" type="number" step="0.01" value="'+esc(r.penalite||"")+'" placeholder="0" title="Pénalité de retard (HT) — met à jour l\'écriture" style="width:74px;text-align:right;padding:2px 4px;font-size:11px"> <button class="chip" data-act="emp_set_pen" data-id="'+emp.id+'" data-n="'+r.n+'" data-i="'+i+'" style="padding:2px 6px;font-size:10.5px;color:#0E7A5F" title="Appliquer / mettre à jour l\'écriture">MAJ</button>'+(r.penTva>0?'<br><span style="color:#9A9684;font-size:10px">+TVA '+fmtDH2(r.penTva)+'</span>':'')
+            :'<input class="ipt mono" type="number" step="0.01" data-empech="'+emp.id+':'+i+':penalite" value="'+esc(r.penalite||"")+'" placeholder="0" title="Pénalité de retard (HT)" style="width:84px;text-align:right;padding:2px 4px;font-size:11px">')+'</td>'
         +'<td style="padding:5px 6px;text-align:right;font-weight:700" class="mono">'+fmtDH2(r.total)+'</td>'
         +'<td style="padding:5px 6px;text-align:right;color:var(--muted)" class="mono">'+fmtDH2(r.crd)+'</td>'
-        +'<td style="padding:5px 6px;text-align:center">'+(r.valide?'<span style="color:#0E7A5F;font-weight:600">✓ comptabilisé</span>':(isYear?'<span style="color:#9A9684">à passer</span>':'<span style="color:#cfccc0">'+(r.date?r.date.slice(0,4):"—")+'</span>'))+'</td>'
+        +'<td style="padding:5px 6px;text-align:center">'
+          +(r.valide
+            ? ((r.modeReg==="Effet")
+                ? '<span style="color:#B5530A;font-weight:600">✓ comptabilisé · effet à payer</span><br><span class="mono" style="font-size:10.5px;color:var(--faint)">échéance le '+esc((r.date||"").split("-").reverse().join("/"))+'</span>'
+                : '<span style="color:#0E7A5F;font-weight:600">✓ payé '+esc((r.modeReg||"Banque"))+'</span><br><span class="mono" style="font-size:10.5px;color:'+(enRetard?"#B42318":"var(--faint)")+'">le '+esc(empPmtDate(r).split("-").reverse().join("/"))+'</span>')
+            : (isYear
+                ? '<select class="ipt" data-empech="'+emp.id+':'+i+':modeReg" style="padding:2px 4px;font-size:11px;height:auto;min-width:78px">'+["Banque","Effet","Caisse"].map(function(m){return '<option'+((r.modeReg||"Banque")===m?" selected":"")+'>'+m+'</option>';}).join("")+'</select>'
+                  +'<br><input class="ipt mono" type="date" data-empech="'+emp.id+':'+i+':datePmt" value="'+esc(r.datePmt||r.date||"")+'" title="Date de paiement bancaire" style="width:120px;padding:2px 4px;font-size:10.5px;margin-top:3px">'
+                : '<span style="color:#cfccc0">'+(r.date?r.date.slice(0,4):"—")+'</span>'))
+          +'</td>'
         +'<td style="padding:5px 6px;text-align:right">'+(!r.valide&&isYear?'<button class="chip" data-act="emp_valider" data-id="'+emp.id+'" data-n="'+r.n+'" style="color:#0E7A5F">Comptabiliser</button>':'')+'</td>'
         +'</tr>';
     }).join("");
-    var footE='<tr style="border-top:2px solid #14201C;font-weight:700;background:#F7F4EC"><td colspan="2" style="padding:7px 6px">TOTAUX</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tCap)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tInt)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTva)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTot)+'</td><td colspan="3"></td></tr>';
+    var footE='<tr style="border-top:2px solid #14201C;font-weight:700;background:#F7F4EC"><td colspan="2" style="padding:7px 6px">TOTAUX</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tCap)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tInt)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTva)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tPen)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTot)+'</td><td colspan="3"></td></tr>';
 
     detail=paramForm
       +'<div class="card" style="padding:16px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><div class="sectit">Tableau d\'amortissement'+(rows.length?' ('+rows.length+' échéances)':'')+'</div>'
@@ -9372,22 +10150,387 @@ function enhanceClientSelects(){
     });
   });
 }
+/* ============================================================================
+   MODULE PILOTAGE & ANALYSE FINANCIÈRE  (lecture seule — ne modifie aucune écriture)
+   1) Santé financière : masses du bilan (CGNC) + équilibre fonctionnel (FR / BFR / TN) + ratios commentés
+   2) Balance âgée clients & fournisseurs (pour les relances)
+   3) Prévision de trésorerie à 30 / 60 / 90 jours
+   ============================================================================ */
+function anNum(n){return Math.round((Number(n)||0)*100)/100;}
+function anPct(n){return (Number(n)||0).toLocaleString("fr-FR",{minimumFractionDigits:1,maximumFractionDigits:1})+" %";}
+function anX(n){return (Number(n)||0).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2});}
+// somme des soldes (débit−crédit) des comptes dont le n° commence par l'un des préfixes
+function anSolde(rows,prefixes){
+  var s=0;
+  rows.forEach(function(r){
+    var code=String(r.c||"");
+    for(var i=0;i<prefixes.length;i++){ if(code.indexOf(prefixes[i])===0){ s+=(+r.solde||0); break; } }
+  });
+  return anNum(s);
+}
+// Masses du bilan + CPC à partir de la balance de l'exercice courant
+function anMasses(c){
+  var rows=comptaBalanceRows(c);
+  var actifImmo   = anSolde(rows,["2"]);                 // classe 2 nette (immos − amortissements − provisions)
+  var stocks      = anSolde(rows,["31"]);
+  var creances    = anSolde(rows,["34"]);                // actif circulant hors stocks & trésorerie
+  var clients_    = Math.max(anSolde(rows,["342","3421"]),0);
+  var tvp         = anSolde(rows,["35"]);
+  var treso51     = anSolde(rows,["51"]);
+  var tresoActif  = treso51>0?treso51:0;
+  var decouvert   = treso51<0?-treso51:0;                // 514 créditeur = découvert bancaire
+  var capPropres0 = -anSolde(rows,["11","13"]);          // capital, réserves, report à nouveau, subventions (hors résultat)
+  var detteFin    = -anSolde(rows,["14","15"]);          // dettes de financement + provisions durables
+  var passifCirc  = -anSolde(rows,["44"]);               // fournisseurs, état, social, associés créditeurs…
+  var fournisseurs= Math.max(-anSolde(rows,["441","4411"]),0);
+  var tresoPassif = -anSolde(rows,["55"])+decouvert;     // crédits de trésorerie + découvert
+  var produits    = -anSolde(rows,["7"]);
+  var charges     =  anSolde(rows,["6"]);
+  var ca          = -anSolde(rows,["71"]);               // ventes (711 + 712)
+  var achats      =  anSolde(rows,["61"]);               // achats revendus / consommés
+  var resultatPosted = Math.abs(anSolde(rows,["119"]))>1;// résultat déjà affecté en capitaux propres ?
+  var resultat    = anNum(produits-charges);
+  var capPropres  = resultatPosted ? capPropres0 : anNum(capPropres0+resultat);
+  var fpermanent  = anNum(capPropres+detteFin);
+  var actifCirc   = anNum(stocks+creances+tvp);
+  var actifCircT  = anNum(actifCirc+tresoActif);
+  var passifCircT = anNum(passifCirc+tresoPassif);
+  var totalActif  = anNum(actifImmo+actifCirc+tresoActif);
+  var totalDettes = anNum(detteFin+passifCirc+tresoPassif);
+  return {actifImmo:actifImmo,stocks:stocks,creances:creances,clients:clients_,tvp:tvp,
+    tresoActif:tresoActif,decouvert:decouvert,capPropres0:capPropres0,capPropres:capPropres,
+    detteFin:detteFin,passifCirc:passifCirc,fournisseurs:fournisseurs,tresoPassif:tresoPassif,
+    produits:produits,charges:charges,ca:ca,achats:achats,resultat:resultat,resultatPosted:resultatPosted,
+    fpermanent:fpermanent,actifCirc:actifCirc,actifCircT:actifCircT,passifCircT:passifCircT,
+    totalActif:totalActif,totalDettes:totalDettes,
+    fr:anNum(fpermanent-actifImmo), bfr:anNum(actifCirc-passifCirc), tn:anNum(tresoActif-tresoPassif)};
+}
+function anV(level,txt){return {level:level,txt:txt};}
+var AN_COL={good:["#0E7A5F","#E7F4EF"],warn:["#9A7610","#FBF3DF"],bad:["#B42318","#FBEAE8"],neutral:["#57534e","#F1EFE8"]};
+// Liste de ratios commentés (normes pragmatiques PME marocaines)
+function anRatios(m){
+  function d(a,b){return b?a/b:null;}
+  var R=[];
+  var lg=d(m.actifCircT,m.passifCircT);
+  R.push({lbl:"Liquidité générale",val:lg,disp:lg==null?"—":anX(lg),
+    desc:"Actif circulant (trésorerie incluse) ÷ Passif circulant. Capacité à honorer les dettes à moins d'un an.",
+    v:lg==null?anV("neutral","Données insuffisantes."):lg>=1.5?anV("good","Confortable : l'actif court terme couvre largement les dettes courantes."):lg>=1?anV("warn","Acceptable, mais peu de marge de sécurité."):anV("bad","Tendu : les dettes courantes dépassent l'actif circulant.")});
+  var lr=d(m.actifCircT-m.stocks,m.passifCircT);
+  R.push({lbl:"Liquidité réduite",val:lr,disp:lr==null?"—":anX(lr),
+    desc:"(Actif circulant − stocks) ÷ Passif circulant. Mesure la liquidité sans compter sur la vente des stocks.",
+    v:lr==null?anV("neutral","Données insuffisantes."):lr>=1?anV("good","Solide : les créances et la trésorerie suffisent."):lr>=0.8?anV("warn","Correct, à surveiller."):anV("bad","Faible hors stocks.")});
+  var li=d(m.tresoActif,m.passifCircT);
+  R.push({lbl:"Liquidité immédiate",val:li,disp:li==null?"—":anX(li),
+    desc:"Trésorerie ÷ Passif circulant. Part des dettes courantes couvrable immédiatement.",
+    v:li==null?anV("neutral","Données insuffisantes."):li>=0.3?anV("good","Bonne réserve de trésorerie."):li>=0.1?anV("warn","Réserve limitée."):anV("bad","Trésorerie immédiate très faible.")});
+  var af=d(m.capPropres,m.totalActif);
+  R.push({lbl:"Autonomie financière",val:af,disp:af==null?"—":anPct(af*100),
+    desc:"Capitaux propres ÷ Total bilan. Indépendance vis-à-vis des financements externes.",
+    v:m.capPropres<0?anV("bad","Capitaux propres négatifs : situation nette à reconstituer (art. 357 loi 17-95)."):af==null?anV("neutral","—"):af>=0.5?anV("good","Structure saine, peu dépendante des dettes."):af>=0.25?anV("warn","Dépendance modérée aux financements externes."):anV("bad","Forte dépendance aux dettes.")});
+  var gear=(m.capPropres>0)?(m.detteFin+m.tresoPassif)/m.capPropres:null;
+  R.push({lbl:"Taux d'endettement",val:gear,disp:m.capPropres<=0?"n.s.":gear==null?"—":anX(gear),
+    desc:"(Dettes de financement + trésorerie passif) ÷ Capitaux propres. Effet de levier.",
+    v:m.capPropres<=0?anV("bad","Non significatif (capitaux propres ≤ 0)."):gear<=1?anV("good","Endettement maîtrisé."):gear<=2?anV("warn","Endettement élevé, à surveiller."):anV("bad","Surendettement : risque financier important.")});
+  var sol=d(m.totalActif,m.totalDettes);
+  R.push({lbl:"Solvabilité générale",val:sol,disp:m.totalDettes<=0?"n.s.":sol==null?"—":anX(sol),
+    desc:"Total actif ÷ Total des dettes. Capacité à rembourser l'ensemble des dettes par les actifs.",
+    v:m.totalDettes<=0?anV("good","Aucune dette significative."):sol>=2?anV("good","Très solvable."):sol>=1.3?anV("warn","Solvabilité correcte."):anV("bad","Solvabilité fragile.")});
+  var rn=d(m.resultat,m.produits);
+  R.push({lbl:"Rentabilité nette",val:rn,disp:rn==null?"—":anPct(rn*100),
+    desc:"Résultat de l'exercice ÷ Produits. Part de bénéfice dégagée par l'activité.",
+    v:rn==null?anV("neutral","Pas encore de produits."):rn>=0.05?anV("good","Activité rentable."):rn>0?anV("warn","Rentabilité faible."):anV("bad","Activité déficitaire.")});
+  var caTTC=m.ca*1.2, achTTC=m.achats*1.2;
+  var dso=caTTC>0?(m.clients/caTTC*365):null;
+  R.push({lbl:"Délai de paiement clients",val:dso,disp:dso==null?"—":Math.round(dso)+" j",
+    desc:"Créances clients TTC ÷ CA TTC × 365 (TVA estimée 20 %). Délai moyen d'encaissement.",
+    v:dso==null?anV("neutral","Pas de CA enregistré."):dso<=45?anV("good","Encaissements rapides."):dso<=75?anV("warn","Délais à raccourcir (relances)."):anV("bad","Créances trop longues : trésorerie sous tension.")});
+  var dpo=achTTC>0?(m.fournisseurs/achTTC*365):null;
+  R.push({lbl:"Délai de règlement fournisseurs",val:dpo,disp:dpo==null?"—":Math.round(dpo)+" j",
+    desc:"Dettes fournisseurs TTC ÷ Achats TTC × 365. À rapprocher du plafond légal de 60 j (loi 69-21).",
+    v:dpo==null?anV("neutral","Pas d'achats enregistrés."):dpo<=60?anV("good","Conforme au délai légal (60 j)."):dpo<=90?anV("warn","Au-delà de 60 j : risque d'amende de retard."):anV("bad","Délais très longs : exposition à l'amende loi 69-21.")});
+  return R;
+}
+// ---- diagnostic textuel automatique ----
+function anSynthese(m){
+  var msgs=[];
+  if(m.capPropres<0)msgs.push(["bad","Les capitaux propres sont négatifs. Si la situation nette devient inférieure au quart du capital social, une AGE doit statuer sur la continuité (art. 357 loi 17-95 / 86 loi 5-96)."]);
+  if(m.fr<0)msgs.push(["bad","Le fonds de roulement est négatif : une partie de l'actif immobilisé est financée par des ressources à court terme — déséquilibre structurel à corriger."]);
+  else if(m.fr>0)msgs.push(["good","Le fonds de roulement est positif : les ressources stables financent l'intégralité des immobilisations."]);
+  if(m.tn<0)msgs.push(["bad","La trésorerie nette est négative ("+fmtDH2(m.tn)+") : l'entreprise dépend de crédits court terme. Prioriser les encaissements clients et étaler les décaissements."]);
+  else if(m.tn>0)msgs.push(["good","La trésorerie nette est positive ("+fmtDH2(m.tn)+")."]);
+  if(m.bfr>0 && m.ca>0){var jbfr=Math.round(m.bfr/(m.ca*1.2)*365);msgs.push(["warn","Le besoin en fonds de roulement représente environ "+jbfr+" jours de chiffre d'affaires : c'est le montant à financer en permanence pour faire tourner l'exploitation."]);}
+  if(m.resultat<0)msgs.push(["bad","L'exercice est déficitaire ("+fmtDH2(m.resultat)+"). Déficit reportable sur 4 exercices (hors amortissements, reportables sans limite)."]);
+  if(!m.resultatPosted)msgs.push(["neutral","Résultat estimé à partir de la balance avant affectation (produits − charges). Lancez la clôture pour figer l'affectation."]);
+  if(!msgs.length)msgs.push(["neutral","Saisissez la comptabilité de l'exercice pour obtenir un diagnostic."]);
+  return msgs;
+}
+// ---- balance âgée ----
+function anAgedRows(c,type){
+  var g=comptaGet(c.id),today=todayISO(),map={};
+  g.pieces.filter(function(p){return (p.type||"achat")===type && pieceYear(p)===S.year;}).forEach(function(p){
+    var reste=pieceReste(p,g); if(reste<=0.01)return;
+    var tiers=(type==="vente")?(p.client||p.name||p.fournisseur||"Client divers"):(p.fournisseur||p.name||"Fournisseur divers");
+    var age=p.date?Math.floor((new Date(today+"T00:00:00")-new Date(p.date+"T00:00:00"))/86400000):0;
+    var b=age<=30?0:age<=60?1:age<=90?2:3;
+    var k=tiers.trim().toUpperCase()||"—";
+    if(!map[k])map[k]={tiers:tiers,buckets:[0,0,0,0],total:0};
+    map[k].buckets[b]+=reste; map[k].total+=reste;
+  });
+  var rows=Object.keys(map).map(function(k){var r=map[k];r.buckets=r.buckets.map(anNum);r.total=anNum(r.total);return r;});
+  rows.sort(function(a,b){return b.total-a.total;});
+  return rows;
+}
+function anAgedTable(c,type){
+  var rows=anAgedRows(c,type),isCli=(type==="vente");
+  var labels=["0–30 j","31–60 j","61–90 j","+90 j"];
+  var tot=[0,0,0,0],grand=0;
+  rows.forEach(function(r){r.buckets.forEach(function(v,i){tot[i]+=v;});grand+=r.total;});
+  tot=tot.map(anNum);grand=anNum(grand);
+  if(!rows.length)return '<div class="note mt4">Aucun '+(isCli?"encours client":"encours fournisseur")+' non soldé sur l\'exercice '+S.year+'.</div>';
+  var head='<tr style="text-align:left;color:var(--faint);font-size:11px"><th style="padding:8px 10px">'+(isCli?"Client":"Fournisseur")+'</th>'
+    +labels.map(function(l){return '<th style="padding:8px 10px;text-align:right">'+l+'</th>';}).join("")
+    +'<th style="padding:8px 10px;text-align:right">Total dû</th><th></th></tr>';
+  var body=rows.map(function(r){
+    var alerte=r.buckets[2]+r.buckets[3]>0.01;
+    var cells=r.buckets.map(function(v,i){var c=(i>=2&&v>0.01)?'color:#B42318;font-weight:700':'';return '<td style="padding:8px 10px;text-align:right;'+c+'" class="mono">'+(v>0.01?fmtDH2(v):"—")+'</td>';}).join("");
+    var act=alerte&&isCli?'<button class="chip" data-act="anrelance" data-tiers="'+esc(r.tiers)+'" data-m="'+r.total+'" title="Préparer une relance">'+ic("msg","width:13px;height:13px;vertical-align:-2px")+' Relancer</button>':'';
+    return '<tr style="border-top:1px solid var(--line-soft)"><td style="padding:8px 10px;font-weight:600">'+esc(r.tiers)+'</td>'+cells
+      +'<td style="padding:8px 10px;text-align:right;font-weight:700" class="mono">'+fmtDH2(r.total)+'</td><td style="padding:6px 10px;text-align:right">'+act+'</td></tr>';
+  }).join("");
+  var foot='<tr style="border-top:2px solid var(--ink);font-weight:700"><td style="padding:9px 10px">TOTAL</td>'
+    +tot.map(function(v){return '<td style="padding:9px 10px;text-align:right" class="mono">'+fmtDH2(v)+'</td>';}).join("")
+    +'<td style="padding:9px 10px;text-align:right" class="mono">'+fmtDH2(grand)+'</td><td></td></tr>';
+  var enRetard=anNum(tot[1]+tot[2]+tot[3]),pctRetard=grand>0?Math.round(enRetard/grand*100):0;
+  var alerte=anNum(tot[2]+tot[3]);
+  var banner='<div style="display:flex;gap:14px;flex-wrap:wrap;margin:4px 0 14px">'
+    +anMini((isCli?"Total créances":"Total dettes"),fmtDH2(grand),"neutral")
+    +anMini("Échu (+30 j)",fmtDH2(enRetard)+" · "+pctRetard+" %",enRetard>0?"warn":"good")
+    +anMini("Critique (+60 j)",fmtDH2(alerte),alerte>0?"bad":"good")+'</div>';
+  return banner+'<div class="card" style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px">'+head+body+foot+'</table></div>';
+}
+function anMini(label,val,level){
+  var col=AN_COL[level]||AN_COL.neutral;
+  return '<div style="flex:1;min-width:150px;background:'+col[1]+';border-radius:14px;padding:13px 16px"><div style="font-size:11px;color:var(--muted)">'+label+'</div><div class="mono" style="font-size:18px;font-weight:700;color:'+col[0]+';margin-top:3px">'+val+'</div></div>';
+}
+// ---- prévision de trésorerie ----
+function anTresoForecast(c){
+  var g=comptaGet(c.id),m=anMasses(c),today=todayISO();
+  function dueDate(p,type){
+    var delai=(p.delaiPaiement!=null&&p.delaiPaiement!=="")?+p.delaiPaiement:(type==="achat"?delaiFrs(c.id,p.fournisseur):30);
+    return addDays(p.date,delai)||p.date||today;
+  }
+  var enc=[0,0,0],dec=[0,0,0],encL=0,decL=0; // 30/60/90 j ; L = au-delà
+  g.pieces.filter(function(p){return pieceYear(p)===S.year;}).forEach(function(p){
+    var type=(p.type||"achat"); if(type==="banque")return;
+    var reste=pieceReste(p,g); if(reste<=0.01)return;
+    var due=dueDate(p,type),dd=Math.floor((new Date(due+"T00:00:00")-new Date(today+"T00:00:00"))/86400000);
+    var slot=dd<=30?0:dd<=60?1:dd<=90?2:-1;
+    if(type==="vente"){ if(slot<0)encL+=reste; else enc[slot]+=reste; }
+    else if(type==="achat"){ if(slot<0)decL+=reste; else dec[slot]+=reste; }
+  });
+  enc=enc.map(anNum);dec=dec.map(anNum);
+  var pos=m.tn,cum=[],run=pos;
+  for(var i=0;i<3;i++){run=anNum(run+enc[i]-dec[i]);cum.push(run);}
+  return {start:m.tn,enc:enc,dec:dec,cum:cum,encL:anNum(encL),decL:anNum(decL)};
+}
+function anTresoTable(c){
+  var f=anTresoForecast(c),per=["Sous 30 jours","31 à 60 jours","61 à 90 jours"];
+  var rows=per.map(function(p,i){
+    var net=anNum(f.enc[i]-f.dec[i]);
+    return '<tr style="border-top:1px solid var(--line-soft)">'
+      +'<td style="padding:9px 12px;font-weight:600">'+p+'</td>'
+      +'<td style="padding:9px 12px;text-align:right;color:#0E7A5F" class="mono">+ '+fmtDH2(f.enc[i])+'</td>'
+      +'<td style="padding:9px 12px;text-align:right;color:#B42318" class="mono">− '+fmtDH2(f.dec[i])+'</td>'
+      +'<td style="padding:9px 12px;text-align:right;font-weight:600;color:'+(net>=0?"#0E7A5F":"#B42318")+'" class="mono">'+(net>=0?"+":"")+fmtDH2(net)+'</td>'
+      +'<td style="padding:9px 12px;text-align:right;font-weight:700;color:'+(f.cum[i]>=0?"#14201C":"#B42318")+'" class="mono">'+fmtDH2(f.cum[i])+'</td></tr>';
+  }).join("");
+  var alerte=f.cum.some(function(x){return x<0;});
+  var banner=alerte?'<div class="card" style="padding:14px 16px;background:#FBEAE8;border:1px solid #f3d9d3;color:#8a3a30;margin-bottom:14px;font-size:13px">⚠️ La trésorerie projetée devient négative sur l\'un des horizons : anticipez un financement court terme, accélérez les relances clients ou négociez un report avec les fournisseurs.</div>':'<div class="card" style="padding:14px 16px;background:#E7F4EF;border:1px solid #cfe6dd;color:#0a5f4a;margin-bottom:14px;font-size:13px">✓ La trésorerie projetée reste positive sur les trois horizons.</div>';
+  return banner+'<div class="card" style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px">'
+    +'<tr style="text-align:left;color:var(--faint);font-size:11px"><th style="padding:8px 12px">Horizon</th><th style="padding:8px 12px;text-align:right">Encaissements clients</th><th style="padding:8px 12px;text-align:right">Décaissements fournisseurs</th><th style="padding:8px 12px;text-align:right">Flux net</th><th style="padding:8px 12px;text-align:right">Trésorerie projetée</th></tr>'
+    +'<tr style="border-top:1px solid var(--line-soft);background:#FBFAF6"><td style="padding:9px 12px;font-style:italic;color:var(--muted)" colspan="4">Trésorerie nette de départ</td><td style="padding:9px 12px;text-align:right;font-weight:700" class="mono">'+fmtDH2(f.start)+'</td></tr>'
+    +rows+'</table></div>'
+    +'<div class="note mt4" style="font-size:11.5px">Échéances déduites de la date de facture + délai de paiement (60 j par défaut fournisseurs, 30 j clients). Les montants au-delà de 90 jours ('+fmtDH2(f.encL)+' à encaisser, '+fmtDH2(f.decL)+' à régler) ne sont pas projetés ici. Les échéances fiscales et sociales restent à intégrer manuellement.</div>';
+}
+// ---- ligne de masse du bilan ----
+function anMasseRow(label,val,strong){
+  return '<div style="display:flex;justify-content:space-between;padding:6px 0;'+(strong?"font-weight:700;border-top:1px solid var(--line);margin-top:4px;padding-top:8px":"")+'"><span style="color:'+(strong?"#14201C":"var(--muted)")+'">'+label+'</span><span class="mono">'+fmtDH2(val)+'</span></div>';
+}
+function anRelance(tiers,montant){
+  var c=clients().find(function(x){return x.id===S.curClient;});
+  var soc=c?c.dossier:"";
+  var m=fmtDH2(+montant||0);
+  var txt="Objet : Relance \u2014 facture(s) \u00e9chue(s)\n\n"
+    +"Madame, Monsieur ("+tiers+"),\n\n"
+    +"Sauf erreur de notre part, votre compte pr\u00e9sente un solde \u00e9chu de "+m+" au titre de prestations factur\u00e9es."
+    +" Nous vous remercions de bien vouloir proc\u00e9der au r\u00e8glement dans les meilleurs d\u00e9lais, ou de nous indiquer la date de paiement pr\u00e9vue.\n\n"
+    +"Restant \u00e0 votre disposition,\n"+(soc?(soc+"\n"):"");
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){showOk("Mod\u00e8le de relance copi\u00e9 \u2014 "+tiers+" ("+m+"). Collez-le dans votre email ou WhatsApp.");},function(){showOk("Relance pr\u00e9par\u00e9e pour "+tiers+" ("+m+").");});
+    } else { showOk("Relance pr\u00e9par\u00e9e pour "+tiers+" ("+m+")."); }
+  }catch(e){ showOk("Relance pr\u00e9par\u00e9e pour "+tiers+" ("+m+")."); }
+}
+function vAnalyse(){
+  var cs=clients();
+  if(!(S.curClient&&cs.find(function(c){return c.id===S.curClient;})))S.curClient=(cs[0]||{}).id||null;
+  var c=cs.find(function(x){return x.id===S.curClient;});
+  var head='<div class="wrap">'+header("Pilotage & Analyse financière","Diagnostic, ratios et trésorerie · Exercice "+S.year);
+  if(!cs.length||!c)return head+'<div class="card" style="padding:30px;text-align:center">Aucun dossier. Créez d\'abord un client.</div></div>';
+  if(!S.analyseView)S.analyseView="sante";
+  var clientOpts=cs.map(function(x){return '<option value="'+x.id+'"'+(x.id===S.curClient?" selected":"")+'>'+esc(x.dossier)+'</option>';}).join("");
+  var tabs=[["sante","Santé financière"],["agee","Balance âgée"],["treso","Prévision trésorerie"]];
+  var toggle='<div style="display:flex;gap:6px;background:#EDEAE0;border-radius:10px;padding:3px;flex-wrap:wrap">'+tabs.map(function(t){return '<button data-act="analyseview" data-v="'+t[0]+'" class="chip" style="border:0;'+(S.analyseView===t[0]?"background:#14201C;color:#fff":"background:transparent")+'">'+t[1]+'</button>';}).join("")+'</div>';
+  var bar='<div class="card mt5" style="padding:16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div class="flbl">Société</div><select class="ipt" id="analyseclient">'+clientOpts+'</select></div>'+toggle+'</div>';
+  var body;
+  if(S.analyseView==="agee")body=anViewAgee(c);
+  else if(S.analyseView==="treso")body=anViewTreso(c);
+  else body=anViewSante(c);
+  return head+bar+body+'</div>';
+}
+function anViewSante(c){
+  var m=anMasses(c),R=anRatios(m),syn=anSynthese(m);
+  // équilibre fonctionnel (les 3 indicateurs clés)
+  function bigCard(label,val,level,sub){
+    var col=AN_COL[level]||AN_COL.neutral;
+    return '<div class="card" style="padding:18px;flex:1;min-width:200px;border-top:3px solid '+col[0]+'"><div style="font-size:12px;color:var(--muted);font-weight:600">'+label+'</div><div class="mono" style="font-size:26px;font-weight:700;color:'+col[0]+';margin-top:6px">'+fmtDH2(val)+'</div><div style="font-size:11.5px;color:var(--faint);margin-top:4px">'+sub+'</div></div>';
+  }
+  var equil='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:18px">'
+    +bigCard("Fonds de roulement",m.fr,m.fr>=0?"good":"bad","Ressources stables − actif immobilisé")
+    +bigCard("Besoin en FR",m.bfr,m.bfr<=0?"good":"warn","Stocks + créances − dettes d'exploitation")
+    +bigCard("Trésorerie nette",m.tn,m.tn>=0?"good":"bad","FR − BFR = trésorerie réelle")+'</div>';
+  // bilan condensé actif/passif
+  var bilan='<div class="grid g2 mt5" style="gap:16px">'
+    +'<div class="card" style="padding:18px"><div class="sectit mb3">'+ic("bank")+'Actif (emplois)</div>'
+      +anMasseRow("Actif immobilisé net",m.actifImmo)
+      +anMasseRow("Stocks",m.stocks)
+      +anMasseRow("Créances de l'actif circulant",m.creances)
+      +anMasseRow("Titres & valeurs de placement",m.tvp)
+      +anMasseRow("Trésorerie - actif",m.tresoActif)
+      +anMasseRow("TOTAL ACTIF",m.totalActif,true)+'</div>'
+    +'<div class="card" style="padding:18px"><div class="sectit mb3">'+ic("scale")+'Passif (ressources)</div>'
+      +anMasseRow("Capitaux propres"+(m.resultatPosted?"":" (rés. estimé)"),m.capPropres)
+      +anMasseRow("Dettes de financement",m.detteFin)
+      +anMasseRow("Passif circulant (exploitation)",m.passifCirc)
+      +anMasseRow("Trésorerie - passif",m.tresoPassif)
+      +anMasseRow("TOTAL PASSIF",anNum(m.capPropres+m.detteFin+m.passifCirc+m.tresoPassif),true)+'</div></div>';
+  // CPC condensé
+  var cpc='<div class="grid g3 mt5" style="gap:16px">'
+    +anMini("Produits (classe 7)",fmtDH2(m.produits),"neutral")
+    +anMini("Charges (classe 6)",fmtDH2(m.charges),"neutral")
+    +anMini("Résultat de l'exercice",fmtDH2(m.resultat),m.resultat>0?"good":m.resultat<0?"bad":"neutral")+'</div>';
+  // ratios
+  var cards=R.map(function(r){
+    var col=AN_COL[r.v.level]||AN_COL.neutral;
+    return '<div class="card" style="padding:16px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      +'<div style="font-size:12.5px;font-weight:600;color:#33312c">'+r.lbl+'</div>'
+      +'<div class="mono" style="font-size:20px;font-weight:700;color:'+col[0]+'">'+r.disp+'</div></div>'
+      +'<div style="font-size:11px;color:var(--faint);margin-top:6px;line-height:1.45">'+r.desc+'</div>'
+      +'<div style="margin-top:8px;font-size:11.5px;background:'+col[1]+';color:'+col[0]+';padding:7px 10px;border-radius:9px;line-height:1.4">'+r.v.txt+'</div></div>';
+  }).join("");
+  var grid='<div class="grid mt5" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">'+cards+'</div>';
+  // synthèse
+  var synHtml=syn.map(function(s){var col=AN_COL[s[0]]||AN_COL.neutral;return '<div style="display:flex;gap:9px;padding:9px 0;border-bottom:1px solid var(--line-soft)"><span style="flex-shrink:0;width:8px;height:8px;border-radius:50%;background:'+col[0]+';margin-top:6px"></span><span style="font-size:13px;line-height:1.5;color:#33312c">'+s[1]+'</span></div>';}).join("");
+  var synthese='<div class="card mt5" style="padding:20px"><div class="sectit mb3">'+ic("alert")+'Synthèse du diagnostic</div>'+synHtml+'</div>';
+  return equil+'<div class="psub mt5" style="text-transform:uppercase;letter-spacing:.5px;font-size:11px;margin-bottom:2px">Structure du bilan</div>'+bilan+cpc
+    +'<div class="psub mt5" style="text-transform:uppercase;letter-spacing:.5px;font-size:11px;margin-bottom:2px">Ratios financiers</div>'+grid+synthese;
+}
+function anViewAgee(c){
+  return '<div class="psub mt5" style="text-transform:uppercase;letter-spacing:.5px;font-size:11px;margin-bottom:8px">Créances clients — à encaisser</div>'+anAgedTable(c,"vente")
+    +'<div class="psub mt5" style="text-transform:uppercase;letter-spacing:.5px;font-size:11px;margin:18px 0 8px">Dettes fournisseurs — à régler</div>'+anAgedTable(c,"achat");
+}
+function anViewTreso(c){
+  return '<div class="mt5">'+anTresoTable(c)+'</div>';
+}
 function renderView(){
   if(S.tab==="sal")S.tab="paie";   // ancien module Salaires 9421 fusionné dans Paie
   if(S.tab==="emprunts"){S.tab="compta";S.comptaView="emprunts";}   // module Emprunts intégré dans la Comptabilité
   try{if(S.curClient!=null)localStorage.setItem("fid_curclient",String(S.curClient));}catch(e){}
-  const v={dash:vDash,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,jur:vJur,delais:vDelais,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec}[S.tab]();
+  const v={dash:vDash,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,jur:vJur,delais:vDelais,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse}[S.tab]();
   document.getElementById("view").innerHTML=voletToggle()+v;
   enhanceClientSelects();
+}
+/* ====== RECHERCHE GLOBALE (palette) — dossiers · pièces · factures · documents ====== */
+// Construit les résultats groupés à partir de l'état en mémoire (lecture seule, aucune mutation).
+function gsearchResults(q){
+  q=(q||"").trim();
+  if(q.length<2) return '<div style="padding:22px;text-align:center;color:var(--faint);font-size:12.5px">Tapez au moins 2 caractères — nom de dossier, fournisseur, n° de pièce/facture, ICE, montant…</div>';
+  var cs=clients(),byId={};cs.forEach(function(c){byId[c.id]=c;});
+  var LIM=8;
+  var doss=cs.filter(function(c){return smartMatch(q,c.dossier);}).slice(0,LIM);
+  var pcs=[];
+  Object.keys(S.compta||{}).forEach(function(k){
+    var g=S.compta[k];if(!g||!g.pieces)return;var cl=byId[+k];if(!cl)return;
+    g.pieces.forEach(function(p){
+      var ttc=+p.ttc||((+p.ht||0)+(+p.tva||0));
+      var hay=(p.fournisseur||"")+" "+(p.numero||"")+" "+(p.name||"")+" "+(p.ice||"")+" "+Math.round(ttc);
+      if(smartMatch(q,hay))pcs.push({cl:cl,p:p,ttc:ttc});
+    });
+  });
+  pcs=pcs.slice(0,LIM+4);
+  var fac=(S.factures||[]).filter(function(f){return smartMatch(q,(f.num||"")+" "+(f.dossier||"")+" "+(f.objet||"")+" "+(f.clientICE||""));}).slice(0,LIM);
+  var docs=[];
+  Object.keys(S.docs||{}).forEach(function(k){
+    var arr=S.docs[k];if(!Array.isArray(arr))return;var cl=byId[+k];if(!cl)return;
+    arr.forEach(function(m){if(smartMatch(q,(m.name||"")))docs.push({cl:cl,m:m});});
+  });
+  docs=docs.slice(0,LIM);
+  var total=doss.length+pcs.length+fac.length+docs.length;
+  if(!total)return '<div style="padding:22px;text-align:center;color:var(--faint);font-size:12.5px">Aucun résultat pour « '+esc(q)+' ».</div>';
+  function sec(title,icon,color,rows){return rows.length?('<div style="padding:11px 6px 3px;font-size:10.5px;font-weight:700;letter-spacing:.05em;color:'+color+';display:flex;align-items:center;gap:6px;text-transform:uppercase">'+ic(icon,"width:13px;height:13px")+title+' ('+rows.length+')</div>'+rows.join("")):'';}
+  function row(attrs,main,sub){return '<button class="gsr" '+attrs+' style="display:flex;width:100%;text-align:left;align-items:center;gap:10px;padding:9px 10px;border:0;background:transparent;border-radius:10px;cursor:pointer"><div style="min-width:0;flex:1"><div class="dossier" style="font-size:13px">'+main+'</div><div style="font-size:11px;color:var(--muted)">'+sub+'</div></div>'+ic("chev","width:14px;height:14px;color:var(--faint)")+'</button>';}
+  var H="";
+  H+=sec("Dossiers","building","#14201C",doss.map(function(c){
+    return row('data-act="gsearch_go" data-kind="dossier" data-cid="'+c.id+'"',esc(c.dossier),esc(c.statut||"")+(c.tel?' · '+esc(c.tel):''));
+  }));
+  H+=sec("Pièces (achats / ventes)","book","#0E7A5F",pcs.map(function(x){
+    var t=(x.p.type==="vente"?"Vente":"Achat");
+    return row('data-act="gsearch_go" data-kind="piece" data-cid="'+x.cl.id+'" data-pid="'+esc(String(x.p.id))+'" data-ptype="'+esc(x.p.type||"achat")+'" data-py="'+pieceYear(x.p)+'"',esc(x.p.fournisseur||x.p.name||"Pièce")+' <span style="color:var(--faint);font-weight:400">— '+fmtDH2(x.ttc)+'</span>',t+(x.p.numero?' · n° '+esc(x.p.numero):'')+' · '+esc(x.cl.dossier)+' · '+pieceYear(x.p));
+  }));
+  H+=sec("Factures cabinet","receipt","#C8941A",fac.map(function(f){
+    return row('data-act="gsearch_go" data-kind="fac" data-fid="'+esc(String(f.id))+'"',esc(f.num||"Facture")+' <span style="color:var(--faint);font-weight:400">— '+esc(f.dossier||"")+'</span>',(f.objet?esc(f.objet)+' · ':'')+esc(f.date||""));
+  }));
+  H+=sec("Documents","file","#5C6B66",docs.map(function(x){
+    return row('data-act="gsearch_go" data-kind="doc" data-cid="'+x.cl.id+'"',esc(x.m.name||"Document"),esc(x.cl.dossier));
+  }));
+  return '<div style="display:flex;flex-direction:column;gap:1px">'+H+'</div>';
+}
+function modalGsearch(){
+  return '<div class="ov"><div class="modal" data-stop style="max-width:600px;align-self:flex-start;margin-top:8vh">'
+    +'<div class="mh"><div><h3 class="ff">Recherche globale</h3><div class="meta"><span>'+ic("search")+'Dossiers · pièces · factures · documents</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="padding:18px 22px">'
+    +'<div class="search" style="display:block">'+ic("search")+'<input id="gsearchq" autocomplete="off" placeholder="Nom de dossier, fournisseur, n° de pièce/facture, montant…" value="'+esc(S.gq||"")+'" style="width:100%;box-sizing:border-box"></div>'
+    +'<div id="gsearchres" style="margin-top:10px;max-height:52vh;overflow-y:auto">'+gsearchResults(S.gq||"")+'</div>'
+    +'</div></div></div>';
+}
+function gsearchInput(q){S.gq=q;var r=document.getElementById("gsearchres");if(r)r.innerHTML=gsearchResults(q);}
+function gsearchGo(el){
+  var kind=el.dataset.kind;
+  function volet(tab){if(!S.voletLast)S.voletLast={};var g=groupOf(tab);if(g)S.voletLast[g.id]=tab;}
+  S.modal=null;
+  if(kind==="dossier"){S.curClient=+el.dataset.cid;S.tab="compta";S.comptaView="saisie";volet("compta");render();return;}
+  if(kind==="piece"){
+    var cid=+el.dataset.cid,py=+el.dataset.py||S.year,ptype=el.dataset.ptype||"achat";
+    S.curClient=cid;if(S.years&&S.years.indexOf(py)>=0)S.year=py;
+    S.tab="compta";S.comptaView="list";
+    var g=S.compta[String(cid)],pp=(g&&g.pieces)?g.pieces.find(function(x){return String(x.id)===String(el.dataset.pid);}):null;
+    var term=pp?String(pp.numero||pp.fournisseur||pp.name||""):"";
+    S.comptaList=Object.assign({},S.comptaList,{type:(ptype==="vente"?"vente":(ptype==="banque"?"banque":"achat")),statut:"",q:term,dmin:"",dmax:"",mmin:"",mmax:""});
+    volet("compta");render();return;
+  }
+  if(kind==="fac"){var f=(S.factures||[]).find(function(x){return String(x.id)===String(el.dataset.fid);});S.tab="fac";if(f)S.facDraft=JSON.parse(JSON.stringify(f));volet("fac");render();return;}
+  if(kind==="doc"){S.docsSel=Object.assign({},S.docsSel,{id:+el.dataset.cid});S.curClient=+el.dataset.cid;S.tab="docs";volet("docs");render();return;}
+  render();
 }
 function renderModal(){
   const o=document.getElementById("overlay");
   if(!S.modal){o.innerHTML="";return;}
+  if(S.modal.type==="gsearch"){o.innerHTML=modalGsearch();setTimeout(function(){var i=document.getElementById("gsearchq");if(i){i.focus();var v=i.value;i.value="";i.value=v;}},30);return;}
   if(S.modal.type==="cloud"){o.innerHTML=modalCloud();return;}
   if(S.modal.type==="infos"){o.innerHTML=modalInfos(S.modal.id);return;}
   if(S.modal.type==="receipt"){o.innerHTML=modalReceipt(S.modal.id,S.modal.prefill);return;}
   if(S.modal.type==="suivi"){o.innerHTML=modalSuivi(S.modal.cid,S.modal.eid);return;}
-  if(S.modal.type==="balgl"){o.innerHTML=modalBalGL(S.modal.cid,S.modal.compte);return;}
+  if(S.modal.type==="balgl"){o.innerHTML=modalBalGL(S.modal.cid,S.modal.compte,S.modal.sugg);return;}
   if(S.modal.type==="banqueop"){o.innerHTML=modalBanqueOp(S.modal.oid);setTimeout(function(){comptaOpPrev(S.modal.oid);},30);return;}
   if(S.modal.type==="lettrage"){o.innerHTML=modalLettrage(S.modal.cid,S.modal.compte);setTimeout(lettrageModalSetup,20);return;}
   if(S.modal.type==="creds"){o.innerHTML=modalCreds();return;}
@@ -9413,6 +10556,11 @@ document.addEventListener("click",e=>{
   else if(a==="export_view_excel"){exportViewExcel();}
   else if(a==="echurg"){S.echUrg=t.dataset.v;document.getElementById("echlist").innerHTML=echRows();renderView();}
   else if(a==="echcat"){S.echCat=t.dataset.v;renderView();}
+  else if(a==="echmois"){S.echMois=t.dataset.v;renderView();}
+  else if(a==="echreg"){S.echReg=t.dataset.v;renderView();}
+  else if(a==="echgo"){S.echUrg=t.dataset.v||"active";S.echCat="all";S.echMois="all";S.echReg="all";S.echq="";S.tab="ech";if(!S.voletLast)S.voletLast={};var _g=groupOf("ech");if(_g)S.voletLast[_g.id]="ech";S.modal=null;render();}
+  else if(a==="gsearch_open"){S.gq="";S.modal={type:"gsearch"};renderModal();}
+  else if(a==="gsearch_go"){gsearchGo(t);}
   else if(a==="toggle"){const k=t.dataset.key;if(S.done[k])delete S.done[k];else S.done[k]=true;save("done");
       if(t.dataset.stay==="client"){S.modal={type:"client",id:+t.dataset.cid};}render();}
   else if(a==="client"){S.modal={type:"client",id:+t.dataset.id};renderModal();}
@@ -9458,6 +10606,8 @@ document.addEventListener("click",e=>{
   else if(a==="emp_del"){empDel(t.dataset.id);}
   else if(a==="emp_mode"){empField(t.dataset.id,"mode",t.dataset.v);renderView();}
   else if(a==="emp_valider"){empValiderEcheance(t.dataset.id,+t.dataset.n);}
+  else if(a==="emp_detect_bank"){empDetectFromBank(t.dataset.id);}
+  else if(a==="emp_set_pen"){var pv=document.getElementById("pen_"+t.dataset.id+"_"+t.dataset.i);empSetPenalite(t.dataset.id,+t.dataset.n,pv?pv.value:0);}
   else if(a==="emp_valider_annee"){empValiderAnnee(t.dataset.id);}
   else if(a==="emp_ech_add"){empEchAdd(t.dataset.id);}
   else if(a==="emp_scan_click"){var inp=document.getElementById("emp_file_"+t.dataset.id);if(inp){inp.onchange=function(){empScan(t.dataset.id,inp.files);};inp.click();}}
@@ -9556,7 +10706,15 @@ document.addEventListener("click",e=>{
   else if(a==="docextract"){docExtract(t.dataset.id);}
   else if(a==="docreporttva"){docReportTVA(t.dataset.id);}
   else if(a==="comptaview"){S.comptaView=t.dataset.v;renderView();}
+  else if(a==="cptfilter_reset"){comptaFilterReset();}
+  else if(a==="analyseview"){S.analyseView=t.dataset.v;renderView();}
+  else if(a==="anrelance"){anRelance(t.dataset.tiers,t.dataset.m);}
+  else if(a==="impdi"){var _gdi=comptaGet(S.curClient),_pdi=_gdi.pieces.find(function(x){return String(x.id)===String(t.dataset.id);});if(_pdi){_pdi.diIncorpore=(_pdi.diIncorpore===false);comptaAutoPost(_gdi);save("compta");renderView();}}
+  else if(a==="impimmo"){var _gim=comptaGet(S.curClient),_pim=_gim.pieces.find(function(x){return String(x.id)===String(t.dataset.id);});if(_pim){_pim.tvaImportImmo=!_pim.tvaImportImmo;comptaAutoPost(_gim);save("compta");renderView();}}
   else if(a==="ctrl_excel"){controlesExcel();}
+  else if(a==="age_excel"){ageExportExcel(t.dataset.type);}
+  else if(a==="age_relance"){ageRelance(t.dataset.id,t.dataset.lvl);}
+  else if(a==="ctrl_client_xlsx"){controlesClientExcel();}
   else if(a==="ctrl_pdf"){controlesPDF();}
   else if(a==="immo_add"){immoAdd();}
   else if(a==="immo_canceledit"){immoCancelEdit();}
@@ -9650,12 +10808,19 @@ document.addEventListener("click",e=>{
   else if(a==="comptabal_inject"){comptaBalInject(t.dataset.id);}
   else if(a==="baln1"){S.balN1=(S.balN1===false);renderView();}
   else if(a==="balgl"){S.modal={type:"balgl",cid:+t.dataset.id,compte:t.dataset.c};renderModal();}
+  else if(a==="ctrl_fix"){
+    var k=t.dataset.kind, cid=+t.dataset.cid; S.curClient=cid;
+    if(k==="gl"){S.modal={type:"balgl",cid:cid,compte:t.dataset.compte,sugg:t.dataset.sugg||null};renderModal();}
+    else if(k==="list"){S.modal=null;S.tab="compta";S.comptaView="list";S.comptaList=Object.assign({},S.comptaList,{type:t.dataset.ctype||"achat",statut:"",q:"",dmin:"",dmax:"",mmin:"",mmax:""});render();}
+    else if(k==="saisie"){S.modal=null;S.tab="compta";S.comptaView="saisie";render();}
+    else if(k==="tab"){S.modal=null;S.tab=t.dataset.tab||"liasse";if(!S.voletLast)S.voletLast={};var _g=groupOf(S.tab);if(_g)S.voletLast[_g.id]=S.tab;render();}
+  }
   else if(a==="comptabal_copy"){comptaBalCopy(t.dataset.id);}
   else if(a==="comptabal_xlsx"){comptaBalXlsx(t.dataset.id);}
   else if(a==="compta_cloture"){comptaCloturePost(t.dataset.id);}
   else if(a==="compta_cloture_undo"){comptaClotureUndo(t.dataset.id);}
-  else if(a==="comptaeditecr"){S.comptaView="manuel";renderView();odEdit(t.dataset.id);}
-  else if(a==="comptaeditpiece"){S.comptaView="saisie";renderView();comptaEditor(t.dataset.id);}
+  else if(a==="comptaeditecr"){S.modal=null;S.tab="compta";S.comptaView="manuel";renderView();odEdit(t.dataset.id);}
+  else if(a==="comptaeditpiece"){S.modal=null;S.tab="compta";S.comptaView="saisie";renderView();comptaEditor(t.dataset.id);}
   else if(a==="comptaimport"){var inp=document.getElementById("compta_file_"+t.dataset.type);if(inp)inp.click();}
   else if(a==="an_import_click"){var inp=document.getElementById("compta_file_an");if(inp)inp.click();}
   else if(a==="an_paste_go"){comptaANPaste();}
@@ -9763,8 +10928,13 @@ document.addEventListener("click",e=>{
   else if(a==="fac_bulk_clear"){S.facCheck={};renderView();}
   else if(a==="close"){S.modal=null;S.jurForm=null;renderModal();}
 });
+document.addEventListener("keydown",function(e){
+  if((e.ctrlKey||e.metaKey)&&(e.key==="k"||e.key==="K")){e.preventDefault();if(S.modal&&S.modal.type==="gsearch"){S.modal=null;renderModal();}else{S.gq="";S.modal={type:"gsearch"};renderModal();}return;}
+  if(e.key==="Escape"&&S.modal&&S.modal.type==="gsearch"){S.modal=null;renderModal();}
+});
 document.addEventListener("input",e=>{
   const t=e.target;
+  if(t.id==="gsearchq"){gsearchInput(t.value);return;}
   if(t.dataset.fac!=null){facHdrInput(t);return;}
   if(t.dataset.facl!=null){facLineInput(t);return;}
   if(t.dataset.emp!=null){var pa=t.dataset.emp.split(":");empField(pa[0],pa[1],t.value);return;}
@@ -9790,6 +10960,7 @@ document.addEventListener("input",e=>{
   if(t.dataset.od!=null||t.dataset.odl!=null){odInput(t);return;}
   if(t.dataset.ed!=null){edInput(t);return;}
   if(t.dataset.fl!=null){comptaListFilter(t);return;}
+  if(t.dataset.cf!=null){comptaFilterInput(t);return;}
   if(t.id==="cgncq"){S.cgncq=t.value;var _cg=document.getElementById("cgnclist");if(_cg)_cg.innerHTML=cgncRows();return;}
   if(t.id==="echq"){S.echq=t.value;document.getElementById("echlist").innerHTML=echRows();}
   else if(t.id==="cliq"){S.cliq=t.value;document.getElementById("clilist").innerHTML=cliCards();}
@@ -9797,6 +10968,7 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const t=e.target;
+  if(t.dataset.ageref!=null){S.ageRef=t.value;renderView();return;}
   if(t.id==="backup_file"){if(t.files&&t.files[0])importBackup(t.files[0]);t.value="";return;}
   if(t.dataset.clcheck!=null){clToggle(t.dataset.clcheck);return;}
   if(t.id==="cl_checkall"){clToggleAll(t.checked);return;}
@@ -9829,7 +11001,7 @@ document.addEventListener("change",e=>{
   if(t.dataset.ed!=null){edInput(t);return;}
   if(t.dataset.edchk!=null){edCheck(t);return;}
   if(t.dataset.fl!=null){comptaListFilter(t);return;}
-  if(t.dataset.oda!=null){odAssistInput(t);return;}
+  if(t.dataset.cf!=null){comptaFilterInput(t);return;}
   if(t.dataset.od!=null||t.dataset.odl!=null){odInput(t);return;}
   if(t.dataset.cp!=null){comptaInput(t);return;}
   if(t.dataset.opf!=null){comptaOpInput(t);return;}
@@ -9843,6 +11015,8 @@ document.addEventListener("change",e=>{
   if(t.id==="liassesection"){S.liasseView=t.value;renderView();return;}
   if(t.id==="docsclient"){S.docsSel.id=+t.value;S.curClient=+t.value;renderView();return;}
   if(t.id==="comptaclient"){S.curClient=+t.value;renderView();return;}
+  if(t.id==="banque_soldeinit"){setSoldeInitBanque(S.curClient,t.value);renderView();return;}
+  if(t.id==="analyseclient"){S.curClient=+t.value;renderView();return;}
   if(t.id==="portal_actclient"){portalActAs(t.value);return;}
   if(t.id==="portal_file"){var pp=portalGet();var pc=pp.acting!=null?pp.acting:(function(){var s=document.getElementById("portal_upclient");return s&&s.value!==""?+s.value:null;})();if(pc==null){showErr("Choisissez d'abord le client concerné.");t.value="";return;}portalUpload(t.files,pc,pp.acting!=null);t.value="";return;}
   if(t.id==="delaisclient"){S.curClient=+t.value;renderView();return;}
@@ -9853,6 +11027,7 @@ document.addEventListener("change",e=>{
   if(t.id==="compta_file_achat_multi"){comptaUploadGrouped("achat",t.files);t.value="";return;}
   if(t.id==="compta_file_vente_multi"){comptaUploadGrouped("vente",t.files);t.value="";return;}
   if(t.id==="compta_file_an"){comptaANImportFile(t.files);t.value="";return;}
+  if(t.id==="compta_file_import"){comptaUploadDum(t.files);t.value="";return;}
   if(t.dataset.pay){
     const k=t.dataset.pay,val=parseFloat(t.value)||0;
     if(val)S.pay[k]=val;else delete S.pay[k];save("pay");
@@ -10039,6 +11214,9 @@ var TABS={
  dash:F("Tableau de bord",
    "Vue d'ensemble : nombre de dossiers, statuts des déclarations, échéances proches et honoraires encaissés. C'est ici qu'on repère vite ce qui bloque.",
    "Repérez les indicateurs en rouge/orange, puis cliquez sur le dossier ou l'échéance concernée pour la traiter. Les cartes mènent directement à l'onglet correspondant."),
+ analyse:F("Pilotage & Analyse financière",
+   "Analyse de la santé financière à partir de la balance : masses du bilan, équilibre fonctionnel (FR / BFR / Trésorerie nette), ratios commentés, balance âgée et prévision de trésorerie.",
+   "Choisissez la société. « Santé financière » donne un diagnostic automatique ; « Balance âgée » liste les encours à relancer ; « Prévision trésorerie » projette les flux à 30/60/90 jours. Tous les chiffres proviennent de la comptabilité saisie — vérifiez la balance avant d’interpréter."),
  compta:F("Comptabilité",
    "Saisie des pièces (achats, ventes, banque), écritures manuelles, journal général, grand livre, balance et export FEC. C'est le cœur comptable du dossier.",
    "1) Choisissez la société. 2) Importez les factures (OCR) ou saisissez manuellement. 3) Validez les pièces « à valider ». 4) Contrôlez le Journal puis la Balance avant toute déclaration.",
