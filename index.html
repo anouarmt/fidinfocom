@@ -6979,7 +6979,25 @@ function anParseFEC(text){
 // Lecture d'un fichier (FEC .txt/.csv/.fec ou balance)
 // ===== Chargements paresseux (Excel / PDF) =====
 function anLoadXLSX(){ return new Promise(function(res,rej){ if(window.XLSX)return res(); var s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"; s.onload=function(){res();}; s.onerror=function(){rej(new Error("XLSX"));}; document.head.appendChild(s); }); }
-function anLoadPdfJs(){ return new Promise(function(res,rej){ if(window.pdfjsLib)return res(); var s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"; s.onload=function(){ try{window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";}catch(e){} res(); }; s.onerror=function(){rej(new Error("PDFJS"));}; document.head.appendChild(s); }); }
+function anLoadPdfJs(){
+  if(window.pdfjsLib)return Promise.resolve();
+  var srcs=[
+    ["https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js","https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"],
+    ["https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js","https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"],
+    ["https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js","https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js"]
+  ];
+  return new Promise(function(res,rej){
+    var i=0;
+    (function tryNext(){
+      if(window.pdfjsLib)return res();
+      if(i>=srcs.length)return rej(new Error("PDFJS"));
+      var pair=srcs[i++]; var s=document.createElement("script"); s.src=pair[0];
+      s.onload=function(){ try{window.pdfjsLib.GlobalWorkerOptions.workerSrc=pair[1];}catch(e){} res(); };
+      s.onerror=function(){ tryNext(); };
+      document.head.appendChild(s);
+    })();
+  });
+}
 
 // Aiguillage selon le type de fichier
 function comptaANImportFile(files){
@@ -7036,7 +7054,7 @@ function anImportPdf(f){
     };
     rd.onerror=function(){ showErr("Lecture du fichier impossible."); };
     rd.readAsArrayBuffer(f);
-  }).catch(function(){ showErr("Impossible de charger le lecteur PDF (connexion Internet requise)."); });
+  }).catch(function(){ showErr("Lecteur PDF inaccessible : le composant se télécharge depuis Internet (jsdelivr / cdnjs / unpkg) et le réseau du cabinet le bloque peut-être. Solution immédiate : exportez la balance en Excel, CSV ou FEC, ou copiez-collez son texte."); });
 }
 // Extraction d'un PDF en UNE passe -> { text: lignes reconstruites,
 //                                       rows: lignes de comptes {c,lib,deb,cred,solde} lues par colonnes }
