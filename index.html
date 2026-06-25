@@ -2015,6 +2015,8 @@ function parseBalance(txt){
     var line=(rawline||"").replace(/\u00a0/g," ");
     if(!line.trim())return;
     if(/^[\s\-=_|*.]+$/.test(line))return;
+    // ignore les lignes de totaux / en-têtes (sinon un nombre y est pris pour un compte)
+    if(/^\s*(total|sous[- ]?total|cumul|report|à\s*nouveau|a\s*nouveau|balance|comptes?\b|n°|page\b|edition|état édité|etat edite)/i.test(line))return;
     var parts;
     if(line.indexOf("\t")>-1) parts=line.split("\t");
     else if(line.indexOf(";")>-1) parts=line.split(";");
@@ -7125,6 +7127,11 @@ function anRowsFromCells(cellRows){
     var first=(cells[0].s||"").trim();
     if(!/^\d/.test(first))return;                         // ignore en-têtes, "Total…", "RESULTAT…", etc.
     if(/^\d{1,2}\/\d/.test(first))return;                 // ignore lignes de dates
+    // ignore les lignes de SOUS-TOTAUX / TOTAUX : leur intitulé ("Total classe…")
+    // tombe parfois sur une ligne voisine, laissant une ligne 100% numérique qui
+    // serait prise pour un compte fantôme. Un vrai compte porte toujours un libellé
+    // (au moins une lettre, dans le n° de compte alphanumérique ou l'intitulé).
+    if(!cells.some(function(c){return /[A-Za-zÀ-ÿ]/.test(String(c.s||""));}))return;
     var compte=first.replace(/\s/g,"");
     // recolle les nombres coupés par l'espace des milliers (hors n° de compte = cells[0])
     var rest=_coalesceFrNum(cells.slice(1));
