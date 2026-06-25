@@ -2001,20 +2001,44 @@ function liasseResultsHtml(c){
 
 /* ----- Balance -> Bilan / CPC (classification CGNC) ----- */
 function parseNum(s){ if(s==null||s==="")return 0; s=(""+s).replace(/\s|\u00a0/g,""); if(s.indexOf(",")>-1){s=s.replace(/\./g,"").replace(",",".");} var n=parseFloat(s); return isNaN(n)?0:n; }
+/* helpers de détection de colonnes pour le parseur de balance tolérant */
+function _isNumTok(t){ if(t==null)return false; t=(""+t).trim(); if(t==="")return false; if(!/\d/.test(t))return false; return /^[-+]?[\d.\u00a0 ,]+$/.test(t); }
+function _isDateTok(t){ t=(""+t).trim(); return /^\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}$/.test(t); }
+function _isAcctTok(t){ t=(""+t).replace(/^['"]|['"]$/g,"").trim(); return /^\d{3,12}$/.test(t); }
+/* Parseur tolérant : accepte tabulation, point-virgule, 2+ espaces OU espace simple ;
+   saute un éventuel index/date en tête ; numéro de compte détecté n'importe où ;
+   prend les 2 derniers nombres comme solde débiteur / créditeur ; agrège par compte
+   (gère ainsi un grand livre où le compte est répété sur plusieurs lignes). */
 function parseBalance(txt){
-  var rows=[];
-  (txt||"").split(/\r?\n/).forEach(function(line){
+  var agg={}, order=[];
+  (txt||"").split(/\r?\n/).forEach(function(rawline){
+    var line=(rawline||"").replace(/\u00a0/g," ");
     if(!line.trim())return;
-    var parts=line.split(/\t|;|\s{2,}/).map(function(x){return x.trim();}).filter(function(x){return x!=="";});
+    if(/^[\s\-=_|*.]+$/.test(line))return;
+    var parts;
+    if(line.indexOf("\t")>-1) parts=line.split("\t");
+    else if(line.indexOf(";")>-1) parts=line.split(";");
+    else if(/\s{2,}/.test(line)) parts=line.split(/\s{2,}/);
+    else parts=line.split(/\s+/);
+    parts=parts.map(function(x){return x.trim();}).filter(function(x){return x!=="";});
     if(parts.length<2)return;
-    var c=parts[0]; if(!/^\d/.test(c))return;
-    var deb=0,cred=0,lib="";
-    if(parts.length>=4){lib=parts.slice(1,parts.length-2).join(" ");deb=parseNum(parts[parts.length-2]);cred=parseNum(parts[parts.length-1]);}
-    else if(parts.length===3){lib=parts[1];var sv=parseNum(parts[2]);if(sv>=0)deb=sv;else cred=-sv;}
-    else {lib=parts[1];}
-    rows.push({c:c,lib:lib,deb:deb,cred:cred});
+    var ai=-1;
+    for(var i=0;i<parts.length;i++){ if(_isDateTok(parts[i]))continue; if(_isAcctTok(parts[i])){ai=i;break;} }
+    if(ai<0)return;
+    var acc=parts[ai].replace(/^['"]|['"]$/g,"");
+    var lastNonNum=ai;
+    for(var j=ai+1;j<parts.length;j++){ if(!_isNumTok(parts[j])) lastNonNum=j; }
+    var nums=[];
+    for(var k=lastNonNum+1;k<parts.length;k++){ if(_isNumTok(parts[k])) nums.push(parseNum(parts[k])); }
+    var lib=parts.slice(ai+1,lastNonNum+1).filter(function(x){return !_isNumTok(x);}).join(" ").trim();
+    var deb=0,cred=0;
+    if(nums.length>=2){ deb=nums[nums.length-2]; cred=nums[nums.length-1]; }
+    else if(nums.length===1){ var sv=nums[0]; if(sv>=0)deb=sv; else cred=-sv; }
+    if(!(acc in agg)){ agg[acc]={c:acc,lib:lib,deb:0,cred:0}; order.push(acc); }
+    if(lib && !agg[acc].lib) agg[acc].lib=lib;
+    agg[acc].deb+=deb; agg[acc].cred+=cred;
   });
-  return rows;
+  return order.map(function(c){var a=agg[c];return {c:a.c,lib:a.lib,deb:Math.round(a.deb*100)/100,cred:Math.round(a.cred*100)/100};});
 }
 function classifyCompte(c){
   c=(""+c).replace(/\D/g,""); if(!c)return null;
@@ -7173,7 +7197,7 @@ var _balImportToLiasse=false;
    balText de la liasse -> régénère Bilan, CPC, ESG, IS et toutes les déclarations. */
 function liasseBalStoreRows(rows,fileName){
   rows=(rows||[]).filter(function(r){return r.c;});
-  if(!rows.length){ showErr("Aucune ligne exploitable. Vérifiez que le fichier contient des comptes et des colonnes débit/crédit (ou solde)."); return; }
+  if(!rows.length){ showErr("Aucun compte détecté dans ce fichier. Vérifiez qu'une colonne contient le N° de compte (ex. 3421, 4411…) et au moins une colonne de montant (débit/crédit ou solde). Astuce : vous pouvez aussi copier-coller la balance directement dans la zone de texte puis cliquer « Analyser le texte collé »."); return; }
   if(!S.liasseSel.id){ showErr("Sélectionnez d'abord une société dans le module Liasse."); return; }
   var txt=rows.map(function(r){
     var solde=(r.solde!=null)?r.solde:(Math.round(((+r.deb||0)-(+r.cred||0))*100)/100);
