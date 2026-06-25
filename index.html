@@ -1945,6 +1945,8 @@ function salNew(){ return {nom:"",cin:"",cnss:"",mat:"",sf:"C",charges:"",period
 /* ========== MODULE LIASSE FISCALE — RÉSULTAT FISCAL & IS (2026) ========== */
 function liasseKey(){ return S.year+"|"+S.liasseSel.id; }
 function liasseGet(){ return S.liasse[liasseKey()]||{rc:"",reint:[{lib:"",mt:""}],deduc:[{lib:"",mt:""}],deficit:"",ca:"",pf:"",subv:"",tauxIS:"20",tauxCM:"0.25",exoCM:false,acomptesIS:"",immo:[immoNew()],prov:[provNew()]}; }
+/* true si une balance / grand livre a été importé ou collé pour l'exercice courant */
+function _balHas(d){ return !!(d && d.balText && (""+d.balText).trim()); }
 function liasseCalc(d){
   d=d||{};
   var rc=num(d.rc);
@@ -2149,7 +2151,7 @@ function vLiasseBilan(head,c,clientOpts,toggle){
     +'<div class="card mt4" style="padding:20px"><div class="sectit mb2">Coller ou importer la balance comptable</div><div class="note" style="margin-bottom:8px;font-size:11.5px">Collez depuis Excel (4 colonnes <b>N° compte · Intitulé · Débit · Crédit</b>, tabulation, une ligne par compte) <b>ou</b> importez directement un fichier <b>Balance, Grand livre ou FEC</b> de l\'exercice '+S.year+'.</div>'
     +'<input type="file" id="liasse_file_bal" accept=".txt,.csv,.tsv,.fec,.xlsx,.xls,.pdf" style="display:none">'
     +'<textarea class="ipt mono" id="balText" rows="6" style="width:100%;font-size:12px" placeholder="111000&#9;Capital social&#9;0&#9;500000&#10;2340&#9;Matériel&#9;300000&#9;0&#10;...">'+esc(d.balText||"")+'</textarea>'
-    +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-primary" data-act="liasse_bal_import_click" style="flex:0 0 auto">'+ic("down","width:15px;height:15px")+' Importer Balance / Grand livre / FEC ('+S.year+')</button><button class="chip" data-act="balanalyse">'+ic("check","width:15px;height:15px")+' Analyser le texte collé</button>'+(b.nbComptes?'<button class="chip" data-act="balexport">'+ic("receipt","width:15px;height:15px")+' Exporter Bilan + CPC (Excel)</button><button class="chip" data-act="balreport">Reporter le résultat ('+fmtDH(b.resultat)+') vers l\'IS</button>':"")+'</div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-primary" data-act="liasse_bal_import_click" style="flex:0 0 auto">'+ic("down","width:15px;height:15px")+' '+(_balHas(d)?'Remplacer':'Importer')+' Balance / Grand livre / FEC ('+S.year+')</button><button class="chip" data-act="balanalyse">'+ic("check","width:15px;height:15px")+' Analyser le texte collé</button>'+(_balHas(d)?'<button class="chip" data-act="liasse_bal_del" style="color:#B42318;border-color:#f0c9c4">'+ic("trash","width:15px;height:15px")+' Effacer la balance</button>':"")+(b.nbComptes?'<button class="chip" data-act="balexport">'+ic("receipt","width:15px;height:15px")+' Exporter Bilan + CPC (Excel)</button><button class="chip" data-act="balreport">Reporter le résultat ('+fmtDH(b.resultat)+') vers l\'IS</button>':"")+'</div>'
     +(d.balImportName?'<div class="note" style="background:#E3F1EB;color:#0a5f4a;border-radius:8px;padding:6px 10px;font-size:11px;margin-top:8px">✓ Importé depuis « '+esc(d.balImportName)+' »'+(d.balImportAt?" le "+esc(d.balImportAt):"")+' (exercice '+S.year+').</div>':"")
     +(b.nbComptes?'<div style="font-size:11.5px;color:var(--faint);margin-top:8px">'+b.nbComptes+' comptes analysés'+(b.nonClasse?' · '+b.nonClasse+' non classés (ignorés)':'')+'</div>':"")
     +eqBadge+'</div>'
@@ -2265,7 +2267,7 @@ function esgBuild(rows){
 function balanceInputHtml(d){
   return '<div class="card mt4" style="padding:18px"><div class="sectit mb2">Balance comptable (source du Bilan, CPC et ESG)</div><div class="note" style="margin-bottom:8px;font-size:11.5px">Collez 4 colonnes : <b>N° compte · Intitulé · Débit · Crédit</b> (tabulation) <b>ou</b> utilisez le bouton <b>Importer Balance / GL / FEC</b> en haut de la liasse.</div>'
     +'<textarea class="ipt mono" id="balText" rows="5" style="width:100%;font-size:12px" placeholder="1111&#9;Capital&#9;0&#9;500000&#10;2340&#9;Materiel&#9;300000&#9;0">'+esc(d.balText||"")+'</textarea>'
-    +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-primary" data-act="liasse_bal_import_click" style="flex:0 0 auto">'+ic("down","width:15px;height:15px")+' Importer Balance / Grand livre / FEC ('+S.year+')</button><button class="chip" data-act="balanalyse">'+ic("check","width:15px;height:15px")+' Analyser le texte collé</button></div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-primary" data-act="liasse_bal_import_click" style="flex:0 0 auto">'+ic("down","width:15px;height:15px")+' '+(_balHas(d)?'Remplacer':'Importer')+' Balance / Grand livre / FEC ('+S.year+')</button><button class="chip" data-act="balanalyse">'+ic("check","width:15px;height:15px")+' Analyser le texte collé</button>'+(_balHas(d)?'<button class="chip" data-act="liasse_bal_del" style="color:#B42318;border-color:#f0c9c4">'+ic("trash","width:15px;height:15px")+' Effacer la balance</button>':"")+'</div>'
     +(d.balImportName?'<div class="note" style="background:#E3F1EB;color:#0a5f4a;border-radius:8px;padding:6px 10px;font-size:11px;margin-top:8px">✓ Importé depuis « '+esc(d.balImportName)+' »'+(d.balImportAt?" le "+esc(d.balImportAt):"")+' (exercice '+S.year+').</div>':"")+'</div>';
 }
 
@@ -2394,9 +2396,9 @@ function liasseTopbar(clientOpts){
     +'<input type="file" id="liasse_file_bal" accept=".txt,.csv,.tsv,.fec,.xlsx,.xls,.pdf" style="display:none">'
     +'<div style="flex:1;min-width:200px"><div class="flbl">Société</div><select class="ipt" id="liasseclient">'+clientOpts+'</select></div>'
     +'<div style="flex:1;min-width:220px"><div class="flbl">Tableau de la liasse</div><select class="ipt" id="liassesection">'+opts+'</select></div>'
-    +'<button class="btn-primary" data-act="liasse_bal_import_click" style="width:auto;margin-top:0;padding:11px 16px">'+ic("down","width:15px;height:15px")+' Importer Balance / GL / FEC ('+S.year+')</button>'
+    +'<button class="btn-primary" data-act="liasse_bal_import_click" style="width:auto;margin-top:0;padding:11px 16px">'+ic("down","width:15px;height:15px")+' '+(_balHas(dL)?'Remplacer':'Importer')+' Balance / GL / FEC ('+S.year+')</button>'
     +'<button class="chip" data-act="liassepdf">'+ic("receipt","width:15px;height:15px")+' Imprimer toute la liasse (PDF)</button>'
-    +'<button class="chip" data-act="liassexlsx">'+ic("receipt","width:15px;height:15px")+' Exporter toute la liasse (Excel)</button></div>'
+    +'<button class="chip" data-act="liassexlsx">'+ic("receipt","width:15px;height:15px")+' Exporter toute la liasse (Excel)</button>'+(_balHas(dL)?'<button class="chip" data-act="liasse_bal_del" style="color:#B42318;border-color:#f0c9c4">'+ic("trash","width:15px;height:15px")+' Effacer la balance</button>':"")+'</div>'
     +(dL.balImportName?'<div class="note" style="background:#E3F1EB;color:#0a5f4a;border-radius:8px;padding:7px 12px;font-size:11.5px;margin-top:10px">✓ Balance importée pour l\'exercice '+S.year+' depuis « '+esc(dL.balImportName)+' »'+(dL.balImportAt?" le "+esc(dL.balImportAt):"")+'. Le Bilan, le CPC, l\'ESG et l\'IS en sont issus.</div>':'<div class="note" style="font-size:11.5px;margin-top:10px">💡 Pour générer toute la liasse d\'un coup : cliquez « Importer Balance / GL / FEC » et chargez votre fichier de l\'exercice '+S.year+' (Excel, CSV, FEC ou PDF).</div>');
 }
 async function exportAllExcel(){
@@ -10777,6 +10779,7 @@ document.addEventListener("click",e=>{
   else if(a==="liasseview"){S.liasseView=t.dataset.v;renderView();}
   else if(a==="balanalyse"){var k=liasseKey();var ta=document.getElementById("balText");var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.balText=ta?ta.value:"";S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liasse_bal_import_click"){if(!S.liasseSel.id){showErr("Sélectionnez d'abord une société.");return;}var binp=document.getElementById("liasse_file_bal");if(binp)binp.click();}
+  else if(a==="liasse_bal_del"){if(!window.confirm("Supprimer la balance / grand livre importé de cet exercice ?\n\nLe Bilan, le CPC, l'ESG et le résultat issus de cette balance seront vidés. Vos saisies manuelles (réintégrations, déductions, immobilisations, provisions, tableaux annexes) sont CONSERVÉES."))return;var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.balText="";d.balImportName="";d.balImportAt="";S.liasse[k]=d;save("liasse");renderView();showOk("Balance importée supprimée — vous pouvez réimporter ou coller une nouvelle balance.");}
   else if(a==="balexport"){bilanExport();}
   else if(a==="balreport"){var k=liasseKey();var b=bilanBuild(parseBalance((liasseGet().balText)||""));var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.rc=Math.round(b.resultat*100)/100;S.liasse[k]=d;save("liasse");S.liasseView="is";renderView();}
   else if(a==="immoadd"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.immo=(d.immo||[]).concat([immoNew()]);S.liasse[k]=d;save("liasse");renderView();}
