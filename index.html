@@ -2146,9 +2146,11 @@ function vLiasseBilan(head,c,clientOpts,toggle){
   var eqBadge=b.nbComptes===0?"":'<div style="margin-top:12px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;background:'+(eqOk?"#E3F1EB":"#FBEAE8")+';color:'+(eqOk?"#0E7A5F":"#B42318")+'">'+(eqOk?"✅ Bilan équilibré — Actif = Passif = "+fmtDH(b.tA):"⚠️ Déséquilibre : Actif "+fmtDH(b.tA)+" ≠ Passif "+fmtDH(b.totalPassif)+" (écart "+fmtDH(b.ecart)+")")+'</div>';
   return head
     +'<div class="card mt5" style="padding:16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div class="flbl">Société</div><select class="ipt" id="liasseclient">'+clientOpts+'</select></div>'+toggle+'</div>'
-    +'<div class="card mt4" style="padding:20px"><div class="sectit mb2">Coller la balance comptable</div><div class="note" style="margin-bottom:8px;font-size:11.5px">Collez depuis Excel : 4 colonnes <b>N° compte · Intitulé · Débit · Crédit</b> (séparées par tabulation). Une ligne par compte.</div>'
+    +'<div class="card mt4" style="padding:20px"><div class="sectit mb2">Coller ou importer la balance comptable</div><div class="note" style="margin-bottom:8px;font-size:11.5px">Collez depuis Excel (4 colonnes <b>N° compte · Intitulé · Débit · Crédit</b>, tabulation, une ligne par compte) <b>ou</b> importez directement un fichier <b>Balance, Grand livre ou FEC</b> de l\'exercice '+S.year+'.</div>'
+    +'<input type="file" id="liasse_file_bal" accept=".txt,.csv,.tsv,.fec,.xlsx,.xls,.pdf" style="display:none">'
     +'<textarea class="ipt mono" id="balText" rows="6" style="width:100%;font-size:12px" placeholder="111000&#9;Capital social&#9;0&#9;500000&#10;2340&#9;Matériel&#9;300000&#9;0&#10;...">'+esc(d.balText||"")+'</textarea>'
-    +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-primary" data-act="balanalyse">'+ic("check","width:15px;height:15px")+' Analyser la balance</button>'+(b.nbComptes?'<button class="chip" data-act="balexport">'+ic("receipt","width:15px;height:15px")+' Exporter Bilan + CPC (Excel)</button><button class="chip" data-act="balreport">Reporter le résultat ('+fmtDH(b.resultat)+') vers l\'IS</button>':"")+'</div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-primary" data-act="liasse_bal_import_click" style="flex:0 0 auto">'+ic("down","width:15px;height:15px")+' Importer Balance / Grand livre / FEC ('+S.year+')</button><button class="chip" data-act="balanalyse">'+ic("check","width:15px;height:15px")+' Analyser le texte collé</button>'+(b.nbComptes?'<button class="chip" data-act="balexport">'+ic("receipt","width:15px;height:15px")+' Exporter Bilan + CPC (Excel)</button><button class="chip" data-act="balreport">Reporter le résultat ('+fmtDH(b.resultat)+') vers l\'IS</button>':"")+'</div>'
+    +(d.balImportName?'<div class="note" style="background:#E3F1EB;color:#0a5f4a;border-radius:8px;padding:6px 10px;font-size:11px;margin-top:8px">✓ Importé depuis « '+esc(d.balImportName)+' »'+(d.balImportAt?" le "+esc(d.balImportAt):"")+' (exercice '+S.year+').</div>':"")
     +(b.nbComptes?'<div style="font-size:11.5px;color:var(--faint);margin-top:8px">'+b.nbComptes+' comptes analysés'+(b.nonClasse?' · '+b.nonClasse+' non classés (ignorés)':'')+'</div>':"")
     +eqBadge+'</div>'
     +(b.nbComptes?'<div class="grid mt4" style="grid-template-columns:1fr 1fr;align-items:start">'
@@ -2261,9 +2263,11 @@ function esgBuild(rows){
     ["= RÉSULTAT NET DE L'EXERCICE",rNet,2],["CAPACITÉ D'AUTOFINANCEMENT (CAF) indicative",caf,1]];
 }
 function balanceInputHtml(d){
-  return '<div class="card mt4" style="padding:18px"><div class="sectit mb2">Balance comptable (source du Bilan, CPC et ESG)</div><div class="note" style="margin-bottom:8px;font-size:11.5px">Collez 4 colonnes : <b>N° compte · Intitulé · Débit · Crédit</b> (tabulation). Une ligne par compte.</div>'
+  return '<div class="card mt4" style="padding:18px"><div class="sectit mb2">Balance comptable (source du Bilan, CPC et ESG)</div><div class="note" style="margin-bottom:8px;font-size:11.5px">Collez 4 colonnes : <b>N° compte · Intitulé · Débit · Crédit</b> (tabulation) <b>ou</b> importez un fichier <b>Balance, Grand livre ou FEC</b> de l\'exercice '+S.year+'.</div>'
+    +'<input type="file" id="liasse_file_bal" accept=".txt,.csv,.tsv,.fec,.xlsx,.xls,.pdf" style="display:none">'
     +'<textarea class="ipt mono" id="balText" rows="5" style="width:100%;font-size:12px" placeholder="1111&#9;Capital&#9;0&#9;500000&#10;2340&#9;Materiel&#9;300000&#9;0">'+esc(d.balText||"")+'</textarea>'
-    +'<button class="btn-primary" data-act="balanalyse" style="margin-top:10px">'+ic("check","width:15px;height:15px")+' Analyser la balance</button></div>';
+    +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-primary" data-act="liasse_bal_import_click" style="flex:0 0 auto">'+ic("down","width:15px;height:15px")+' Importer Balance / Grand livre / FEC ('+S.year+')</button><button class="chip" data-act="balanalyse">'+ic("check","width:15px;height:15px")+' Analyser le texte collé</button></div>'
+    +(d.balImportName?'<div class="note" style="background:#E3F1EB;color:#0a5f4a;border-radius:8px;padding:6px 10px;font-size:11px;margin-top:8px">✓ Importé depuis « '+esc(d.balImportName)+' »'+(d.balImportAt?" le "+esc(d.balImportAt):"")+' (exercice '+S.year+').</div>':"")+'</div>';
 }
 
 /* ----- Bilan & CPC au format officiel (modèle normal CGNC) ----- */
@@ -7101,7 +7105,28 @@ function anOpenItems(lines, isClient){
   }
   return items;
 }
+/* Routage de l'import : quand true, les lignes lues alimentent la BALANCE de
+   l'exercice courant (liasse) au lieu des à-nouveaux N-1. */
+var _balImportToLiasse=false;
+/* Importe une balance / grand livre / FEC dans l'EXERCICE COURANT : remplit
+   balText de la liasse -> régénère Bilan, CPC, ESG, IS et toutes les déclarations. */
+function liasseBalStoreRows(rows,fileName){
+  rows=(rows||[]).filter(function(r){return r.c;});
+  if(!rows.length){ showErr("Aucune ligne exploitable. Vérifiez que le fichier contient des comptes et des colonnes débit/crédit (ou solde)."); return; }
+  if(!S.liasseSel.id){ showErr("Sélectionnez d'abord une société dans le module Liasse."); return; }
+  var txt=rows.map(function(r){
+    var solde=(r.solde!=null)?r.solde:(Math.round(((+r.deb||0)-(+r.cred||0))*100)/100);
+    var sDeb=solde>0?solde:0, sCred=solde<0?-solde:0;
+    return (""+r.c).replace(/\s/g,"")+"\t"+((r.lib||"").replace(/[\t\r\n]+/g," ").trim())+"\t"+sDeb+"\t"+sCred;
+  }).join("\n");
+  var k=liasseKey(); var d=Object.assign({},liasseGet(),S.liasse[k]||{});
+  d.balText=txt; d.balImportName=fileName||""; d.balImportAt=(new Date()).toISOString().slice(0,10);
+  S.liasse[k]=d; save("liasse");
+  renderView();
+  showOk("Balance importée — "+rows.length+" comptes pour l'exercice "+S.year+". Bilan, CPC, ESG, IS et liasse régénérés.");
+}
 function anStoreRows(rows,src,fileName){
+  if(_balImportToLiasse){ _balImportToLiasse=false; (rows||[]).forEach(function(r){delete r._lines;}); return liasseBalStoreRows(rows,fileName); }
   var cid=String(S.curClient), st=anGet(cid);
   rows=(rows||[]).filter(function(r){return r.c;});
   if(!rows.length){ showErr("Aucune ligne exploitable. Vérifiez que le fichier contient des comptes et des colonnes débit/crédit (ou solde)."); return; }
@@ -10692,6 +10717,7 @@ document.addEventListener("click",e=>{
   else if(a==="liasseexport"){liasseExport();}
   else if(a==="liasseview"){S.liasseView=t.dataset.v;renderView();}
   else if(a==="balanalyse"){var k=liasseKey();var ta=document.getElementById("balText");var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.balText=ta?ta.value:"";S.liasse[k]=d;save("liasse");renderView();}
+  else if(a==="liasse_bal_import_click"){if(!S.liasseSel.id){showErr("Sélectionnez d'abord une société.");return;}var binp=document.getElementById("liasse_file_bal");if(binp)binp.click();}
   else if(a==="balexport"){bilanExport();}
   else if(a==="balreport"){var k=liasseKey();var b=bilanBuild(parseBalance((liasseGet().balText)||""));var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.rc=Math.round(b.resultat*100)/100;S.liasse[k]=d;save("liasse");S.liasseView="is";renderView();}
   else if(a==="immoadd"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.immo=(d.immo||[]).concat([immoNew()]);S.liasse[k]=d;save("liasse");renderView();}
@@ -11028,7 +11054,8 @@ document.addEventListener("change",e=>{
   if(t.id==="compta_file_vente"){comptaUpload("vente",t.files);t.value="";return;}
   if(t.id==="compta_file_achat_multi"){comptaUploadGrouped("achat",t.files);t.value="";return;}
   if(t.id==="compta_file_vente_multi"){comptaUploadGrouped("vente",t.files);t.value="";return;}
-  if(t.id==="compta_file_an"){comptaANImportFile(t.files);t.value="";return;}
+  if(t.id==="compta_file_an"){_balImportToLiasse=false;comptaANImportFile(t.files);t.value="";return;}
+  if(t.id==="liasse_file_bal"){_balImportToLiasse=true;comptaANImportFile(t.files);t.value="";return;}
   if(t.id==="compta_file_import"){comptaUploadDum(t.files);t.value="";return;}
   if(t.dataset.pay){
     const k=t.dataset.pay,val=parseFloat(t.value)||0;
@@ -11364,6 +11391,10 @@ var ACT={
  balanalyse:F("Analyser la balance",
    "Construit le Bilan et le CPC à partir des écritures et calcule le résultat.",
    "Une balance équilibrée (total débit = total crédit) est indispensable. Corrigez les écritures déséquilibrées avant d'analyser.",
+   ECR.amort),
+ liasse_bal_import_click:F("Importer Balance / Grand livre / FEC (exercice courant)",
+   "Charge directement la balance, le grand livre ou le FEC de l'exercice affiché pour générer la liasse fiscale (Bilan, CPC, ESG, résultat fiscal & IS) et alimenter les déclarations — sans ressaisie. À distinguer des « à-nouveaux N-1 », qui ne reportent que les soldes d'ouverture.",
+   "1) Sélectionnez la société et vérifiez l'exercice (pastilles d'années en haut). 2) Cliquez « Importer », choisissez un fichier Excel (.xlsx/.xls), CSV, TXT, FEC ou PDF texte. 3) Le logiciel détecte les colonnes (compte, intitulé, débit/crédit ou soldes), remplit la balance et régénère automatiquement le Bilan, le CPC, l'ESG et l'IS. Vérifiez l'équilibre Actif = Passif avant dépôt.",
    ECR.amort),
  balreport:F("Reporter le résultat vers l'IS",
    "Transfère le résultat comptable vers l'onglet Liasse/IS pour le calcul de l'impôt.",
