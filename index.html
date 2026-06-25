@@ -7100,13 +7100,19 @@ function _coalesceFrNum(items){
   var out=[];
   for(var i=0;i<items.length;i++){
     var s=String(items[i].s==null?"":items[i].s).trim();
-    var xe=items[i].xe, x=items[i].x;
-    while(i+1<items.length){
+    var xe=items[i].xe, x=items[i].x, done=false;
+    while(i+1<items.length && !done){
       var bare=s.replace(/\s/g,"");
       var nxt=String(items[i+1].s==null?"":items[i+1].s).trim();
-      if(/^[-+]?[1-9]\d*$/.test(bare) && /^\d{3}([.,]\d{1,3})?$/.test(nxt)){
-        s=bare+nxt; xe=(items[i+1].xe!=null?items[i+1].xe:xe); i++;
+      var intPrefix=/^[-+]?[1-9]\d*$/.test(bare);    // entier pur (pas encore de décimale)
+      if(intPrefix && /^\d{3}$/.test(nxt)){           // groupe de milliers supplémentaire
+        s=bare+nxt;
+      } else if(intPrefix && /^\d{3}[.,]\d{1,3}$/.test(nxt)){ // dernier groupe + décimales
+        s=bare+nxt; done=true;
+      } else if(intPrefix && /^[.,]\d{1,3}$/.test(nxt)){      // décimales détachées seules
+        s=bare+nxt; done=true;
       } else break;
+      xe=(items[i+1].xe!=null?items[i+1].xe:xe); i++;
     }
     out.push({s:s, xe:xe, x:x});
   }
@@ -7121,25 +7127,41 @@ function _coalesceFrNumStr(toks){
 // Robuste aux cellules vides : un nombre isolé est rattaché à la bonne colonne (D ou C).
 function anRowsFromCells(cellRows){
   function isNum(s){ s=(""+s).replace(/\s/g,""); return /^[-+]?[\d.,]+$/.test(s) && /\d/.test(s); }
+  // Lignes d'en-tête / totaux / pieds de page : elles commencent TOUJOURS par une
+  // lettre (un vrai compte commence par un chiffre), donc un test ancré au début est sûr
+  // et ne touche jamais un libellé comme « COMPTE COURANT ASSOCIE ».
+  var HDR=/^\s*(total|sous[- ]?total|cumul|reports?\b|mouvements?\b|soldes?\b|à\s*nouveau|a\s*nouveau|balance\b|comptes\b|libell|page\b|edition|état|etat|n°|résultat\s*:|resultat\s*:|général|general)/i;
   var acct=[];
   (cellRows||[]).forEach(function(cells){
     if(!cells||!cells.length)return;
+    var joined=cells.map(function(c){return String(c.s||"");}).join(" ").trim();
+    if(HDR.test(joined))return;                           // en-tête / total avec intitulé
+    if(!/[A-Za-zÀ-ÿ]/.test(joined))return;                // ligne 100% numérique = sous-total détaché
     var first=(cells[0].s||"").trim();
-    if(!/^\d/.test(first))return;                         // ignore en-têtes, "Total…", "RESULTAT…", etc.
-    if(/^\d{1,2}\/\d/.test(first))return;                 // ignore lignes de dates
-    // ignore les lignes de SOUS-TOTAUX / TOTAUX : leur intitulé ("Total classe…")
-    // tombe parfois sur une ligne voisine, laissant une ligne 100% numérique qui
-    // serait prise pour un compte fantôme. Un vrai compte porte toujours un libellé
-    // (au moins une lettre, dans le n° de compte alphanumérique ou l'intitulé).
-    if(!cells.some(function(c){return /[A-Za-zÀ-ÿ]/.test(String(c.s||""));}))return;
-    var compte=first.replace(/\s/g,"");
-    // recolle les nombres coupés par l'espace des milliers (hors n° de compte = cells[0])
-    var rest=_coalesceFrNum(cells.slice(1));
-    var lib=[], nums=[];
+    if(!/^\d/.test(first))return;                         // doit commencer par le n° de compte
+    if(/^\d{1,2}\/\d/.test(first))return;                 // ligne de date
+    // --- N° DE COMPTE + LIBELLÉ ---
+    // La cellule de tête peut contenir le compte ET le début du libellé collés
+    // (« 1481SUPER0 SUPER AUTO… »). Le N° de compte = 1er mot ; le reste = libellé.
+    var headToks=first.split(/\s+/);
+    var compte=headToks[0].replace(/\s/g,"");
+    var libHead=headToks.slice(1);
+    var ci=1;
+    if(libHead.length===0){
+      // compte éventuellement éclaté par pdf.js (« 1111000000 » -> « 1111 »+« 000000 ») :
+      // on absorbe les fragments NUMÉRIQUES purs et contigus (pas de décimale, faible écart).
+      while(ci<cells.length){
+        var cs=String(cells[ci].s||"").trim().replace(/\s/g,"");
+        var gap=(cells[ci].x!=null && cells[ci-1].xe!=null)?(cells[ci].x-cells[ci-1].xe):999;
+        if(/^\d+$/.test(cs) && gap<30){ compte+=cs; ci++; } else break;
+      }
+    }
+    var rest=_coalesceFrNum(cells.slice(ci));             // recolle les nombres coupés
+    var lib=libHead.slice(), nums=[];
     for(var i=0;i<rest.length;i++){
-      var cs=(rest[i].s||"").trim();
-      if(isNum(cs)) nums.push({xe:rest[i].xe, v:parseNum(cs)});
-      else if(!nums.length) lib.push(cs);                 // texte avant le 1er nombre = libellé
+      var rs=(rest[i].s||"").trim();
+      if(isNum(rs)) nums.push({xe:rest[i].xe, v:parseNum(rs)});
+      else if(!nums.length) lib.push(rs);                 // texte avant le 1er nombre = libellé
     }
     if(!nums.length)return;
     acct.push({c:compte, lib:lib.join(" ").trim(), nums:nums});
