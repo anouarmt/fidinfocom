@@ -2026,6 +2026,8 @@ function parseBalance(txt){
     for(var i=0;i<parts.length;i++){ if(_isDateTok(parts[i]))continue; if(_isAcctTok(parts[i])){ai=i;break;} }
     if(ai<0)return;
     var acc=parts[ai].replace(/^['"]|['"]$/g,"");
+    // recolle les nombres coupés par l'espace des milliers (ex. « 106 » « 600.00 » -> « 106600.00 »)
+    parts=parts.slice(0,ai+1).concat(_coalesceFrNumStr(parts.slice(ai+1)));
     var lastNonNum=ai;
     for(var j=ai+1;j<parts.length;j++){ if(!_isNumTok(parts[j])) lastNonNum=j; }
     var nums=[];
@@ -7085,6 +7087,33 @@ function anPdfExtract(data){
     return chain.then(function(){ return {text:lines.join("\n"), rows:anRowsFromCells(cellRows)}; });
   });
 }
+// Recolle les nombres au format français (« 1 464 670,47 ») que l'extraction PDF
+// ou le collage texte coupe au niveau de l'ESPACE séparateur de milliers.
+// Règle : on fusionne deux fragments consécutifs UNIQUEMENT si le fragment courant
+// est un entier pur et le suivant un groupe d'exactement 3 chiffres (éventuellement
+// suivi des décimales finales). Ainsi « 106 » + « 600.00 » -> « 106600.00 », mais
+// deux montants voisins déjà décimaux (« 24 000.00 » « 21 000.00 ») restent distincts.
+// Préserve le bord droit (xe) = celui du dernier fragment, pour le repérage des colonnes.
+function _coalesceFrNum(items){
+  var out=[];
+  for(var i=0;i<items.length;i++){
+    var s=String(items[i].s==null?"":items[i].s).trim();
+    var xe=items[i].xe, x=items[i].x;
+    while(i+1<items.length){
+      var bare=s.replace(/\s/g,"");
+      var nxt=String(items[i+1].s==null?"":items[i+1].s).trim();
+      if(/^[-+]?[1-9]\d*$/.test(bare) && /^\d{3}([.,]\d{1,3})?$/.test(nxt)){
+        s=bare+nxt; xe=(items[i+1].xe!=null?items[i+1].xe:xe); i++;
+      } else break;
+    }
+    out.push({s:s, xe:xe, x:x});
+  }
+  return out;
+}
+// Variante chaîne (pour le parseur de texte/collage) : entrée et sortie = tableau de tokens.
+function _coalesceFrNumStr(toks){
+  return _coalesceFrNum((toks||[]).map(function(t){return {s:t};})).map(function(o){return o.s;});
+}
 // À partir des cellules positionnées, reconstitue les comptes et lit les SOLDES
 // (2 dernières colonnes numériques) en classant chaque nombre par sa position X.
 // Robuste aux cellules vides : un nombre isolé est rattaché à la bonne colonne (D ou C).
@@ -7097,10 +7126,12 @@ function anRowsFromCells(cellRows){
     if(!/^\d/.test(first))return;                         // ignore en-têtes, "Total…", "RESULTAT…", etc.
     if(/^\d{1,2}\/\d/.test(first))return;                 // ignore lignes de dates
     var compte=first.replace(/\s/g,"");
+    // recolle les nombres coupés par l'espace des milliers (hors n° de compte = cells[0])
+    var rest=_coalesceFrNum(cells.slice(1));
     var lib=[], nums=[];
-    for(var i=1;i<cells.length;i++){
-      var cs=(cells[i].s||"").trim();
-      if(isNum(cs)) nums.push({xe:cells[i].xe, v:parseNum(cs)});
+    for(var i=0;i<rest.length;i++){
+      var cs=(rest[i].s||"").trim();
+      if(isNum(cs)) nums.push({xe:rest[i].xe, v:parseNum(cs)});
       else if(!nums.length) lib.push(cs);                 // texte avant le 1er nombre = libellé
     }
     if(!nums.length)return;
