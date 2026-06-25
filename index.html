@@ -852,7 +852,7 @@ function bars(data){
 /* ---------- VIEWS ---------- */
 function yearSel(){
   const pills=S.years.map(y=>'<button data-act="year" data-v="'+y+'" class="'+(S.year===y?'on':'')+'">'+y+'</button>').join("");
-  return '<div class="yrpills">'+pills+'<button class="add" data-act="addyear" title="Ajouter l\'exercice suivant">＋</button></div>';
+  return '<div class="yrpills"><button class="add" data-act="addyearprev" title="Ajouter l\'exercice précédent">−</button>'+pills+'<button class="add" data-act="addyear" title="Ajouter l\'exercice suivant">＋</button></div>';
 }
 function header(t,s){return '<div class="head"><div><h2 class="ff">'+t+'</h2><p>'+s+'</p></div><div style="text-align:right">'+exportBar()+yearSel()+'<div class="date mono">'+fmtDate(today)+'</div></div></div>';}
 /* ========== EXPORT UNIVERSEL : PDF (impression) + Excel (tous les tableaux de la vue) ========== */
@@ -10572,6 +10572,7 @@ document.addEventListener("click",e=>{
   else if(a==="jursubmit"){submitJur(+t.dataset.id);}
   else if(a==="year"){S.year=+t.dataset.v;S.modal=null;render();}
   else if(a==="addyear"){const nx=Math.max.apply(null,S.years)+1;S.years.push(nx);S.years.sort((x,y)=>x-y);save("years");S.year=nx;render();}
+  else if(a==="addyearprev"){const pv=Math.min.apply(null,S.years)-1;S.years.push(pv);S.years.sort((x,y)=>x-y);save("years");S.year=pv;render();}
   else if(a==="cnew"){S.modal={type:"cedit",id:null};renderModal();}
   else if(a==="cedit"){S.modal={type:"cedit",id:+t.dataset.id};renderModal();}
   else if(a==="cdel"){const id=+t.dataset.id;if(!window.confirm("Supprimer définitivement ce dossier et ses données ?"))return;S.custom=S.custom.filter(x=>x.id!==id);save("custom");S.deleted[id]=true;save("deleted");S.modal=null;render();}
@@ -11296,6 +11297,10 @@ var ACT={
  addyear:F("Ajouter un exercice",
    "Crée l'exercice comptable suivant pour y saisir les nouvelles opérations.",
    "Cliquez « ＋ » : l'exercice N+1 est créé et devient actif. Pensez à passer l'écriture d'à-nouveau.",
+   ECR.ouverture),
+ addyearprev:F("Ajouter un exercice antérieur",
+   "Crée l'exercice comptable précédent, utile pour rattraper ou régulariser des déclarations d'années passées.",
+   "Cliquez « − » : l'exercice N−1 est créé et devient actif. Vous pouvez ensuite saisir les opérations et déclarations de cette année antérieure.",
    ECR.ouverture),
  client:F("Fiche dossier",
    "Ouvre la fiche du client : forme juridique, régime TVA, honoraires, statuts.",
