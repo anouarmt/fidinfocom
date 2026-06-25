@@ -6997,8 +6997,13 @@ function anImportPdf(f){
   anLoadPdfJs().then(function(){
     var rd=new FileReader();
     rd.onload=function(){
-      anPdfToText(new Uint8Array(rd.result)).then(function(txt){
-        var nLines=((txt||"").match(/^\s*\d{3,}/gm)||[]).length;
+      anPdfExtract(new Uint8Array(rd.result)).then(function(res){
+        // 1) priorité : lecture COLONNE PAR COLONNE (gère les balances 6 colonnes
+        //    Reports/Mouvements/Soldes avec cellules vides)
+        if(res.rows && res.rows.length>=2){ anStoreRows(res.rows, "pdf", f.name); return; }
+        // 2) repli : ancienne méthode texte (balance simple 4 colonnes)
+        var txt=res.text||"";
+        var nLines=((txt).match(/^\s*\d{3,}/gm)||[]).length;
         if(!txt || nLines<2){ showErr("Aucun texte exploitable dans ce PDF (probablement scanné/image). Exportez plutôt la balance ou le grand livre en Excel ou CSV."); return; }
         comptaANIngest(txt, f.name);
       }).catch(function(e){ showErr("Extraction PDF impossible : "+(e.message||e)); });
@@ -7007,21 +7012,72 @@ function anImportPdf(f){
     rd.readAsArrayBuffer(f);
   }).catch(function(){ showErr("Impossible de charger le lecteur PDF (connexion Internet requise)."); });
 }
-function anPdfToText(data){
+// Extraction d'un PDF en UNE passe -> { text: lignes reconstruites,
+//                                       rows: lignes de comptes {c,lib,deb,cred,solde} lues par colonnes }
+function anPdfExtract(data){
   return window.pdfjsLib.getDocument({data:data}).promise.then(function(pdf){
-    var out=[], chain=Promise.resolve();
+    var lines=[], cellRows=[], chain=Promise.resolve();
     for(var pn=1;pn<=pdf.numPages;pn++){ (function(pn){
       chain=chain.then(function(){ return pdf.getPage(pn).then(function(page){ return page.getTextContent().then(function(tc){
         var byY={};
-        tc.items.forEach(function(it){ var s=it.str; if(!s||!s.trim())return; var tr=it.transform||[1,0,0,1,0,0]; var y=Math.round(tr[5]); (byY[y]=byY[y]||[]).push({x:tr[4],w:it.width||(s.length*4),s:s}); });
+        tc.items.forEach(function(it){ var s=it.str; if(s==null||s==="")return; var tr=it.transform||[1,0,0,1,0,0]; var y=Math.round(tr[5]); (byY[y]=byY[y]||[]).push({x:tr[4],w:it.width||(String(s).length*4),s:String(s)}); });
         Object.keys(byY).map(Number).sort(function(a,b){return b-a;}).forEach(function(y){
-          var parts=byY[y].sort(function(a,b){return a.x-b.x;}), line="", prevEnd=null;
+          var parts=byY[y].sort(function(a,b){return a.x-b.x;});
+          // (a) texte reconstruit (compatibilité ancienne méthode)
+          var line="", prevEnd=null;
           parts.forEach(function(p){ if(prevEnd!=null){ var gap=p.x-prevEnd; line+= gap>10?"  ":(gap>2?" ":""); } line+=p.s; prevEnd=p.x+p.w; });
-          if(line.trim())out.push(line);
+          if(line.trim())lines.push(line);
+          // (b) cellules positionnées : on coupe une cellule dès qu'un grand écart apparaît
+          var cells=[], cur=null; prevEnd=null;
+          parts.forEach(function(p){ var gap=prevEnd==null?0:(p.x-prevEnd);
+            if(cur==null||gap>10){ if(cur)cells.push(cur); cur={x:p.x,xe:p.x+p.w,s:p.s}; }
+            else { cur.s+=(gap>2?" ":"")+p.s; cur.xe=p.x+p.w; }
+            prevEnd=p.x+p.w; });
+          if(cur)cells.push(cur);
+          cellRows.push(cells);
         });
       }); }); });
     })(pn); }
-    return chain.then(function(){ return out.join("\n"); });
+    return chain.then(function(){ return {text:lines.join("\n"), rows:anRowsFromCells(cellRows)}; });
+  });
+}
+// À partir des cellules positionnées, reconstitue les comptes et lit les SOLDES
+// (2 dernières colonnes numériques) en classant chaque nombre par sa position X.
+// Robuste aux cellules vides : un nombre isolé est rattaché à la bonne colonne (D ou C).
+function anRowsFromCells(cellRows){
+  function isNum(s){ s=(""+s).replace(/\s/g,""); return /^[-+]?[\d.,]+$/.test(s) && /\d/.test(s); }
+  var acct=[];
+  (cellRows||[]).forEach(function(cells){
+    if(!cells||!cells.length)return;
+    var first=(cells[0].s||"").trim();
+    if(!/^\d/.test(first))return;                         // ignore en-têtes, "Total…", "RESULTAT…", etc.
+    if(/^\d{1,2}\/\d/.test(first))return;                 // ignore lignes de dates
+    var compte=first.replace(/\s/g,"");
+    var lib=[], nums=[];
+    for(var i=1;i<cells.length;i++){
+      var cs=(cells[i].s||"").trim();
+      if(isNum(cs)) nums.push({xe:cells[i].xe, v:parseNum(cs)});
+      else if(!nums.length) lib.push(cs);                 // texte avant le 1er nombre = libellé
+    }
+    if(!nums.length)return;
+    acct.push({c:compte, lib:lib.join(" ").trim(), nums:nums});
+  });
+  if(acct.length<2)return [];
+  // Colonnes = regroupement des bords DROITS (xe) des nombres (chiffres alignés à droite)
+  var xs=[]; acct.forEach(function(r){ r.nums.forEach(function(n){ xs.push(n.xe); }); });
+  xs.sort(function(a,b){return a-b;});
+  var cols=[], grp=[xs[0]];
+  for(var i=1;i<xs.length;i++){ if(xs[i]-xs[i-1]>8){ cols.push(grp); grp=[]; } grp.push(xs[i]); }
+  cols.push(grp);
+  var centers=cols.map(function(g){ return g.reduce(function(a,b){return a+b;},0)/g.length; });
+  if(centers.length<2)return [];
+  var iD=centers.length-2, iC=centers.length-1;           // 2 dernières colonnes = Soldes Débit / Crédit
+  function nearest(xe){ var best=0,bd=1e9; for(var k=0;k<centers.length;k++){var d=Math.abs(xe-centers[k]); if(d<bd){bd=d;best=k;}} return best; }
+  return acct.map(function(r){
+    var sd=0,sc=0;
+    r.nums.forEach(function(n){ var k=nearest(n.xe); if(k===iD)sd+=n.v; else if(k===iC)sc+=n.v; });
+    var deb=Math.round(sd*100)/100, cred=Math.round(sc*100)/100;
+    return {c:r.c, key:r.c, lib:r.lib, deb:deb, cred:cred, solde:Math.round((deb-cred)*100)/100};
   });
 }
 
