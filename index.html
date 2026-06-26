@@ -2004,7 +2004,17 @@ function parseNum(s){ if(s==null||s==="")return 0; s=(""+s).replace(/\s|\u00a0/g
 /* helpers de détection de colonnes pour le parseur de balance tolérant */
 function _isNumTok(t){ if(t==null)return false; t=(""+t).trim(); if(t==="")return false; if(!/\d/.test(t))return false; return /^[-+]?[\d.\u00a0 ,]+$/.test(t); }
 function _isDateTok(t){ t=(""+t).trim(); return /^\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}$/.test(t); }
-function _isAcctTok(t){ t=(""+t).replace(/^['"]|['"]$/g,"").trim(); return /^\d{3,12}$/.test(t); }
+/* Un n° de compte commence par au moins 3 chiffres et peut comporter un suffixe
+   alphanumérique (comptes auxiliaires marocains : 3421SOFIAP, 1481SUPER0, 44112RSERV…).
+   On REJETTE les nombres (présence d'un séparateur décimal/milliers) pour ne pas
+   prendre un fragment de montant (« 175 », « 600.00 ») pour un compte. */
+function _acctOf(tok){ tok=(""+tok).replace(/^['"]|['"]$/g,"").trim();
+  var m=tok.match(/^(\d{3,}[A-Za-z0-9]*)/); if(!m)return null;
+  var a=m[1]; if(/[.,]/.test(a))return null; if(a.length>14)return null;
+  if(/^\d+$/.test(a)&&a.length>12)return null;   // trop long pour un compte purement numérique
+  return a;
+}
+function _isAcctTok(t){ return !!_acctOf(t); }
 /* Parseur tolérant : accepte tabulation, point-virgule, 2+ espaces OU espace simple ;
    saute un éventuel index/date en tête ; numéro de compte détecté n'importe où ;
    prend les 2 derniers nombres comme solde débiteur / créditeur ; agrège par compte
@@ -2015,8 +2025,10 @@ function parseBalance(txt){
     var line=(rawline||"").replace(/\u00a0/g," ");
     if(!line.trim())return;
     if(/^[\s\-=_|*.]+$/.test(line))return;
-    // ignore les lignes de totaux / en-têtes (sinon un nombre y est pris pour un compte)
-    if(/^\s*(total|sous[- ]?total|cumul|report|à\s*nouveau|a\s*nouveau|balance|comptes?\b|n°|page\b|edition|état édité|etat edite)/i.test(line))return;
+    if(!/[A-Za-zÀ-ÿ]/.test(line))return;          // une vraie ligne de compte porte un libellé (lettres) ; les lignes 100 % numériques sont des totaux / montants reportés
+    // ignore les en-têtes / totaux / pieds de page (sinon un nombre y est pris pour un compte)
+    if(/^\s*(total|sous[- ]?total|cumul|report|à\s*nouveau|a\s*nouveau|balance\b|comptes?\b|libell|page\b|edition|état\s*édit|etat\s*edit|état\b|etat\b|n°|résultat\s*:|resultat\s*:|général\b|general\b|brought|carried)/i.test(line))return;
+    if(/^\s*(d\s+c)(\s+d\s+c)+\s*$/i.test(line))return;            // ligne d'en-tête « D C D C D C »
     var parts;
     if(line.indexOf("\t")>-1) parts=line.split("\t");
     else if(line.indexOf(";")>-1) parts=line.split(";");
@@ -2024,17 +2036,29 @@ function parseBalance(txt){
     else parts=line.split(/\s+/);
     parts=parts.map(function(x){return x.trim();}).filter(function(x){return x!=="";});
     if(parts.length<2)return;
-    var ai=-1;
-    for(var i=0;i<parts.length;i++){ if(_isDateTok(parts[i]))continue; if(_isAcctTok(parts[i])){ai=i;break;} }
-    if(ai<0)return;
-    var acc=parts[ai].replace(/^['"]|['"]$/g,"");
-    // recolle les nombres coupés par l'espace des milliers (ex. « 106 » « 600.00 » -> « 106600.00 »)
-    parts=parts.slice(0,ai+1).concat(_coalesceFrNumStr(parts.slice(ai+1)));
-    var lastNonNum=ai;
-    for(var j=ai+1;j<parts.length;j++){ if(!_isNumTok(parts[j])) lastNonNum=j; }
-    var nums=[];
-    for(var k=lastNonNum+1;k<parts.length;k++){ if(_isNumTok(parts[k])) nums.push(parseNum(parts[k])); }
-    var lib=parts.slice(ai+1,lastNonNum+1).filter(function(x){return !_isNumTok(x);}).join(" ").trim();
+    // Repère le compte = 1er MOT (et non la 1re cellule) correspondant à un n° de compte.
+    // La 1re cellule peut contenir « <compte> <début de libellé> » collés par un espace simple
+    // (ex. « 1111000000 CAPITAL SOCIAL »), d'où l'examen mot par mot.
+    var ai=-1, acc=null, headRest=[];
+    for(var i=0;i<parts.length && ai<0;i++){
+      var words=parts[i].split(/\s+/);
+      for(var w=0;w<words.length;w++){
+        if(_isDateTok(words[w]))continue;
+        var a=_acctOf(words[w]);
+        if(a){ ai=i; acc=a; headRest=words.slice(w+1); break; }
+        // un mot non-compte, non-date, non-numérique en tête = libellé d'une ligne sans compte -> on abandonne ce mot
+        if(_isNumTok(words[w]))break;     // on a atteint les montants sans trouver de compte
+      }
+    }
+    if(ai<0||!acc)return;
+    // Reconstruit la « queue » : reste de la cellule de tête (après le compte) + cellules suivantes,
+    // puis recolle les nombres coupés par l'espace des milliers (« 106 » « 600.00 » -> « 106600.00 »).
+    var tail=headRest.slice();
+    for(var j=ai+1;j<parts.length;j++){ parts[j].split(/\s+/).forEach(function(x){tail.push(x);}); }
+    tail=_coalesceFrNumStr(tail);
+    var lib=[], nums=[];
+    tail.forEach(function(t){ if(_isNumTok(t)) nums.push(parseNum(t)); else if(!nums.length) lib.push(t); });
+    lib=lib.join(" ").trim();
     var deb=0,cred=0;
     if(nums.length>=2){ deb=nums[nums.length-2]; cred=nums[nums.length-1]; }
     else if(nums.length===1){ var sv=nums[0]; if(sv>=0)deb=sv; else cred=-sv; }
@@ -7086,20 +7110,40 @@ function anImportExcel(f){
 }
 
 // ----- Import PDF via pdf.js (extraction de texte + reconstruction des lignes) -----
+// Contrôle de cohérence : dans une balance, la somme des soldes débiteurs = somme des
+// soldes créditeurs. On s'en sert pour valider une extraction et refuser de stocker
+// des montants manifestement erronés (colonnes mal lues, comptes fantômes…).
+function _balQuality(rows){
+  rows=(rows||[]).filter(function(r){return r&&r.c;});
+  if(rows.length<2) return {ok:false, n:rows.length, sd:0, sc:0, bal:false};
+  var sd=0,sc=0; rows.forEach(function(r){ sd+=(+r.deb||0); sc+=(+r.cred||0); });
+  var mx=Math.max(Math.abs(sd),Math.abs(sc));
+  var bal = mx>0 && Math.abs(sd-sc) <= (mx*0.01 + 1);   // équilibre à 1 % près
+  return {ok:bal, n:rows.length, sd:Math.round(sd*100)/100, sc:Math.round(sc*100)/100, bal:bal};
+}
 function anImportPdf(f){
   showOk("Extraction du texte du PDF…");
   anLoadPdfJs().then(function(){
     var rd=new FileReader();
     rd.onload=function(){
       anPdfExtract(new Uint8Array(rd.result)).then(function(res){
-        // 1) priorité : lecture COLONNE PAR COLONNE (gère les balances 6 colonnes
-        //    Reports/Mouvements/Soldes avec cellules vides)
-        if(res.rows && res.rows.length>=2){ anStoreRows(res.rows, "pdf", f.name); return; }
-        // 2) repli : ancienne méthode texte (balance simple 4 colonnes)
+        // 1) Lecture COLONNE PAR COLONNE (gère les balances 6 colonnes
+        //    Reports/Mouvements/Soldes avec cellules vides) + contrôle d'équilibre.
+        var colRows=(res.rows&&res.rows.length>=2)?res.rows:null;
+        var qCol=_balQuality(colRows);
+        // 2) Lecture par TEXTE (balance simple) + contrôle d'équilibre.
         var txt=res.text||"";
+        var txtRows=txt?parseBalance(txt):[];
+        var qTxt=_balQuality(txtRows);
+        // On retient la lecture équilibrée ; à défaut la plus complète si elle est plausible.
+        if(qCol.ok){ anStoreRows(colRows, "pdf", f.name); return; }
+        if(qTxt.ok){ comptaANIngest(txt, f.name); return; }
+        // Aucune lecture équilibrée : on ne stocke RIEN (éviter des montants faux) et on guide l'utilisateur.
         var nLines=((txt).match(/^\s*\d{3,}/gm)||[]).length;
-        if(!txt || nLines<2){ showErr("Aucun texte exploitable dans ce PDF (probablement scanné/image). Exportez plutôt la balance ou le grand livre en Excel ou CSV."); return; }
-        comptaANIngest(txt, f.name);
+        if(!txt && !colRows){ showErr("Aucun texte exploitable dans ce PDF (probablement scanné/image). Exportez plutôt la balance, le grand livre ou le FEC en Excel, CSV ou TXT."); return; }
+        var best=qCol.n>=qTxt.n?qCol:qTxt;
+        showErr("La balance a bien été lue ("+best.n+" comptes) mais les colonnes Débit/Crédit ne s'équilibrent pas (Σ débit "+fmtDH(best.sd)+" ≠ Σ crédit "+fmtDH(best.sc)+") : la mise en page de ce PDF (colonnes Reports/Mouvements/Soldes, séparateurs de milliers) est mal interprétée et les montants seraient faux. Pour un résultat fiable, exportez la balance en Excel (.xlsx), CSV ou FEC depuis votre logiciel comptable, puis réimportez ce fichier — l'import lit alors les colonnes par leur nom et non par leur position.");
+        void nLines;
       }).catch(function(e){ showErr("Extraction PDF impossible : "+(e.message||e)); });
     };
     rd.onerror=function(){ showErr("Lecture du fichier impossible."); };
@@ -7193,6 +7237,12 @@ function anRowsFromCells(cellRows){
     var compte=headToks[0].replace(/\s/g,"");
     var libHead=headToks.slice(1);
     var ci=1;
+    // Compte ET libellé collés SANS espace dans la même cellule (« 3421AROM00AROMED »,
+    // « 1111000000CAPITAL ») : les comptes (généraux ou auxiliaires) font 10 caractères ;
+    // si la suite débute par une lettre, c'est le libellé -> on le détache.
+    if(libHead.length===0 && compte.length>=11 && /^\d{4}[A-Za-z0-9]{6}[A-Za-z]/.test(compte)){
+      libHead=[compte.slice(10)]; compte=compte.slice(0,10);
+    }
     if(libHead.length===0){
       // compte éventuellement éclaté par pdf.js (« 1111000000 » -> « 1111 »+« 000000 ») :
       // on absorbe les fragments NUMÉRIQUES purs et contigus (pas de décimale, faible écart).
