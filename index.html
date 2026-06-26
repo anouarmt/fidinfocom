@@ -7317,6 +7317,25 @@ function anOpenItems(lines, isClient){
 /* Routage de l'import : quand true, les lignes lues alimentent la BALANCE de
    l'exercice courant (liasse) au lieu des à-nouveaux N-1. */
 var _balImportToLiasse=false;
+/* Dérive les chiffres du « Résultat fiscal & IS » directement depuis la balance
+   importée (mêmes règles que la détection auto. depuis la comptabilité) :
+   résultat net comptable (produits cl.7 − charges cl.6), CA (711/712),
+   produits financiers (73 hors 739) et subventions/dons (716/756/7586).
+   Entrée = lignes issues de parseBalance(balText) : r.deb/r.cred = soldes. */
+function liasseFiguresFromRows(rows){
+  function pre(c,roots){return roots.some(function(rt){return String(c).indexOf(rt)===0;});}
+  var prod=0,charge=0,ca=0,pf=0,subv=0,hasCPC=false;
+  (rows||[]).forEach(function(r){
+    var c=String(r.c), d0=c.charAt(0), deb=+r.deb||0, cred=+r.cred||0;
+    if(d0==="7"){ prod+=(cred-deb); hasCPC=true; }
+    else if(d0==="6"){ charge+=(deb-cred); hasCPC=true; }
+    if(pre(c,["711","712"])) ca+=cred;
+    if(pre(c,["73"]) && !pre(c,["739"])) pf+=cred;
+    if(pre(c,["716","756","7586"])) subv+=cred;
+  });
+  return {hasCPC:hasCPC, rc:Math.round((prod-charge)*100)/100, ca:Math.round(ca*100)/100,
+          pf:Math.round(pf*100)/100, subv:Math.round(subv*100)/100};
+}
 /* Importe une balance / grand livre / FEC dans l'EXERCICE COURANT : remplit
    balText de la liasse -> régénère Bilan, CPC, ESG, IS et toutes les déclarations. */
 function liasseBalStoreRows(rows,fileName){
@@ -7330,9 +7349,25 @@ function liasseBalStoreRows(rows,fileName){
   }).join("\n");
   var k=liasseKey(); var d=Object.assign({},liasseGet(),S.liasse[k]||{});
   d.balText=txt; d.balImportName=fileName||""; d.balImportAt=(new Date()).toISOString().slice(0,10);
+  /* Alimente la vue « Résultat fiscal & IS » à partir de la balance importée
+     (sinon l'écran IS reste vide alors que le Bilan/CPC sont bien remplis).
+     On respecte une saisie manuelle du résultat comptable déjà présente ;
+     pour CA / produits financiers / subventions, on ne renseigne que si vide. */
+  var fig=liasseFiguresFromRows(parseBalance(txt));
+  var blank=function(v){return v===undefined||v===null||String(v).trim()===""; };
+  var hasManualRc=!blank(d.rc)&&!isNaN(parseFloat(d.rc))&&parseFloat(d.rc)!==0;
+  var isFilled=false;
+  if(fig.hasCPC){
+    if(!hasManualRc){ d.rc=fig.rc; isFilled=true; }
+    if(blank(d.ca)){ d.ca=fig.ca; isFilled=true; }
+    if(blank(d.pf)){ d.pf=fig.pf; isFilled=true; }
+    if(blank(d.subv)&&fig.subv>0){ d.subv=fig.subv; isFilled=true; }
+  }
   S.liasse[k]=d; save("liasse");
   renderView();
-  showOk("Balance importée — "+rows.length+" comptes pour l'exercice "+S.year+". Bilan, CPC, ESG, IS et liasse régénérés.");
+  showOk("Balance importée — "+rows.length+" comptes pour l'exercice "+S.year+". Bilan, CPC, ESG"
+    +(isFilled?" et IS (résultat "+fmtDH(fig.rc)+(fig.ca?", CA "+fmtDH(d.ca):"")+")":"")
+    +" régénérés."+(fig.hasCPC?"":" ⚠ Aucun compte de produits/charges (cl. 6/7) détecté : saisissez le résultat dans l'onglet « Résultat fiscal & IS »."));
 }
 function anStoreRows(rows,src,fileName){
   if(_balImportToLiasse){ _balImportToLiasse=false; (rows||[]).forEach(function(r){delete r._lines;}); return liasseBalStoreRows(rows,fileName); }
