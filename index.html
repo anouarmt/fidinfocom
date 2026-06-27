@@ -7614,6 +7614,41 @@ function liasseFiguresFromRows(rows){
   return {hasCPC:hasCPC, rc:Math.round((prod-charge)*100)/100, ca:Math.round(ca*100)/100,
           pf:Math.round(pf*100)/100, subv:Math.round(subv*100)/100};
 }
+/* ---- Auto-remplissage des TABLEAUX ANNEXES (ETIC) depuis la balance importée ----
+   N'altère PAS l'OCR factures/relevés. Ne dérive que ce qu'une balance permet
+   honnêtement (montants de CLÔTURE) ; les mouvements (acquisitions, cessions,
+   dotations, échéances) restent à compléter. Les lignes générées sont marquées
+   _auto:true : un ré-import les régénère sans écraser les saisies manuelles. */
+function _balDeb(r){ var s=(r.solde!=null)?r.solde:((+r.deb||0)-(+r.cred||0)); return s>0?Math.round(s*100)/100:0; }
+function _balCred(r){ var s=(r.solde!=null)?r.solde:((+r.deb||0)-(+r.cred||0)); return s<0?Math.round(-s*100)/100:0; }
+function _balStarts(c,arr){ c=String(c); return arr.some(function(p){return c.indexOf(p)===0;}); }
+function autoAnnexesFromRows(d, rows){
+  ensureTables(d);
+  rows=(rows||[]).filter(function(r){return r&&r.c;});
+  Object.keys(ANNEX_DEFS).forEach(function(k){ d.tables[k]=(d.tables[k]||[]).filter(function(r){return !r._auto;}); });
+  var n=0;
+  // IMMOBILISATIONS & AMORTISSEMENTS : brut = classe 2 hors 28 (amort) et 29 (dépréciation) ; amort = 28x rattaché
+  var immo={};
+  rows.forEach(function(r){
+    var c=String(r.c).replace(/\s/g,""); if(c.charAt(0)!=="2")return;
+    if(_balStarts(c,["28"])){ var root=("2"+c.slice(2)).slice(0,3); (immo[root]=immo[root]||{lib:"",compte:root,brut:0,amort:0}).amort+=_balCred(r); }
+    else if(_balStarts(c,["29"])){ /* dépréciation -> tableau des provisions */ }
+    else { var rt=c.slice(0,3); var m=(immo[rt]=immo[rt]||{lib:"",compte:rt,brut:0,amort:0}); m.brut+=_balDeb(r); if(!m.lib&&r.lib)m.lib=r.lib; }
+  });
+  Object.keys(immo).sort().forEach(function(rt){ var m=immo[rt]; if(m.brut<=0&&m.amort<=0)return;
+    d.tables.immobilisations.push({_auto:true,lib:m.lib||("Immobilisations "+rt),compte:rt,brutDeb:m.brut,acq:0,cession:0,amortDeb:m.amort,dotation:0,amortCess:0}); n++; });
+  // PROVISIONS (durables, dépréciations, autres risques) : 15 / 19 / 29 / 39 / 45 / 59 créditeurs
+  rows.forEach(function(r){ var c=String(r.c).replace(/\s/g,""); var cr=_balCred(r);
+    if(cr>0 && _balStarts(c,["15","19","29","39","45","59"])){ d.tables.provisions.push({_auto:true,lib:(r.lib||("Provision "+c)),compte:c,deb:cr,dot:0,rep:0}); n++; } });
+  // CRÉANCES de l'actif circulant : classe 34 (par défaut échéance < 1 an)
+  rows.forEach(function(r){ var c=String(r.c).replace(/\s/g,""); var dd=_balDeb(r);
+    if(dd>0 && _balStarts(c,["34"])){ d.tables.creances.push({_auto:true,lib:(r.lib||("Créance "+c)),compte:c,total:dd,plus1:0,moins1:dd,echu:0}); n++; } });
+  // DETTES : financement classe 14 (> 1 an) + circulant 44/55 (< 1 an)
+  rows.forEach(function(r){ var c=String(r.c).replace(/\s/g,""); var cr=_balCred(r); if(cr<=0)return;
+    if(_balStarts(c,["14"])){ d.tables.dettes.push({_auto:true,lib:(r.lib||("Dette de financement "+c)),compte:c,total:cr,plus1:cr,moins1:0,echu:0}); n++; }
+    else if(_balStarts(c,["44","55"])){ d.tables.dettes.push({_auto:true,lib:(r.lib||("Dette "+c)),compte:c,total:cr,plus1:0,moins1:cr,echu:0}); n++; } });
+  return n;
+}
 /* Importe une balance / grand livre / FEC dans l'EXERCICE COURANT : remplit
    balText de la liasse -> régénère Bilan, CPC, ESG, IS et toutes les déclarations. */
 function liasseBalStoreRows(rows,fileName){
@@ -7641,11 +7676,13 @@ function liasseBalStoreRows(rows,fileName){
     if(blank(d.pf)){ d.pf=fig.pf; isFilled=true; }
     if(blank(d.subv)&&fig.subv>0){ d.subv=fig.subv; isFilled=true; }
   }
+  var annexN=0; try{ annexN=autoAnnexesFromRows(d, parseBalance(txt)); }catch(e){}
   S.liasse[k]=d; save("liasse");
   renderView();
   showOk("Balance importée — "+rows.length+" comptes pour l'exercice "+S.year+". Bilan, CPC, ESG"
     +(isFilled?" et IS (résultat "+fmtDH(fig.rc)+(fig.ca?", CA "+fmtDH(d.ca):"")+")":"")
-    +" régénérés."+(fig.hasCPC?"":" ⚠ Aucun compte de produits/charges (cl. 6/7) détecté : saisissez le résultat dans l'onglet « Résultat fiscal & IS »."));
+    +" régénérés."+(annexN?" "+annexN+" ligne(s) d'annexes pré-remplies (immobilisations, provisions, créances, dettes) — complétez les mouvements si besoin.":"")
+    +(fig.hasCPC?"":" ⚠ Aucun compte de produits/charges (cl. 6/7) détecté : saisissez le résultat dans l'onglet « Résultat fiscal & IS »."));
 }
 function anStoreRows(rows,src,fileName){
   if(_balImportToLiasse){ _balImportToLiasse=false; (rows||[]).forEach(function(r){delete r._lines;}); return liasseBalStoreRows(rows,fileName); }
