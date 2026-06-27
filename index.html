@@ -367,6 +367,18 @@ function lda(k){try{const v=JSON.parse(localStorage.getItem(k));return Array.isA
 const S={tab:"dash",flags:ld(LS.flags),done:ld(LS.done),pay:ld(LS.pay),jur:ld(LS.jur),
   custom:lda(LS.custom),deleted:ld(LS.deleted),years:lda(LS.years),receipts:lda(LS.receipts),tva:ld(LS.tva),sal:ld(LS.sal),liasse:ld(LS.liasse),docs:ld(LS.docs),compta:ld(LS.compta),emprunts:ld(LS.emprunts),factures:lda(LS.factures),cabinet:ld(LS.cabinet),paie:ld(LS.paie),portal:ld(LS.portal),team:ld(LS.team),paieSel:{id:null,mois:null,emp:null},paieView:"bulletins",facSel:{id:null},facDraft:null,year:YEAR,curClient:(function(){try{var v=localStorage.getItem("fid_curclient");return v?+v:null;}catch(e){return null;}})(),comptaView:"saisie",comptaList:{type:null,statut:"",q:"",dmin:"",dmax:"",mmin:"",mmax:""},ageRef:"",cptFilter:{q:"",cpt:"",jrn:"",dmin:"",dmax:"",mmin:"",mmax:"",sens:"",hideZero:false},tvaSel:{id:null,period:null},salSel:{id:null},liasseSel:{id:null},liasseView:"is",docsSel:{id:null},empSel:{id:null},
   echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",echMois:"all",echReg:"all",gq:"",modal:null,jurForm:null,grpSel:{},grpTpl:null,notiflog:lda(LS.notiflog),tsType:"tva",tsPeriod:null};
+/* Restaure le dernier onglet / exercice / sous-vue (sinon une actualisation (F5)
+   ramène toujours au tableau de bord). L'onglet sera revalidé dans renderView. */
+(function restoreUI(){ try{ var u=JSON.parse(localStorage.getItem("fid_ui")||"null");
+  if(u && typeof u==="object"){
+    if(u.tab) S.tab=u.tab;
+    if(u.year!=null && !isNaN(+u.year)) S.year=+u.year;
+    if(u.comptaView) S.comptaView=u.comptaView;
+    if(u.liasseView) S.liasseView=u.liasseView;
+    if(u.paieView) S.paieView=u.paieView;
+    if(u.tvaPeriod && S.tvaSel) S.tvaSel.period=u.tvaPeriod;
+  }
+}catch(e){} })();
 if(!S.years.length){S.years=[YEAR-1,YEAR,YEAR+1];}
 S.years.sort((a,b)=>a-b);
 if(S.years.indexOf(S.year)<0)S.year=S.years[S.years.length-1];
@@ -10944,7 +10956,10 @@ function renderView(){
   if(S.tab==="sal")S.tab="paie";   // ancien module Salaires 9421 fusionné dans Paie
   if(S.tab==="emprunts"){S.tab="compta";S.comptaView="emprunts";}   // module Emprunts intégré dans la Comptabilité
   try{if(S.curClient!=null)localStorage.setItem("fid_curclient",String(S.curClient));}catch(e){}
-  const v={dash:vDash,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,jur:vJur,delais:vDelais,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse}[S.tab]();
+  try{localStorage.setItem("fid_ui",JSON.stringify({tab:S.tab,year:S.year,comptaView:S.comptaView,liasseView:S.liasseView,paieView:S.paieView,tvaPeriod:(S.tvaSel||{}).period||null}));}catch(e){}
+  const vmap={dash:vDash,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,jur:vJur,delais:vDelais,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse};
+  if(typeof vmap[S.tab]!=="function")S.tab="dash";   // onglet restauré inconnu -> retour sûr au tableau de bord
+  const v=vmap[S.tab]();
   document.getElementById("view").innerHTML=voletToggle()+v;
   enhanceClientSelects();
 }
