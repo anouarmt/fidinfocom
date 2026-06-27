@@ -2833,6 +2833,79 @@ function liasseComptaFigures(c){
           pf:sumRoots(["73"],"cred",["739"]),
           subv:sumRoots(["716","756","7586"],"cred")};
 }
+/* ============================================================================
+   EXPLOITATION DE LA BALANCE IMPORTÉE — synthèse TVA, délais de paiement
+   (DSO/DPO indicatifs) et CLÔTURE -> à-nouveaux d'ouverture N+1.
+   Tout est dérivé de la même balance importée dans la liasse (d.balText),
+   déjà fiabilisée par l'import colonne. Les modules dédiés (déclaration TVA,
+   suivi loi 69-21, à-nouveaux N-1) restent la référence ; ceci les alimente.
+   ========================================================================== */
+function liasseBalanceInsights(rows){
+  var num=function(x){return Math.round((+x||0)*100)/100;};
+  var clients=0,fourn=0,tvaFact=0,tvaRec=0,tvaDue=0,prod7=0,charges6=0,ca=0,achats=0;
+  (rows||[]).forEach(function(r){
+    var c=(""+r.c).replace(/\s/g,""), d=+r.deb||0, cr=+r.cred||0, cls=c.charAt(0);
+    if(/^342/.test(c)) clients+=(d-cr);                 // créances clients (débiteur)
+    if(/^441/.test(c)) fourn+=(cr-d);                   // dettes fournisseurs (créditeur)
+    if(/^4455/.test(c)) tvaFact+=(cr-d);                // TVA facturée / collectée
+    if(/^3455/.test(c)) tvaRec+=(d-cr);                 // TVA récupérable / déductible
+    if(/^4456/.test(c)) tvaDue+=(cr-d);                 // TVA due déjà déclarée
+    if(/^71/.test(c)) ca+=(cr-d);                       // chiffre d'affaires (ventes)
+    if(/^611/.test(c)||/^612/.test(c)) achats+=(d-cr);  // achats consommés
+    if(cls==="7") prod7+=(cr-d);
+    if(cls==="6") charges6+=(d-cr);
+  });
+  var caTTC=ca*1.2, achTTC=achats*1.2;
+  return { resultat:num(prod7-charges6), ca:num(ca), achats:num(achats),
+    clients:num(clients), fournisseurs:num(fourn),
+    tvaFacturee:num(tvaFact), tvaRecuperable:num(tvaRec), tvaDue:num(tvaDue),
+    positionTVA:num(tvaFact-tvaRec),
+    dso: caTTC>0?Math.round(clients/caTTC*365):null,
+    dpo: achTTC>0?Math.round(fourn/achTTC*365):null };
+}
+function liasseBalInsightsCard(d){
+  var rows=parseBalance((d&&d.balText)||"");
+  if(!rows.length) return "";
+  var x=liasseBalanceInsights(rows);
+  function rw(lbl,val,extra){return '<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid #f0eee6"><span style="color:#5a6a64;font-size:12px">'+lbl+'</span><span class="mono" style="font-weight:600;white-space:nowrap">'+val+'</span></div>'+(extra?'<div style="font-size:10.5px;color:var(--faint);margin:1px 0 3px">'+extra+'</div>':'');}
+  var posLbl = x.positionTVA>=0 ? "= TVA à décaisser (théorique)" : "= Crédit de TVA (théorique)";
+  var dpoBadge = x.dpo==null?"":(x.dpo<=60?' <span style="color:#0E7A5F;font-size:10px">✓ ≤60 j</span>':' <span style="color:#B42318;font-size:10px">⚠ &gt;60 j (loi 69-21)</span>');
+  var tva = '<div class="sectit mb2" style="font-size:12px">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' TVA'+'</div>'
+    +rw("TVA facturée (collectée) · 4455", fmtDH(x.tvaFacturee))
+    +rw("TVA récupérable (déductible) · 3455", fmtDH(x.tvaRecuperable))
+    +rw(posLbl, fmtDH(Math.abs(x.positionTVA)))
+    +(x.tvaDue?rw("TVA due déjà déclarée · 4456", fmtDH(x.tvaDue)):"");
+  var del = '<div class="sectit mb2" style="font-size:12px;margin-top:12px">'+ic("clock","width:14px;height:14px;vertical-align:-2px")+' Délais de paiement (indicatifs)'+'</div>'
+    +rw("Créances clients · 342", fmtDH(x.clients))
+    +rw("Dettes fournisseurs · 441", fmtDH(x.fournisseurs))
+    +rw("Délai clients (DSO)", (x.dso==null?"—":x.dso+" j"), "encours clients ÷ CA TTC × 365")
+    +rw("Délai fournisseurs (DPO)"+dpoBadge, (x.dpo==null?"—":x.dpo+" j"), "encours fournisseurs ÷ achats TTC × 365");
+  var clot = '<div style="margin-top:14px;padding-top:12px;border-top:1px dashed #cfe6dc">'
+    +'<div style="font-size:11.5px;color:#5a7a6e;margin-bottom:8px">Clôture de l\'exercice '+S.year+' : reporte les soldes de bilan (classes 1 à 5) et le résultat net comme <b>à-nouveaux d\'ouverture '+(S.year+1)+'</b>.</div>'
+    +'<button class="btn-primary" data-act="liasse_gen_ans_n1" style="width:auto;padding:10px 16px;background:#0a5f4a">'+ic("down","width:15px;height:15px;vertical-align:-2px")+' Générer les à-nouveaux '+(S.year+1)+'</button></div>';
+  return '<div class="card" style="padding:20px;margin-top:16px;background:#FAFCFB"><div class="sectit mb3">'+ic("check","width:15px;height:15px;vertical-align:-2px")+' Exploitation de la balance · '+S.year+'</div>'
+    +'<div class="note" style="font-size:11px;margin-bottom:10px">Calculé automatiquement depuis la balance importée. Indicateurs de pilotage : la déclaration TVA officielle et le suivi détaillé loi 69-21 restent dans leurs modules dédiés.</div>'
+    +tva+del+clot+'</div>';
+}
+function liasseGenererANsN1(){
+  var cid=S.liasseSel.id; if(!cid){ showErr("Sélectionnez d'abord une société dans la Liasse."); return; }
+  var d=liasseGet(); var rows=parseBalance(d.balText||"");
+  if(!rows.length){ showErr("Importez d'abord une balance / grand livre / FEC pour l'exercice "+S.year+" (bouton « Importer Balance / GL / FEC »)."); return; }
+  var closing=rows.map(function(r){ return {c:(""+r.c).replace(/\s/g,""), lib:r.lib, solde:Math.round(((+r.deb||0)-(+r.cred||0))*100)/100}; });
+  var sd=0,sc=0; closing.forEach(function(r){ if(r.solde>0)sd+=r.solde; else sc+=-r.solde; });
+  if(Math.abs(sd-sc)>1 && !window.confirm("La balance "+S.year+" n'est pas parfaitement équilibrée (Σ débit "+fmtDH2(sd)+" ≠ Σ crédit "+fmtDH2(sc)+"). Générer quand même les à-nouveaux "+(S.year+1)+" ? L'écart sera absorbé par le résultat net.")) return;
+  var ansRows=comptaGenererANsRows(closing,"1199000000");
+  if(!ansRows.length){ showErr("Aucun solde à reporter."); return; }
+  var od=0,oc=0; ansRows.forEach(function(r){ od+=r.deb; oc+=r.cred; });
+  var resExo=liasseBalanceInsights(rows).resultat;   // résultat réel de l'exercice (produits cl.7 − charges cl.6)
+  var st=anStore(String(cid)), ky=String(S.year+1);
+  if(st[ky] && st[ky].rows && st[ky].rows.length && !window.confirm("Des à-nouveaux existent déjà pour "+(S.year+1)+" ("+st[ky].rows.length+" comptes). Les remplacer par la clôture "+S.year+" issue de la balance ?")) return;
+  st[ky]={src:"cloture", rows:ansRows, map:{}, mode:"tiers", balCompte:"1199000000",
+          fileName:"Clôture "+S.year+" (balance liasse)", generatedAt:new Date().toISOString(), hasDetail:false};
+  save("compta");
+  showOk("À-nouveaux "+(S.year+1)+" générés depuis la balance "+S.year+" : "+ansRows.length+" comptes, ouverture équilibrée ("+fmtDH(Math.round(od*100)/100)+"). Résultat de l'exercice "+S.year+" : "+(resExo>=0?"bénéfice ":"perte ")+fmtDH(Math.abs(resExo))+" — son affectation (réserve légale, RAN, dividendes) reste à valider. Basculez sur l'exercice "+(S.year+1)+" → module Comptabilité, onglet « À-nouveaux N-1 », pour poster l'écriture d'ouverture au 01/01/"+(S.year+1)+".");
+  renderView();
+}
 function liasseISBody(d){
   var calc=liasseCalc(d);
   function lines(kind,arr,phl){return (arr||[]).map(function(r,i){
@@ -2884,6 +2957,7 @@ function liasseISBody(d){
       +'<div class="card" style="padding:20px"><div class="sectit mb3">'+ic("gavel")+' Détermination de l\'IS</div><div id="liasseResults">'+liasseResultsHtml(calc)+'</div></div>'
       +'<div class="card" style="padding:20px;margin-top:16px"><div class="sectit mb3">'+ic("alert")+' Contrôles</div><div id="liasseAnoms">'+liasseAnomsHtml(d,calc)+'</div></div>'
       +liasseRegCardHtml(d)
+      +liasseBalInsightsCard(d)
       +'<div class="note" style="margin-top:14px;font-size:11.5px">Calcul selon les taux IS/CM 2026. Adaptez les réintégrations/déductions à la situation réelle. Reportez le résultat depuis le Bilan via le bouton dédié.</div>'
     +'</div></div>';
 }
@@ -8104,18 +8178,69 @@ function comptaClotureUndo(cid){
   comptaAutoPost(g); save("compta"); renderView();
   showOk((n0-g.ecritures.length)+" écriture(s) de régularisation supprimée(s).");
 }
+/* ============================================================================
+   REPORTS À-NOUVEAUX N+1 — génère les soldes d'ouverture de l'exercice suivant
+   à partir de la balance de CLÔTURE de l'exercice courant.
+   • Comptes de bilan (classes 1 à 5)  -> reportés tels quels.
+   • Comptes de gestion (classes 6 et 7) -> soldés ; leur solde net (produits-charges)
+     constitue le RÉSULTAT NET DE L'EXERCICE, porté au 1199 (équilibre l'à-nouveau).
+   Le résultat est écrit dans anImport[N+1] : en basculant sur l'exercice N+1, l'onglet
+   « À-nouveaux N-1 » le retrouve et génère l'écriture d'ouverture au 01/01/N+1
+   (mêmes outils : fusion des tiers, alimentation de la liasse, suivi des en-cours). */
+function comptaClotureBalance(c){
+  // Solde de clôture par compte = à-nouveaux d'ouverture (écriture AN) + mouvements de l'année.
+  // comptaBalanceRows agrège déjà les deux (l'à-nouveau N-1 est posté comme écriture au 01/01).
+  return comptaBalanceRows(c);
+}
+function comptaGenererANsRows(rows, resultCompte){
+  resultCompte=comptaCanon(resultCompte||"1199000000");
+  var an={}, order=[];
+  function add(cp,solde,lib){ cp=comptaCanon(cp); if(!cp)return; if(!an[cp]){an[cp]={c:cp,key:cp,lib:lib||libCompte(cp),deb:0,cred:0,solde:0};order.push(cp);} an[cp].solde+=solde; }
+  (rows||[]).forEach(function(r){
+    var s=+r.solde; if(s==null||isNaN(s))s=(+r.sDeb||0)-(+r.sCred||0);
+    if(Math.abs(s)<0.005)return;
+    var cls=comptaCanon(r.c).charAt(0);
+    if(cls>="1"&&cls<="5") add(r.c, s, r.lib);          // bilan reporté ; 6 & 7 soldés
+  });
+  var carried=0; order.forEach(function(cp){carried+=an[cp].solde;});
+  add(resultCompte, -Math.round(carried*100)/100, "RESULTAT NET DE L'EXERCICE");  // ligne d'équilibre = résultat net
+  return order.map(function(cp){var a=an[cp]; a.solde=Math.round(a.solde*100)/100; a.deb=a.solde>0?a.solde:0; a.cred=a.solde<0?-a.solde:0; return a;})
+              .filter(function(a){return Math.abs(a.solde)>0.005;});
+}
+function comptaGenererANs(cid){
+  var c=clients().find(function(x){return x.id===+cid;}); if(!c){showErr("Société introuvable.");return;}
+  var closing=comptaClotureBalance(c);
+  if(!closing.length){ showErr("Aucune écriture en "+S.year+" : la balance de clôture est vide. Saisissez/importez l'exercice avant de générer les à-nouveaux."); return; }
+  var sd=0,sc=0; closing.forEach(function(r){sd+=r.sDeb;sc+=r.sCred;});
+  if(Math.abs(sd-sc)>0.01 && !window.confirm("La balance de clôture "+S.year+" n'est pas équilibrée (Débit "+fmtDH2(sd)+" ≠ Crédit "+fmtDH2(sc)+"). L'écart sera absorbé par le résultat, ce qui peut le fausser. Générer quand même les à-nouveaux "+(S.year+1)+" ?")) return;
+  var rows=comptaGenererANsRows(closing,"1199000000");
+  var res=rows.find(function(r){return r.c==="1199000000";}); var rNet=res?(-res.solde):0;  // solde<0 = crédit = bénéfice
+  var st=anStore(String(c.id)), ky=String(S.year+1);
+  if(st[ky] && st[ky].rows && st[ky].rows.length && !window.confirm("Des à-nouveaux existent déjà pour "+(S.year+1)+" ("+st[ky].rows.length+" comptes). Les remplacer par la clôture "+S.year+" ?")) return;
+  st[ky]={src:"cloture", rows:rows, map:{}, mode:"tiers", balCompte:"1199000000",
+          fileName:"Clôture "+S.year+" (automatique)", generatedAt:new Date().toISOString(), hasDetail:false};
+  save("compta");
+  showOk("À-nouveaux "+(S.year+1)+" générés depuis la clôture "+S.year+" : "+rows.length+" comptes reportés · résultat net "
+    +(rNet>=0?"bénéficiaire ":"déficitaire ")+fmtDH(Math.abs(rNet))+". Basculez sur l'exercice "+(S.year+1)+" → onglet « À-nouveaux N-1 » pour générer l'écriture d'ouverture au 01/01/"+(S.year+1)+".");
+  renderView();
+}
 // Carte « Régulariser tout » (bouton unique de clôture)
 function comptaClotureCard(c){
   var g=comptaGet(c.id);
   var has=(g.ecritures||[]).some(function(e){return e.amort||e.tvaReg||e.isReg||e.affReg;});
+  var anNext=(anStore(c.id)||{})[String(S.year+1)];
+  var hasAN=anNext&&anNext.src==="cloture"&&anNext.rows&&anNext.rows.length;
   return '<div class="card" style="padding:16px;margin:0 0 14px;background:#F2F8F5;border:1px solid #cfe6dc">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
     +'<div><div class="sectit" style="color:#0a5f4a">'+ic("check","width:15px;height:15px;vertical-align:-2px")+' Régularisation de fin d\'année — '+esc(c.dossier)+' · '+S.year+'</div>'
-    +'<div style="font-size:11.5px;color:#5a7a6e;margin-top:3px">Un seul clic génère (ou met à jour) toutes les écritures de clôture : <b>dotations aux amortissements</b>, <b>régularisations de TVA</b> (toutes périodes), <b>régularisation de l\'IS</b> et <b>affectation du résultat</b>.</div></div>'
+    +'<div style="font-size:11.5px;color:#5a7a6e;margin-top:3px">Un seul clic génère (ou met à jour) toutes les écritures de clôture : <b>dotations aux amortissements</b>, <b>régularisations de TVA</b> (toutes périodes), <b>régularisation de l\'IS</b> et <b>affectation du résultat</b>. Générez ensuite les <b>reports à-nouveaux de '+(S.year+1)+'</b> (soldes d\'ouverture de l\'exercice suivant).</div></div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
     +'<button class="btn-primary" data-act="compta_cloture" data-id="'+c.id+'" style="background:#0E7A5F">'+ic("check","width:15px;height:15px;vertical-align:-2px")+' '+(has?"Mettre à jour la clôture":"Régulariser toute l\'année")+'</button>'
+    +'<button class="btn-primary" data-act="compta_gen_ans" data-id="'+c.id+'" style="background:#0a5f4a" title="Reporter les soldes de clôture '+S.year+' comme à-nouveaux d\'ouverture '+(S.year+1)+'">'+ic("down","width:15px;height:15px;vertical-align:-2px")+' '+(hasAN?"Mettre à jour les à-nouveaux "+(S.year+1):"Générer les à-nouveaux "+(S.year+1))+'</button>'
     +(has?'<button class="chip" data-act="compta_cloture_undo" data-id="'+c.id+'" style="color:#B42318;border-color:#f0c9c4">'+ic("trash","width:13px;height:13px;vertical-align:-2px")+' Annuler la clôture</button>':"")
-    +'</div></div></div>';
+    +'</div></div>'
+    +(hasAN?'<div style="font-size:11px;color:#0a5f4a;margin-top:8px;padding-top:8px;border-top:1px dashed #cfe6dc">'+ic("check","width:12px;height:12px;vertical-align:-2px")+' À-nouveaux '+(S.year+1)+' prêts ('+anNext.rows.length+' comptes, générés le '+esc((anNext.generatedAt||"").slice(0,10))+'). Basculez sur l\'exercice '+(S.year+1)+' → onglet « À-nouveaux N-1 » pour poster l\'écriture d\'ouverture.</div>':"")
+    +'</div>';
 }
 
 function comptaBalanceBody(c){
@@ -10969,6 +11094,7 @@ document.addEventListener("click",e=>{
     save("tva");renderView();
   }
   else if(a==="tva_autofill"){tvaAutofill();}
+  else if(a==="liasse_gen_ans_n1"){liasseGenererANsN1();}
   else if(a==="tvacodes_excel"){tvaCodesExportExcel();}
   else if(a==="releve_excel"){releveExportExcel();}
   else if(a==="releve_xml"){releveExportXML();}
@@ -11194,6 +11320,7 @@ document.addEventListener("click",e=>{
   else if(a==="comptabal_copy"){comptaBalCopy(t.dataset.id);}
   else if(a==="comptabal_xlsx"){comptaBalXlsx(t.dataset.id);}
   else if(a==="compta_cloture"){comptaCloturePost(t.dataset.id);}
+  else if(a==="compta_gen_ans"){comptaGenererANs(t.dataset.id);}
   else if(a==="compta_cloture_undo"){comptaClotureUndo(t.dataset.id);}
   else if(a==="comptaeditecr"){S.modal=null;S.tab="compta";S.comptaView="manuel";renderView();odEdit(t.dataset.id);}
   else if(a==="comptaeditpiece"){S.modal=null;S.tab="compta";S.comptaView="saisie";renderView();comptaEditor(t.dataset.id);}
