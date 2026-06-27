@@ -299,6 +299,97 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
+
+/* ===================== LICENCE / MODE DÉMO ===================== */
+const DEMO_LIMITS = { maxDossiers:3, jours:21, ocrMax:30 };
+var LIC = { type:"full", expires:null, maxDossiers:Infinity, ocrMax:Infinity };
+var _ocrCount = 0;
+function isDemo(){ return !!(LIC && LIC.type==="demo"); }
+function demoDaysLeft(){ if(!isDemo()||!LIC.expires)return null; var ms=new Date(LIC.expires)-new Date(); return Math.max(0,Math.ceil(ms/86400000)); }
+function demoExpired(){ return isDemo() && LIC.expires && (new Date() > new Date(LIC.expires)); }
+function demoDossierCount(){ try{ return clients().length; }catch(e){ return 0; } }
+async function loadLicense(){
+  LIC={type:"full",expires:null,maxDossiers:Infinity,ocrMax:Infinity}; _ocrCount=0;
+  if(!sb||!session||!session.user)return;
+  try{
+    var r=await sb.from("licenses").select("type,demo_expires_at,max_dossiers,ocr_max").eq("user_id",session.user.id).maybeSingle();
+    if(r&&r.data&&r.data.type==="demo"){
+      var d=r.data;
+      LIC={type:"demo",
+           expires:d.demo_expires_at||null,
+           maxDossiers:(d.max_dossiers!=null?d.max_dossiers:DEMO_LIMITS.maxDossiers),
+           ocrMax:(d.ocr_max!=null?d.ocr_max:DEMO_LIMITS.ocrMax)};
+    }
+  }catch(e){ /* table absente ou hors-ligne => version complète par défaut */ }
+}
+function demoBanner(){
+  var el=document.getElementById("demobar");
+  if(!isDemo()){ if(el&&el.parentNode){el.parentNode.removeChild(el);document.body.style.paddingTop="";} return; }
+  var exp=demoExpired(), dl=demoDaysLeft();
+  var txt = exp
+    ? "VERSION DÉMO — période d'essai expirée. Exports, OCR et création de dossiers désactivés. Contactez le cabinet pour la version complète."
+    : "VERSION DÉMO — "+demoDossierCount()+"/"+LIC.maxDossiers+" dossiers · "+(dl!=null?(dl+" jour"+(dl>1?"s":"")+" restant"+(dl>1?"s":"")):"essai")+" · OCR "+_ocrCount+"/"+LIC.ocrMax+" documents";
+  if(!el){ el=document.createElement("div"); el.id="demobar"; document.body.appendChild(el); document.body.style.paddingTop="32px"; }
+  el.setAttribute("style","position:fixed;top:0;left:0;right:0;z-index:99999;background:"+(exp?"#B42318":"#9A7610")+";color:#fff;font:600 12px/1.4 Arial,sans-serif;padding:7px 14px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.2)");
+  el.textContent=txt;
+}
+/* Filigrane sur les classeurs Excel exportés en démo */
+function stampWorkbook(wb){
+  try{
+    if(!wb||!wb.SheetNames||wb.__demo)return; wb.__demo=true;
+    var XU=window.XLSX.utils;
+    var cab=(typeof S!=="undefined"&&S.cabinet&&S.cabinet.nom)?S.cabinet.nom:"FID-INFO-COM";
+    var ws=XU.aoa_to_sheet([
+      ["VERSION DÉMO — "+cab],[""],
+      ["Document généré avec la version d'évaluation du logiciel."],
+      ["NON VALABLE pour un dépôt fiscal ou une remise à un client."],[""],
+      ["Généré le "+new Date().toLocaleString("fr-FR")]
+    ]);
+    ws["!cols"]=[{wch:72}];
+    wb.SheetNames.unshift("⚠ DÉMO");
+    wb.Sheets["⚠ DÉMO"]=ws;
+  }catch(e){}
+}
+/* Interception de window.XLSX dès son chargement (CDN) pour tamponner writeFile */
+(function(){ var _x;
+  try{
+    Object.defineProperty(window,"XLSX",{configurable:true,
+      get:function(){return _x;},
+      set:function(v){ _x=v;
+        if(v&&typeof v.writeFile==="function"&&!v.__demoPatched){
+          var _wf=v.writeFile;
+          v.writeFile=function(wb,fn,o){ if(isDemo()){ stampWorkbook(wb); } return _wf.call(this,wb,fn,o); };
+          v.__demoPatched=true;
+        }
+      }
+    });
+  }catch(e){}
+})();
+/* Filigrane sur les fenêtres d'impression / PDF en démo */
+(function(){
+  var _open=window.open?window.open.bind(window):null; if(!_open)return;
+  var CSS='<style>@media print{body::before{content:"VERSION DÉMO — NON VALABLE";position:fixed;top:42%;left:6%;font:bold 46px Arial;color:rgba(180,35,24,.16);transform:rotate(-28deg);z-index:99999;pointer-events:none}}'
+    +'#demo_wm{position:fixed;top:0;left:0;right:0;background:#9A7610;color:#fff;font:600 11px Arial;text-align:center;padding:5px;z-index:99999}</style>';
+  var DIV='<div id="demo_wm">VERSION DÉMO — document d\'évaluation, non valable pour un dépôt ou une remise client.</div>';
+  window.open=function(url,name,feat){
+    var w=_open(url,name,feat);
+    try{
+      var blank=(!url||url===""||url==="about:blank");
+      if(w&&isDemo()&&blank){
+        var _w=w.document.write.bind(w.document); var first=true;
+        w.document.write=function(html){
+          if(first&&typeof html==="string"){ first=false;
+            html=(/<\/head>/i.test(html))?html.replace(/<\/head>/i,CSS+"</head>"):(CSS+html);
+            html=html.replace(/<body([^>]*)>/i,"<body$1>"+DIV);
+          }
+          return _w(html);
+        };
+      }
+    }catch(e){}
+    return w;
+  };
+})();
+/* ============================================================== */
 const VERSION = "v2026.06d · COMPTA — Tiers : ICE/IF fiabilisés + fusion doublons";  // marqueur de version visible en bas
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog"];
@@ -456,9 +547,11 @@ async function boot(){
     try{
       await loadSDK();
       sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+      (function(){ if(sb&&sb.functions&&!sb.functions.__demoPatched){ var _inv=sb.functions.invoke.bind(sb.functions); sb.functions.invoke=function(n,o){ if(isDemo()&&/^extract-/.test(String(n))){ if(demoExpired())return Promise.reject(new Error("Période d'essai expirée — passez à la version complète.")); if(_ocrCount>=LIC.ocrMax)return Promise.reject(new Error("Limite démo atteinte : "+LIC.ocrMax+" documents. Passez à la version complète.")); _ocrCount++; } return _inv(n,o); }; sb.functions.__demoPatched=true; } })();
       const g=await sb.auth.getSession();session=g.data.session;
       sb.auth.onAuthStateChange(function(_e,s){session=s;});
       if(!session){renderLogin();return;}
+      await loadLicense();
       await pullAll();
     }catch(e){console.warn("Cloud indisponible — mode local",e);syncState="offline";}
   }
@@ -475,6 +568,7 @@ async function doAuth(mode){
     if(r.error){err.style.color="#B42318";err.textContent=r.error.message;return;}
     if(mode==="signup"&&!r.data.session){err.style.color="#9A7610";err.textContent="Compte créé. Confirmez via l'email reçu, puis connectez-vous.";return;}
     session=r.data.session;
+    await loadLicense();
     document.querySelector(".app").style.display="";
     document.getElementById("overlay").innerHTML="";
     await pullAll();render();
@@ -967,6 +1061,7 @@ function _sheetName(tbl,i,used){
 }
 async function exportViewExcel(){
   try{
+    if(demoExpired()){ showErr("Période d'essai expirée — export désactivé. Passez à la version complète."); return; }
     var root=document.querySelector(".main");
     var tables=root?root.querySelectorAll("table"):[];
     if(!tables.length){ showErr("Aucun tableau à exporter dans cette vue — utilisez « PDF » pour l'imprimer."); return; }
@@ -11055,7 +11150,7 @@ function renderModal(){
   else if(S.modal.type==="jur")o.innerHTML=modalJur(S.modal.id);
   else if(S.modal.type==="cedit")o.innerHTML=modalCEdit(S.modal.id);
 }
-function render(){renderNav();renderView();renderModal();}
+function render(){renderNav();renderView();renderModal();demoBanner();}
 
 /* ---------- EVENTS ---------- */
 document.addEventListener("click",e=>{
@@ -11574,6 +11669,7 @@ function submitClient(id){
     hasIR:(g("cf_ir")?g("cf_ir").checked:false),hasTiers:(g("cf_tiers")?g("cf_tiers").checked:false),hasTP:(g("cf_tp")?g("cf_tp").checked:false),hasRAS:(g("cf_ras")?g("cf_ras").checked:false),
     statut:g("cf_statut").value==="—"?"":g("cf_statut").value,comment:g("cf_comment").value.trim()};
   if(id==null){
+    if(isDemo()&&(demoExpired()||demoDossierCount()>=LIC.maxDossiers)){ showErr(demoExpired()?"Période d'essai expirée — création de dossier désactivée. Passez à la version complète.":"Version démo limitée à "+LIC.maxDossiers+" dossiers. Passez à la version complète pour en ajouter davantage."); return; }
     const nid=Date.now();S.custom.push(Object.assign({id:nid},data));save("custom");
     delete S.deleted[nid];save("deleted");S.modal={type:"client",id:nid};
   }else{
