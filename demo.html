@@ -295,11 +295,11 @@ select.ipt{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xm
    Le bouton "Configurer la synchronisation" en bas à gauche
    affiche le guide complet + le code SQL à exécuter.
    ============================================================ */
-const SUPABASE_URL = "";   // DÉMO : cloud désactivé
-const SUPABASE_KEY = "";   // DÉMO : aucune connexion au backend réel
+const SUPABASE_URL = "__URL_PROJET_DEMO__";   // <= COLLEZ ici l'URL de votre projet Supabase DÉMO (PAS la production)
+const SUPABASE_KEY = "__CLE_ANON_DEMO__";      // <= COLLEZ ici la clé anon (publishable) du projet DÉMO
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "DÉMO · données fictives · cloud désactivé";
+const VERSION = "DÉMO — comptes d'essai isolés (données fictives)";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog"];
 const SEED = [{"id":1,"dossier":"ATLAS NEGOCE (DEMO)","forme":"personne morale","tel":"0600000001","honTrim":1000.0,"honBilan":2000.0,"pvDepot":700.0,"reg":"trimestrielle","hasBilan":true,"hasSal":true,"hasDp":false,"statut":"DÉPOSÉ ✓","statutBilan":"DÉPOSÉ ✓","comment":"Société de démonstration"},{"id":2,"dossier":"SOLEIL SERVICES (DEMO)","forme":"personne morale","tel":"0600000002","honTrim":750.0,"honBilan":0,"pvDepot":0,"reg":"trimestrielle","hasBilan":false,"hasSal":true,"hasDp":false,"statut":"EN ATTENTE","statutBilan":"SANS BILAN","comment":""},{"id":3,"dossier":"MAGHREB TECH (DEMO)","forme":"personne morale","tel":"0600000003","honTrim":1500.0,"honBilan":2000.0,"pvDepot":1000.0,"reg":"mensuelle","hasBilan":true,"hasSal":true,"hasDp":true,"statut":"DÉPOSÉ ✓","statutBilan":"À DÉPOSER","comment":"Suivi délai de paiement (démo)"},{"id":4,"dossier":"CAFE CENTRAL (DEMO)","forme":"personne morale","tel":"0600000004","honTrim":500.0,"honBilan":0,"pvDepot":0,"reg":"neant","hasBilan":false,"hasSal":false,"hasDp":false,"statut":"NÉANT","statutBilan":"SANS BILAN","comment":""},{"id":5,"dossier":"ENTREPRENEUR CPU (DEMO)","forme":"cpu","tel":"0600000005","honTrim":0,"honBilan":1000.0,"pvDepot":0,"reg":"trimestrielle","hasBilan":true,"hasSal":false,"hasDp":false,"statut":"DÉPOSÉ ✓","statutBilan":"À DÉPOSER","comment":"CPU (démo)"},{"id":6,"dossier":"PARTICULIER FONCIER (DEMO)","forme":"particulier","tel":"0600000006","honTrim":0,"honBilan":600.0,"pvDepot":0,"reg":"trimestrielle","hasBilan":true,"hasSal":false,"hasDp":false,"statut":"EN ATTENTE","statutBilan":"À DÉPOSER","comment":"Revenu foncier (démo)"},{"id":7,"dossier":"PROMO IMMO (DEMO)","forme":"personne morale","tel":"0600000007","honTrim":2000.0,"honBilan":3000.0,"pvDepot":700.0,"reg":"trimestrielle","hasBilan":true,"hasSal":true,"hasDp":false,"statut":"DÉPOSÉ ✓","statutBilan":"DÉPOSÉ ✓","comment":""},{"id":8,"dossier":"CABINET EXONERE (DEMO)","forme":"personne morale","tel":"0600000008","honTrim":0,"honBilan":0,"pvDepot":0,"reg":"neant","hasBilan":false,"hasSal":false,"hasDp":false,"statut":"EXONÉRÉ","statutBilan":"N/A","comment":"hors champ (démo)"}];
@@ -433,7 +433,7 @@ async function pullAll(){
   const res=await sb.from("app_data").select("k,v").eq("user_id",session.user.id);
   if(res.error)throw res.error;
   const data=res.data||[];
-  if(!data.length){KEYS.forEach(function(k){cloudUpsert(k,S[k]);});}
+  if(!data.length){/* DÉMO: nouveau compte d'essai -> pré-remplissage de données fictives isolées */try{S.liasse=S.liasse||{};S.liasse["2026|1"]={balText:"1111\tCapital social\t0\t500000\n1140\tRéserve légale\t0\t20000\n1191\tReport à nouveau (SC)\t0\t30000\n2332\tConstructions\t400000\t0\n2340\tMatériel de transport\t200000\t0\n2351\tMobilier de bureau\t60000\t0\n2832\tAmortissements des constructions\t0\t80000\n2834\tAmortissements matériel de transport\t0\t70000\n3421\tClients\t350000\t0\n3455\tÉtat - TVA récupérable\t25000\t0\n4411\tFournisseurs\t0\t180000\n4432\tRémunérations dues au personnel\t0\t40000\n4441\tCNSS\t0\t15000\n4455\tÉtat - TVA facturée\t0\t60000\n5141\tBanque\t368000\t0\n5161\tCaisse\t30000\t0\n6111\tAchats de marchandises\t900000\t0\n6121\tAchats de matières et fournitures\t120000\t0\n6131\tLocations et charges locatives\t90000\t0\n6171\tRémunérations du personnel\t360000\t0\n6174\tCharges sociales\t80000\t0\n6311\tIntérêts des emprunts\t12000\t0\n7111\tVentes de marchandises\t0\t1800000\n7124\tVentes de biens et services produits\t0\t200000",rc:"438000",ca:"2000000",pf:"",subv:"",deficit:"",reint:[{lib:"",mt:""}],deduc:[{lib:"",mt:""}],tauxIS:"20",tauxCM:"0.25",exoCM:false,acomptesIS:"",immo:[],prov:[]};S.flags=S.flags||{};S.flags[1]=Object.assign({},S.flags[1],{societe:{rs:"ATLAS NEGOCE (DEMO)",ice:"001234567000089",if:"12345678",formeJur:"SARL"}});}catch(e){}KEYS.forEach(function(k){cloudUpsert(k,S[k]);});}
   else{var m={};data.forEach(function(r){m[r.k]=r.v;});KEYS.forEach(function(k){if(m[k]!=null)S[k]=m[k];});KEYS.forEach(function(k){try{localStorage.setItem(LS[k],JSON.stringify(S[k]))}catch(e){}});}
   ensureYears();setSync("synced");subscribeRealtime();
 }
@@ -11593,7 +11593,6 @@ function submitJur(id){
   S.modal=null;S.jurForm=null;render();
 }
 
-try{ if(!S.liasse || !Object.keys(S.liasse).length){ S.liasse=S.liasse||{};S.liasse["2026|1"]={balText:"1111\tCapital social\t0\t500000\n1140\tRéserve légale\t0\t20000\n1191\tReport à nouveau (SC)\t0\t30000\n2332\tConstructions\t400000\t0\n2340\tMatériel de transport\t200000\t0\n2351\tMobilier de bureau\t60000\t0\n2832\tAmortissements des constructions\t0\t80000\n2834\tAmortissements matériel de transport\t0\t70000\n3421\tClients\t350000\t0\n3455\tÉtat - TVA récupérable\t25000\t0\n4411\tFournisseurs\t0\t180000\n4432\tRémunérations dues au personnel\t0\t40000\n4441\tCNSS\t0\t15000\n4455\tÉtat - TVA facturée\t0\t60000\n5141\tBanque\t368000\t0\n5161\tCaisse\t30000\t0\n6111\tAchats de marchandises\t900000\t0\n6121\tAchats de matières et fournitures\t120000\t0\n6131\tLocations et charges locatives\t90000\t0\n6171\tRémunérations du personnel\t360000\t0\n6174\tCharges sociales\t80000\t0\n6311\tIntérêts des emprunts\t12000\t0\n7111\tVentes de marchandises\t0\t1800000\n7124\tVentes de biens et services produits\t0\t200000",rc:"438000",ca:"2000000",pf:"",subv:"",deficit:"",reint:[{lib:"",mt:""}],deduc:[{lib:"",mt:""}],tauxIS:"20",tauxCM:"0.25",exoCM:false,acomptesIS:"",immo:[],prov:[]};S.flags=S.flags||{}; S.flags[1]=Object.assign({},S.flags[1],{societe:{rs:"ATLAS NEGOCE (DEMO)",ice:"001234567000089",if:"12345678",formeJur:"SARL"}});try{localStorage.setItem(LS.liasse,JSON.stringify(S.liasse));}catch(e){}try{localStorage.setItem(LS.flags,JSON.stringify(S.flags));}catch(e){}} }catch(e){}
 boot();
 
 /* ---- AFFICHAGE DES ERREURS (diagnostic navigateur) ---- */
@@ -12125,14 +12124,18 @@ else init();
 
 </script>
 <style>
-#demoRibbon{position:fixed;z-index:99999;left:50%;transform:translateX(-50%);bottom:14px;background:#0a5f4a;color:#fff;padding:8px 16px;border-radius:999px;font:600 12px/1.2 system-ui,-apple-system,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.28);display:flex;gap:12px;align-items:center}
+#demoRibbon{position:fixed;z-index:99999;left:50%;transform:translateX(-50%);bottom:14px;background:#0a5f4a;color:#fff;padding:8px 16px;border-radius:999px;font:600 12px/1.2 system-ui,-apple-system,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.28);display:flex;gap:10px;align-items:center}
 #demoRibbon b{font-weight:700;letter-spacing:.3px}
-#demoRibbon button{background:rgba(255,255,255,.2);color:#fff;border:0;border-radius:999px;padding:5px 11px;font:600 11px system-ui;cursor:pointer}
-#demoRibbon button:hover{background:rgba(255,255,255,.32)}
+#demoRibbon .sep{opacity:.45}
 </style>
-<div id="demoRibbon"><span>● <b>DÉMONSTRATION</b> — données fictives, hors ligne</span><button onclick="demoReset()">Réinitialiser</button></div>
+<div id="demoRibbon"><span>\u25CF <b>ESSAI GRATUIT</b> \u2014 compte isol\u00E9</span><span class="sep">\u00B7</span><span id="demoDaysLeft">21 jours</span></div>
 <script>
-function demoReset(){try{Object.keys(localStorage).forEach(function(k){if(k.indexOf("fiddemo_")===0)localStorage.removeItem(k);});}catch(e){}location.reload();}
+/* Essai limit\u00E9 \u00E0 21 jours, compt\u00E9 depuis la cr\u00E9ation du compte (date Supabase). */
+(function(){var TRIAL_DAYS=21;
+function left(){try{if(typeof session==="undefined"||!session||!session.user||!session.user.created_at)return null;var u=(Date.now()-new Date(session.user.created_at).getTime())/86400000;return Math.ceil(TRIAL_DAYS-u);}catch(e){return null;}}
+function showExpired(){if(document.getElementById("demoExpired"))return;var d=document.createElement("div");d.id="demoExpired";d.style.cssText="position:fixed;inset:0;z-index:100000;background:rgba(8,20,16,.97);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-family:system-ui,sans-serif;padding:24px";d.innerHTML="<div style='max-width:460px'><div style='font-size:44px;margin-bottom:8px'>\u23F3</div><h2 style='margin:0 0 10px'>Votre essai gratuit de 21\u00A0jours est termin\u00E9</h2><p style='opacity:.85;line-height:1.5'>Merci d\u2019avoir test\u00E9 le logiciel. Pour activer votre cabinet et conserver vos donn\u00E9es, souscrivez un abonnement.</p><p style='margin-top:16px'><a href='mailto:CONTACT@EXEMPLE.MA?subject=Abonnement' style='background:#10a37f;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;display:inline-block;font-weight:600'>Demander l\u2019abonnement</a></p></div>";document.body.appendChild(d);}
+function tick(){var l=left();var s=document.getElementById("demoDaysLeft");if(s)s.textContent=(l===null)?"21 jours":(l>0?(l+"\u00A0j restant"+(l>1?"s":"")):"essai expir\u00E9");if(l!==null&&l<=0)showExpired();}
+setInterval(tick,4000);setTimeout(tick,1500);})();
 </script>
 </body>
 </html>
