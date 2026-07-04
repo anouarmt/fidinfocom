@@ -10134,11 +10134,11 @@ function vFac(){if(S.facDraft)return header("Facturation","STE FIDUCIAIRE FID IN
 
 
 // Libellés courts des modules (utilisés dans la barre de sous-onglets d'un volet).
-const TAB_LABELS={dash:"Tableau de bord",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
+const TAB_LABELS={dash:"Tableau de bord",sante:"Santé des dossiers",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
 // Volets de navigation : chaque volet regroupe des modules qui se ressemblent.
 // Pour déplacer un module d'un volet à l'autre, change simplement sa place dans "tabs".
 const GROUPS=[
-  {id:"g_dash",label:"Tableau de bord",icon:"dash",tabs:["dash"]},
+  {id:"g_dash",label:"Tableau de bord",icon:"dash",tabs:["dash","sante"]},
   {id:"g_pilotage",label:"Pilotage",icon:"scale",tabs:["analyse"]},
   {id:"g_compta",label:"Comptabilité",icon:"book",tabs:["compta","controle"]},
   {id:"g_fiscal",label:"Fiscal",icon:"bank",tabs:["tva","liasse","ech","teledec"]},
@@ -11273,12 +11273,82 @@ function vControle(){
 }
 
 
+/* ============================================================
+   SANTÉ DES DOSSIERS — vue d'ensemble multi-dossiers
+   Réutilise buildDeadlines/urgency (échéances), ctrlAnalyze
+   (justif/à valider/incohérences) et expectedFor/collFor (honoraires).
+   ============================================================ */
+function santeNextEch(c){
+  var dls=buildDeadlines(c),best=null;
+  dls.forEach(function(dl){
+    if(S.done[dl.key])return;                     // déjà déposé -> ignoré
+    var u=urgency(dl,false);
+    if(best===null || (u.j!=null && best.u.j!=null && u.j<best.u.j)) best={dl:dl,u:u};
+  });
+  return best;
+}
+function santeRow(c){
+  var r=ctrlAnalyze(c.id);
+  var just=r.just.filter(function(x){return x.tag==="reclamer"||x.tag==="corriger";});
+  var justMt=just.reduce(function(a,x){return a+x.montant;},0);
+  var honReste=Math.max(0,expectedFor(c)-collFor(c));
+  var e=santeNextEch(c);
+  var echCell,echSort;
+  if(e){
+    var jtxt=(e.u.j<0?Math.abs(e.u.j)+"j de retard":(e.u.j===0?"aujourd'hui":"dans "+e.u.j+"j"));
+    echCell='<div><div style="font-weight:600;font-size:12.5px">'+esc(e.dl.label)+'</div>'
+      +'<div style="font-size:11px;color:'+e.u.color+';font-weight:600">'+e.u.dot+' '+jtxt+'</div></div>';
+    echSort=e.u.j;
+  }else{
+    echCell='<div style="font-size:12px;color:var(--faint)">à configurer</div>';
+    echSort=99999;
+  }
+  var nProb=just.length+r.val.length+r.inc.length;
+  function cell(n,mt,col){ return n?('<span style="font-weight:700;color:'+col+'">'+n+'</span>'+(mt?'<div style="font-size:10.5px;color:var(--faint)">'+fmtDH(mt)+'</div>':'')):'<span style="color:#cfccc2">—</span>'; }
+  var html='<div class="srow" onclick="santeOpen('+c.id+')" style="display:grid;grid-template-columns:1.6fr 1.5fr .8fr .8fr .8fr 1fr;gap:10px;padding:12px 20px;border-bottom:1px solid var(--line-soft);cursor:pointer;align-items:center">'
+    +'<div style="font-weight:600;min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.dossier)+'</div>'
+      +(nProb===0?'<div style="font-size:11px;color:var(--emerald)">✓ rien à traiter</div>':'')+'</div>'
+    +echCell
+    +'<div>'+cell(just.length,justMt,"#B42318")+'</div>'
+    +'<div>'+cell(r.val.length,0,"#B5530A")+'</div>'
+    +'<div>'+cell(r.inc.length,0,"#5C6B66")+'</div>'
+    +'<div>'+(honReste>0?'<span style="font-weight:600;color:#B5530A;font-size:12px">'+fmtDH(honReste)+'</span>':'<span style="color:#cfccc2">—</span>')+'</div>'
+    +'</div>';
+  return {html:html,echSort:echSort,nProb:nProb,honReste:honReste,name:c.dossier};
+}
+function santeOpen(cid){ S.curClient=+cid; S.tab="controle"; try{if(typeof volet==="function")volet("controle");}catch(e){} render(); }
+function vSante(){
+  var cs=clients();
+  if(!cs.length) return '<div class="wrap"><div class="head"><div><h2>Santé des dossiers</h2></div></div><div class="card" style="padding:34px;text-align:center;color:var(--muted)">Aucun dossier pour l\'instant.</div></div>';
+  var rows=cs.map(santeRow);
+  var sortMode=S.santeSort||"ech";
+  rows.sort(function(a,b){
+    if(sortMode==="prob")return b.nProb-a.nProb || a.echSort-b.echSort;
+    if(sortMode==="alpha")return a.name.localeCompare(b.name);
+    if(sortMode==="hon")return b.honReste-a.honReste;
+    return a.echSort-b.echSort;      // défaut : échéance la plus proche
+  });
+  var totProb=rows.reduce(function(a,r){return a+r.nProb;},0);
+  var nOk=rows.filter(function(r){return r.nProb===0;}).length;
+  var seg=function(v,lbl){return '<button class="chip" data-act="santesort" data-v="'+v+'" style="border:0;'+(sortMode===v?"background:#14201C;color:#fff":"background:transparent")+'">'+lbl+'</button>';};
+  var head='<div class="wrap"><div class="head" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">'
+    +'<div><h2>Santé des dossiers</h2><p>'+cs.length+' dossiers · '+totProb+' point(s) à traiter · '+nOk+' dossier(s) à jour. Cliquez une ligne pour l\'ouvrir.</p></div>'
+    +'<div style="display:inline-flex;gap:6px;background:#EDEAE0;border-radius:10px;padding:3px;flex-wrap:wrap">'
+      +seg("ech","Échéance proche")+seg("prob","Plus de problèmes")+seg("hon","Honoraires dus")+seg("alpha","A→Z")
+    +'</div></div>';
+  var cols='1.6fr 1.5fr .8fr .8fr .8fr 1fr';
+  var table='<div class="card" style="margin-top:16px"><div class="thead" style="display:grid;grid-template-columns:'+cols+';gap:10px">'
+    +'<div>DOSSIER</div><div>PROCHAINE ÉCHÉANCE</div><div>JUSTIF. MANQ.</div><div>À VALIDER</div><div>INCOHÉR.</div><div>HON. DUS</div></div>'
+    +'<div class="scroll">'+rows.map(function(r){return r.html;}).join("")+'</div></div>';
+  return head+table+'</div>';
+}
+
 function renderView(){
   if(S.tab==="sal")S.tab="paie";   // ancien module Salaires 9421 fusionné dans Paie
   if(S.tab==="emprunts"){S.tab="compta";S.comptaView="emprunts";}   // module Emprunts intégré dans la Comptabilité
   try{if(S.curClient!=null)localStorage.setItem("fid_curclient",String(S.curClient));}catch(e){}
   try{localStorage.setItem("fid_ui",JSON.stringify({tab:S.tab,year:S.year,comptaView:S.comptaView,liasseView:S.liasseView,paieView:S.paieView,tvaPeriod:(S.tvaSel||{}).period||null}));}catch(e){}
-  const vmap={dash:vDash,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,controle:vControle,jur:vJur,delais:vDelais,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse};
+  const vmap={dash:vDash,sante:vSante,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,controle:vControle,jur:vJur,delais:vDelais,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse};
   if(typeof vmap[S.tab]!=="function")S.tab="dash";   // onglet restauré inconnu -> retour sûr au tableau de bord
   const v=vmap[S.tab]();
   document.getElementById("view").innerHTML=voletToggle()+v;
@@ -11388,6 +11458,7 @@ document.addEventListener("click",e=>{
   else if(a==="volet"){var g=GROUPS.find(function(x){return x.id===t.dataset.g;});if(g){S.tab=(S.voletLast&&S.voletLast[g.id])||g.tabs[0];S.modal=null;render();}}
   else if(a==="print_view"){printView();}
   else if(a==="export_view_excel"){exportViewExcel();}
+  else if(a==="santesort"){S.santeSort=t.dataset.v;renderView();}
   else if(a==="echurg"){S.echUrg=t.dataset.v;document.getElementById("echlist").innerHTML=echRows();renderView();}
   else if(a==="echcat"){S.echCat=t.dataset.v;renderView();}
   else if(a==="echmois"){S.echMois=t.dataset.v;renderView();}
