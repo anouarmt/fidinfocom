@@ -11075,6 +11075,31 @@ function ctrlRelance(cid,canal){
   ctrlLog(cid,canal,m);renderView();
 }
 
+async function ctrlDepose(cid,mid){
+  if(typeof sb==="undefined"||!sb||!session){showErr("Connectez-vous (cloud) pour déposer un justificatif.");return;}
+  var inp=document.getElementById("ctrl_file");if(!inp)return;
+  var g=comptaGet(cid),before={};
+  g.pieces.forEach(function(p){before[String(p.id)]=1;});
+  inp.onchange=async function(){
+    var files=inp.files;if(!files||!files.length){return;}
+    try{ await comptaUpload("achat",files); }
+    catch(e){ inp.value="";showErr("Import impossible : "+(e.message||e));return; }
+    inp.value="";
+    var g2=comptaGet(cid);
+    var added=g2.pieces.filter(function(p){return !before[String(p.id)];});
+    S.controle=S.controle||{};S.controle[String(cid)]=S.controle[String(cid)]||{};
+    var prev=S.controle[String(cid)][mid]||{};
+    prev.tag="justifie";
+    prev.note=added.length?("Justif : "+(added[0].fournisseur||added[0].numero||added[0].name||"pièce")):"Justificatif déposé";
+    prev.pieceId=added.length?added[0].id:null;
+    prev.ts=Date.now();
+    S.controle[String(cid)][mid]=prev;
+    save("controle");renderView();
+    showOk(added.length?("Justificatif déposé, OCR lu et écriture générée. Montant marqué « justifié » — à revoir dans Comptabilité si besoin."):"Fichier importé.");
+  };
+  inp.click();
+}
+
 function vControle(){
   var cid=S.curClient;
   var cl=cid!=null?clients().find(function(c){return String(c.id)===String(cid);}):null;
@@ -11106,6 +11131,7 @@ function vControle(){
           +'<option value="ignore"'+(x.tag==="ignore"?" selected":"")+'>Ignorer</option>'
         +'</select>'
         +'<input type="text" value="'+esc(x.note||"")+'" placeholder="Note (ex. loyer mars, \u00e0 demander\u2026)" oninput="ctrlSetNote('+cid+',\''+esc(x.id)+'\',this.value,false)" onchange="ctrlSetNote('+cid+',\''+esc(x.id)+'\',this.value,true)" style="flex:1;min-width:160px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:12.5px">'
+        +'<button class="chip" onclick="ctrlDepose('+cid+',\''+esc(x.id)+'\')" title="D\u00e9poser la facture : OCR + \u00e9criture automatiques" style="white-space:nowrap;border:1px solid var(--emerald);color:var(--emerald);font-weight:600">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' D\u00e9poser le justificatif</button>'
       +'</div></div>';
   }
 
@@ -11118,7 +11144,8 @@ function vControle(){
     +'</div>';
 
   html+='<div style="margin-top:26px"><div class="sectit" style="margin-bottom:4px">Montants sans justificatif</div>'
-    +'<p style="font-size:12.5px;color:var(--muted);margin-bottom:14px;max-width:640px">Choisissez pour chacun : vous avez la pi\u00e8ce, vous la r\u00e9clamez, ou c\'est une erreur. Enregistr\u00e9 automatiquement.</p>';
+    +'<p style="font-size:12.5px;color:var(--muted);margin-bottom:14px;max-width:640px">Choisissez pour chacun : vous avez la pi\u00e8ce, vous la r\u00e9clamez, ou c\'est une erreur. Ou d\u00e9posez directement le justificatif \u2014 l\'OCR le lit et g\u00e9n\u00e8re l\'\u00e9criture. Enregistr\u00e9 automatiquement.</p>'
+    +'<input type="file" id="ctrl_file" accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none">';
   html+= r.just.length? r.just.map(itemJust).join("") : '<div class="empty" style="padding:20px">Aucun mouvement bancaire sans justificatif. Tout est rattach\u00e9.</div>';
   html+='</div>';
 
