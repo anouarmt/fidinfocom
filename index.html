@@ -11075,6 +11075,22 @@ function ctrlRelance(cid,canal){
   ctrlLog(cid,canal,m);renderView();
 }
 
+function ctrlLettrer(cid,mid,newEcrId){
+  var g=comptaGet(cid);
+  var eB=(g.ecritures||[]).find(function(e){return e.id===mid;});
+  var eF=(g.ecritures||[]).find(function(e){return e.id===newEcrId;});
+  if(!eB||!eF)return {ok:false,reason:"\u00e9criture introuvable"};
+  var bi=-1,bAcc="",bAmt=0;
+  (eB.lignes||[]).forEach(function(l,i){ if(bi<0&&(ctrlIsFournisseur(l.compte)||ctrlIsClient(l.compte))){bi=i;bAcc=l.compte;bAmt=Math.abs((+l.debit||0)-(+l.credit||0));} });
+  var fi=-1,fAcc="",fAmt=0;
+  (eF.lignes||[]).forEach(function(l,i){ if(ctrlIsFournisseur(l.compte)||ctrlIsClient(l.compte)){fi=i;fAcc=l.compte;fAmt=Math.abs((+l.credit||0)-(+l.debit||0));} });
+  if(bi<0||fi<0)return {ok:false,reason:"pas de ligne tiers \u00e0 rapprocher"};
+  if(comptaCanon(bAcc)!==comptaCanon(fAcc))return {ok:false,reason:"comptes diff\u00e9rents ("+bAcc+" vs "+fAcc+")"};
+  if(Math.abs(bAmt-fAmt)>0.01)return {ok:false,reason:"montants diff\u00e9rents ("+fmtDH(bAmt)+" vs "+fmtDH(fAmt)+")"};
+  var code=lettrerSelection(cid,[movKey(mid,bi),movKey(newEcrId,fi)]);
+  return {ok:true,code:code};
+}
+
 async function ctrlDepose(cid,mid){
   if(typeof sb==="undefined"||!sb||!session){showErr("Connectez-vous (cloud) pour déposer un justificatif.");return;}
   var inp=document.getElementById("ctrl_file");if(!inp)return;
@@ -11093,9 +11109,15 @@ async function ctrlDepose(cid,mid){
     prev.note=added.length?("Justif : "+(added[0].fournisseur||added[0].numero||added[0].name||"pièce")):"Justificatif déposé";
     prev.pieceId=added.length?added[0].id:null;
     prev.ts=Date.now();
+    var letMsg="";
+    if(added.length){
+      var lr=ctrlLettrer(cid,mid,"AP_"+added[0].id);
+      if(lr.ok){ prev.lettre=lr.code; letMsg=" Rapprochement automatique effectué (lettre "+lr.code+")."; }
+      else { letMsg=" Rapprochement auto impossible : "+lr.reason+" — à lettrer dans Comptabilité."; }
+    }
     S.controle[String(cid)][mid]=prev;
     save("controle");renderView();
-    showOk(added.length?("Justificatif déposé, OCR lu et écriture générée. Montant marqué « justifié » — à revoir dans Comptabilité si besoin."):"Fichier importé.");
+    showOk(added.length?("Justificatif déposé, OCR lu et écriture générée."+letMsg):"Fichier importé.");
   };
   inp.click();
 }
