@@ -11091,6 +11091,67 @@ function ctrlLettrer(cid,mid,newEcrId){
   return {ok:true,code:code};
 }
 
+/* ---- Affectation d'un compte (justificatifs sans facture : loyer, CNSS, salaire, impôts…) ---- */
+function ctrlIdSafe(s){return String(s).replace(/[^A-Za-z0-9_]/g,"_");}
+function ctrlAcctByCode(code){for(var i=0;i<PLAN_CGNC.length;i++){if(PLAN_CGNC[i][0]===code)return PLAN_CGNC[i];}return null;}
+var CTRL_SYN={loyer:"location charges locatives",bail:"location",cnss:"charges sociales",amo:"charges sociales",mutuelle:"charges sociales",salaire:"remunerations personnel salaire",salaires:"remunerations personnel",paie:"remunerations personnel",smig:"remunerations personnel",ir:"etat impots taxes salaires",tva:"etat tva",is:"impots resultat",patente:"impots taxes",taxe:"impots taxes",eau:"eau electricite energie",electricite:"eau electricite energie",elec:"eau electricite energie",redal:"eau electricite energie",lydec:"eau electricite energie",onee:"eau electricite energie",tel:"telecom telephone",telephone:"telecom",iam:"telecom",inwi:"telecom",orange:"telecom",internet:"telecom",assurance:"primes assurances",honoraires:"honoraires remunerations intermediaires",avocat:"honoraires",banque:"services bancaires frais",agios:"services bancaires",commission:"services bancaires",carburant:"carburant transport deplacements",gasoil:"carburant",transport:"transport deplacements",fournitures:"fournitures bureau",bureau:"fournitures bureau",publicite:"publicite annonces cadeaux",entretien:"entretien reparations",reparation:"entretien reparations",amortissement:"dotations amortissements",interet:"charges interets",interets:"charges interets"};
+function ctrlAcctSearch(q,limit){
+  q=(q||"").trim(); if(q.length<2)return [];
+  var digits=q.replace(/\D/g,"");
+  var nq=ctrlNorm(q),syn=CTRL_SYN[nq]||"";
+  var words=(nq+" "+syn).split(" ").filter(function(w){return w.length>=2;});
+  var res=[];
+  for(var i=0;i<PLAN_CGNC.length;i++){
+    var code=PLAN_CGNC[i][0],lib=PLAN_CGNC[i][1],nl=ctrlNorm(lib),sc=0;
+    if(digits.length>=2&&code.indexOf(digits)===0)sc+=100;
+    for(var w=0;w<words.length;w++){var ww=words[w];if((" "+nl+" ").indexOf(" "+ww)>=0)sc+=8;else if(nl.indexOf(ww)>=0)sc+=4;}
+    if(sc>0)res.push([sc,code,lib]);
+  }
+  res.sort(function(a,b){return b[0]-a[0]||a[1].localeCompare(b[1]);});
+  return res.slice(0,limit||8);
+}
+function ctrlAcctInput(inp,sid){
+  var box=document.getElementById("ctrlsug_"+sid);if(!box)return;
+  var list=ctrlAcctSearch(inp.value,8);
+  if(!list.length){box.style.display="none";box.innerHTML="";return;}
+  box.innerHTML=list.map(function(a){return '<div onclick="ctrlAcctSet(\''+sid+'\',\''+a[1]+'\')" style="padding:8px 11px;cursor:pointer;border-bottom:1px solid var(--line-soft);font-size:12.5px"><span class="mono" style="color:var(--emerald);font-weight:700">'+a[1]+'</span> \u2014 '+esc(a[2])+'</div>';}).join("");
+  box.style.display="block";
+}
+function ctrlAcctSet(sid,code){
+  var a=ctrlAcctByCode(code),inp=document.getElementById("ctrlin_"+sid);
+  if(inp)inp.value=code+" \u2014 "+(a?a[1]:"");
+  var box=document.getElementById("ctrlsug_"+sid);if(box){box.style.display="none";box.innerHTML="";}
+}
+function ctrlMarkJustif(cid,mid,code,lib,note){
+  S.controle=S.controle||{};S.controle[String(cid)]=S.controle[String(cid)]||{};
+  var prev=S.controle[String(cid)][mid]||{};
+  prev.tag="justifie";prev.compte=code;prev.comptelib=lib;prev.note=note;prev.ts=Date.now();
+  S.controle[String(cid)][mid]=prev;save("controle");renderView();
+}
+function ctrlAffecter(cid,mid){
+  var sid=ctrlIdSafe(mid),inp=document.getElementById("ctrlin_"+sid);
+  var val=inp?(inp.value||"").trim():"";
+  var mm=val.match(/(\d{4,10})/);
+  if(!mm){showErr("Choisissez un compte : tapez la nature (ex. \u00ab loyer \u00bb) puis cliquez une proposition.");return;}
+  var code=mm[1],acc=ctrlAcctByCode(code);
+  if(!acc){showErr("Compte "+code+" introuvable dans le plan comptable.");return;}
+  var g=comptaGet(cid),e=(g.ecritures||[]).find(function(x){return x.id===mid;});
+  if(!e){showErr("\u00c9criture introuvable.");return;}
+  var mont=ctrlEcrM(e),idx=-1,best=1e9;
+  (e.lignes||[]).forEach(function(l,i){
+    if(ctrlIsFournisseur(l.compte)||ctrlIsClient(l.compte)||ctrlIsAttente(l.compte)){
+      var amt=Math.max(Math.abs(+l.debit||0),Math.abs(+l.credit||0)),d=Math.abs(amt-mont);
+      if(d<best){best=d;idx=i;}
+    }
+  });
+  if(idx<0){ctrlMarkJustif(cid,mid,code,acc[1],"Compte not\u00e9 : "+acc[1]+" (\u00e0 ventiler)");showOk("Compte not\u00e9. Pas de contrepartie \u00e0 r\u00e9affecter automatiquement \u2014 \u00e0 ventiler dans Comptabilit\u00e9.");return;}
+  var old=e.lignes[idx].compte;
+  e.lignes[idx].compte=code;
+  save("compta");
+  ctrlMarkJustif(cid,mid,code,acc[1],"Affect\u00e9 \u00e0 "+code+" "+acc[1]+" (\u00e9tait "+old+")");
+  showOk("Compte affect\u00e9 : "+code+" \u2014 "+acc[1]+". \u00c9criture mise \u00e0 jour, montant justifi\u00e9.");
+}
+
 async function ctrlDepose(cid,mid){
   if(typeof sb==="undefined"||!sb||!session){showErr("Connectez-vous (cloud) pour déposer un justificatif.");return;}
   var inp=document.getElementById("ctrl_file");if(!inp)return;
@@ -11139,6 +11200,7 @@ function vControle(){
     var tagBorder=x.tag==="justifie"?"#cfe6dc":(x.tag==="corriger"?"#ecc7bf":"var(--line)");
     var tagBg=x.tag==="justifie"?"#FAFDFB":(x.tag==="corriger"?"#FEFBF9":"#fff");
     var op=x.tag==="ignore"?"opacity:.5;":"";
+    var sid=ctrlIdSafe(x.id);
     return '<div class="card" style="padding:14px 16px;margin-bottom:10px;border-color:'+tagBorder+';background:'+tagBg+';'+op+'">'
       +'<div style="display:flex;justify-content:space-between;gap:14px;align-items:baseline;flex-wrap:wrap">'
         +'<div style="flex:1;min-width:180px"><div style="font-weight:600;color:#26241f">'+esc(x.lib)+'</div>'
@@ -11154,7 +11216,7 @@ function vControle(){
         +'</select>'
         +'<input type="text" value="'+esc(x.note||"")+'" placeholder="Note (ex. loyer mars, \u00e0 demander\u2026)" oninput="ctrlSetNote('+cid+',\''+esc(x.id)+'\',this.value,false)" onchange="ctrlSetNote('+cid+',\''+esc(x.id)+'\',this.value,true)" style="flex:1;min-width:160px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:12.5px">'
         +'<button class="chip" onclick="ctrlDepose('+cid+',\''+esc(x.id)+'\')" title="D\u00e9poser la facture : OCR + \u00e9criture automatiques" style="white-space:nowrap;border:1px solid var(--emerald);color:var(--emerald);font-weight:600">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' D\u00e9poser le justificatif</button>'
-      +'</div></div>';
+      +'</div>'+'<div style="display:flex;gap:9px;align-items:flex-start;margin-top:9px;flex-wrap:wrap">'+'<div style="flex:1;min-width:210px;position:relative">'+'<input type="text" id="ctrlin_'+sid+'" autocomplete="off" placeholder="Sans facture ? Nature : loyer, cnss, salaire, is\u2026" oninput="ctrlAcctInput(this,\''+sid+'\')" style="width:100%;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:12.5px">'+'<div id="ctrlsug_'+sid+'" style="position:absolute;left:0;right:0;top:38px;z-index:30;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(20,32,28,.12);max-height:240px;overflow:auto;display:none"></div>'+'</div>'+'<button class="chip" onclick="ctrlAffecter('+cid+',\''+esc(x.id)+'\')" style="white-space:nowrap;background:var(--ink);color:#fff;border:0;font-weight:600">Affecter le compte</button>'+'</div>'+'</div>';
   }
 
   var html='<div class="wrap">'
