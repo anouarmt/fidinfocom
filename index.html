@@ -10134,7 +10134,7 @@ function vFac(){if(S.facDraft)return header("Facturation","STE FIDUCIAIRE FID IN
 
 
 // Libellés courts des modules (utilisés dans la barre de sous-onglets d'un volet).
-const TAB_LABELS={dash:"Tableau de bord",sante:"Santé des dossiers",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
+const TAB_LABELS={dash:"Tableau de bord",sante:"Santé des dossiers",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",relances:"Relances groupées",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
 // Volets de navigation : chaque volet regroupe des modules qui se ressemblent.
 // Pour déplacer un module d'un volet à l'autre, change simplement sa place dans "tabs".
 const GROUPS=[
@@ -10144,7 +10144,7 @@ const GROUPS=[
   {id:"g_fiscal",label:"Fiscal",icon:"bank",tabs:["tva","liasse","ech","teledec"]},
   {id:"g_paie",label:"Paie · Social",icon:"users",tabs:["paie"]},
   {id:"g_fac",label:"Facturation",icon:"receipt",tabs:["fac","hon"]},
-  {id:"g_clients",label:"Clients",icon:"user",tabs:["cli","portal","delais"]},
+  {id:"g_clients",label:"Clients",icon:"user",tabs:["cli","portal","delais","relances"]},
   {id:"g_cabinet",label:"Cabinet",icon:"folder",tabs:["team","docs","jur"]}
 ];
 function groupOf(tab){return GROUPS.find(function(g){return g.tabs.indexOf(tab)>=0;})||GROUPS[0];}
@@ -11334,7 +11334,7 @@ function vSante(){
   var head='<div class="wrap"><div class="head" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">'
     +'<div><h2>Santé des dossiers</h2><p>'+cs.length+' dossiers · '+totProb+' point(s) à traiter · '+nOk+' dossier(s) à jour. Cliquez une ligne pour l\'ouvrir.</p></div>'
     +'<div style="display:inline-flex;gap:6px;background:#EDEAE0;border-radius:10px;padding:3px;flex-wrap:wrap">'
-      +seg("ech","Échéance proche")+seg("prob","Plus de problèmes")+seg("hon","Honoraires dus")+seg("alpha","A→Z")
+      +'<button class="btn-primary" onclick="relOpen()" style="margin-right:8px;background:#25D366">'+ic("whatsapp","width:15px;height:15px")+' Relances group\u00e9es</button>'+seg("ech","Échéance proche")+seg("prob","Plus de problèmes")+seg("hon","Honoraires dus")+seg("alpha","A→Z")
     +'</div></div>';
   var cols='1.6fr 1.5fr .8fr .8fr .8fr 1fr';
   var table='<div class="card" style="margin-top:16px"><div class="thead" style="display:grid;grid-template-columns:'+cols+';gap:10px">'
@@ -11343,12 +11343,98 @@ function vSante(){
   return head+table+'</div>';
 }
 
+/* ============================================================
+   RELANCES GROUPÉES — parcourt tous les dossiers, prépare une file
+   WhatsApp (un client à la fois) + une liste e-mail de secours.
+   Réutilise ctrlBuildMsg (message), waNumbers (numéros), relancelog.
+   ============================================================ */
+function relCandidates(){
+  return clients().map(function(c){
+    var m=ctrlBuildMsg(c.id);                       // {nom,items,txt} ou null (rien à réclamer)
+    if(!m)return null;
+    var nums=waNumbers(c.tel||"");
+    var email=((S.flags[c.id]||{}).societe||{}).email||"";
+    return {cid:c.id,nom:c.dossier,nb:m.items.length,montant:m.items.reduce(function(a,x){return a+x.montant;},0),txt:m.txt,num:nums[0]||"",email:email};
+  }).filter(Boolean).sort(function(a,b){return b.montant-a.montant;});
+}
+function relSentToday(cid){
+  var day=new Date().toDateString();
+  return (S.relancelog||[]).some(function(l){return String(l.cid)===String(cid)&&new Date(l.ts).toDateString()===day;});
+}
+function relLog(cid,canal,cand){
+  S.relancelog=Array.isArray(S.relancelog)?S.relancelog:[];
+  S.relancelog.unshift({ts:Date.now(),cid:String(cid),dossier:cand.nom,canal:canal,nb:cand.nb,montant:cand.montant,texte:cand.txt});
+  save("relancelog");
+}
+function relOpenUrl(url){var w=window.open(url,"_blank");if(!w){var l=document.createElement("a");l.href=url;l.target="_blank";l.rel="noopener";document.body.appendChild(l);l.click();l.remove();}}
+function relOne(cid){
+  var cand=relCandidates().find(function(x){return String(x.cid)===String(cid);});if(!cand)return;
+  if(!cand.num){showErr("Pas de num\u00e9ro WhatsApp pour ce dossier \u2014 utilisez l'e-mail.");return;}
+  relOpenUrl("https://wa.me/"+cand.num+"?text="+encodeURIComponent(cand.txt));
+  relLog(cid,"wa",cand);renderView();
+}
+function relMail(cid){
+  var cand=relCandidates().find(function(x){return String(x.cid)===String(cid);});if(!cand)return;
+  window.location.href="mailto:"+(cand.email||"")+"?subject="+encodeURIComponent("Justificatifs manquants \u2014 "+cand.nom)+"&body="+encodeURIComponent(cand.txt);
+  relLog(cid,"mail",cand);renderView();
+}
+function relNext(){
+  var q=relCandidates().filter(function(x){return x.num&&!relSentToday(x.cid);});
+  if(!q.length){showOk("Tous les dossiers avec num\u00e9ro ont \u00e9t\u00e9 relanc\u00e9s aujourd'hui.");return;}
+  var cand=q[0];
+  relOpenUrl("https://wa.me/"+cand.num+"?text="+encodeURIComponent(cand.txt));
+  relLog(cand.cid,"wa",cand);renderView();
+}
+function relCopyAll(){
+  var q=relCandidates();if(!q.length){showErr("Aucun dossier \u00e0 relancer.");return;}
+  var txt=q.map(function(x){return "\u25b6 "+x.nom+(x.num?" ("+x.num+")":(x.email?" ("+x.email+")":" (pas de contact)"))+"\n"+x.txt;}).join("\n\n\u2014 \u2014 \u2014\n\n");
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt);}else{var ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}}catch(e){}
+  showOk(q.length+" message(s) copi\u00e9(s).");
+}
+function relOpen(){ S.tab="relances"; try{if(typeof volet==="function")volet("relances");}catch(e){} render(); }
+
+function vRelances(){
+  var q=relCandidates();
+  var withNum=q.filter(function(x){return x.num;}).length;
+  var reste=q.filter(function(x){return x.num&&!relSentToday(x.cid);}).length;
+  var totMt=q.reduce(function(a,x){return a+x.montant;},0);
+  var head='<div class="wrap"><div class="head"><div><h2>Relances group\u00e9es</h2>'
+    +'<p>'+q.length+' dossier(s) avec justificatifs manquants \u00b7 '+fmtDH(totMt)+' au total \u00b7 '+withNum+' joignable(s) sur WhatsApp.</p></div></div>';
+  if(!q.length) return head+'<div class="card" style="padding:34px;text-align:center;color:var(--emerald)">Aucun justificatif \u00e0 r\u00e9clamer. Tous les dossiers sont \u00e0 jour. \ud83c\udf89</div></div>';
+
+  var actions='<div class="card" style="padding:16px;margin-top:16px;background:#FBFAF5;display:flex;gap:9px;flex-wrap:wrap;align-items:center">'
+    +'<button class="btn-primary" onclick="relNext()" style="background:#25D366">'+ic("whatsapp","width:16px;height:16px")+' Ouvrir le prochain client sur WhatsApp ('+reste+' restant'+(reste>1?"s":"")+')</button>'
+    +'<button class="chip" onclick="relCopyAll()">'+ic("copy")+' Copier tous les messages</button>'
+    +'<span style="font-size:11px;color:var(--faint);flex:1;min-width:200px">WhatsApp n\'autorise qu\'un envoi par clic : cliquez \u00e0 la cha\u00eene, chaque client est ouvert puis marqu\u00e9 comme relanc\u00e9 du jour.</span>'
+    +'</div>';
+
+  var cols='1.7fr .9fr 1.3fr 1.3fr';
+  var rows=q.map(function(x){
+    var sent=relSentToday(x.cid);
+    var contact=x.num?('<span style="color:#0E7A5F">'+ic("whatsapp","width:12px;height:12px;vertical-align:-2px")+' '+esc(x.num)+'</span>'):(x.email?('<span class="mono" style="font-size:11px">'+esc(x.email)+'</span>'):'<span style="color:#B42318;font-size:11.5px">aucun contact</span>');
+    var wa=x.num?('<button class="chip" onclick="relOne('+x.cid+')" style="border:0;background:#25D366;color:#fff;font-weight:600">WhatsApp</button>'):'';
+    var ml=x.email?('<button class="chip" onclick="relMail('+x.cid+')">E-mail</button>'):(x.num?'':'<button class="chip" onclick="relMail('+x.cid+')">E-mail\u2026</button>');
+    return '<div style="display:grid;grid-template-columns:'+cols+';gap:10px;padding:12px 20px;border-bottom:1px solid var(--line-soft);align-items:center'+(sent?';opacity:.55':'')+'">'
+      +'<div style="font-weight:600;min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.nom)+'</div>'+(sent?'<div style="font-size:11px;color:var(--emerald)">\u2713 relanc\u00e9 aujourd\'hui</div>':'')+'</div>'
+      +'<div><span style="font-weight:700;color:#B42318">'+x.nb+'</span> <span style="font-size:10.5px;color:var(--faint)">pi\u00e8ce(s)<br>'+fmtDH(x.montant)+'</span></div>'
+      +'<div>'+contact+'</div>'
+      +'<div style="display:flex;gap:6px;justify-content:flex-end">'+wa+ml+'</div>'
+      +'</div>';
+  }).join("");
+  var table='<div class="card" style="margin-top:14px"><div class="thead" style="display:grid;grid-template-columns:'+cols+';gap:10px"><div>DOSSIER</div><div>MANQUANTS</div><div>CONTACT</div><div style="text-align:right">RELANCER</div></div><div class="scroll">'+rows+'</div></div>';
+
+  var noContact=q.filter(function(x){return !x.num&&!x.email;});
+  var warn=noContact.length?('<div class="card" style="padding:14px 16px;margin-top:14px;border-color:#ecc7bf;background:#FEFBF9;font-size:12.5px;color:#B5530A">'+noContact.length+' dossier(s) sans num\u00e9ro ni e-mail dans la fiche \u2014 renseignez le contact (onglet Clients) pour les relancer.</div>'):'';
+
+  return head+actions+table+warn+'</div>';
+}
+
 function renderView(){
   if(S.tab==="sal")S.tab="paie";   // ancien module Salaires 9421 fusionné dans Paie
   if(S.tab==="emprunts"){S.tab="compta";S.comptaView="emprunts";}   // module Emprunts intégré dans la Comptabilité
   try{if(S.curClient!=null)localStorage.setItem("fid_curclient",String(S.curClient));}catch(e){}
   try{localStorage.setItem("fid_ui",JSON.stringify({tab:S.tab,year:S.year,comptaView:S.comptaView,liasseView:S.liasseView,paieView:S.paieView,tvaPeriod:(S.tvaSel||{}).period||null}));}catch(e){}
-  const vmap={dash:vDash,sante:vSante,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,controle:vControle,jur:vJur,delais:vDelais,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse};
+  const vmap={dash:vDash,sante:vSante,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,controle:vControle,jur:vJur,delais:vDelais,relances:vRelances,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse};
   if(typeof vmap[S.tab]!=="function")S.tab="dash";   // onglet restauré inconnu -> retour sûr au tableau de bord
   const v=vmap[S.tab]();
   document.getElementById("view").innerHTML=voletToggle()+v;
