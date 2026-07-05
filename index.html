@@ -2514,7 +2514,8 @@ function liasseTopbar(clientOpts){
     +'<div style="flex:1;min-width:220px"><div class="flbl">Tableau de la liasse</div><select class="ipt" id="liassesection">'+opts+'</select></div>'
     +'<button class="btn-primary" data-act="liasse_bal_import_click" style="width:auto;margin-top:0;padding:11px 16px">'+ic("down","width:15px;height:15px")+' '+(_balHas(dL)?'Remplacer':'Importer')+' Balance / GL / FEC ('+S.year+')</button>'
     +'<button class="chip" data-act="liassepdf">'+ic("receipt","width:15px;height:15px")+' Imprimer toute la liasse (PDF)</button>'
-    +'<button class="chip" data-act="liassexlsx">'+ic("receipt","width:15px;height:15px")+' Exporter toute la liasse (Excel)</button>'+(_balHas(dL)?'<button class="chip" data-act="liasse_bal_del" style="color:#B42318;border-color:#f0c9c4">'+ic("trash","width:15px;height:15px")+' Effacer la balance</button>':"")+'</div>'
+    +'<button class="chip" data-act="liassexlsx">'+ic("receipt","width:15px;height:15px")+' Exporter toute la liasse (Excel)</button>'
+    +'<button class="chip" data-act="liasse_edi">'+ic("down","width:15px;height:15px")+' EDI Simpl-IS (.xml)</button>'+(_balHas(dL)?'<button class="chip" data-act="liasse_bal_del" style="color:#B42318;border-color:#f0c9c4">'+ic("trash","width:15px;height:15px")+' Effacer la balance</button>':"")+'</div>'
     +(dL.balImportName?'<div class="note" style="background:#E3F1EB;color:#0a5f4a;border-radius:8px;padding:7px 12px;font-size:11.5px;margin-top:10px">✓ Balance importée pour l\'exercice '+S.year+' depuis « '+esc(dL.balImportName)+' »'+(dL.balImportAt?" le "+esc(dL.balImportAt):"")+'. Le Bilan, le CPC, l\'ESG et l\'IS en sont issus.</div>':'<div class="note" style="font-size:11.5px;margin-top:10px">💡 Pour générer toute la liasse d\'un coup : cliquez « Importer Balance / GL / FEC » et chargez votre fichier de l\'exercice '+S.year+' (Excel, CSV, FEC ou PDF).</div>');
 }
 async function exportAllExcel(){
@@ -2970,6 +2971,102 @@ function liasseGenererANsN1(){
   showOk("À-nouveaux "+(S.year+1)+" générés depuis la balance "+S.year+" : "+ansRows.length+" comptes, ouverture équilibrée ("+fmtDH(Math.round(od*100)/100)+"). Résultat de l'exercice "+S.year+" : "+(resExo>=0?"bénéfice ":"perte ")+fmtDH(Math.abs(resExo))+" — son affectation (réserve légale, RAN, dividendes) reste à valider. Basculez sur l'exercice "+(S.year+1)+" → module Comptabilité, onglet « À-nouveaux N-1 », pour poster l'écriture d'ouverture au 01/01/"+(S.year+1)+".");
   renderView();
 }
+// ============================================================================
+// EDI Simpl-IS (liasse fiscale) — moteur de sérialisation (cahier des charges v1.0)
+// Structure officielle :
+//   <?xml version="1.0" encoding="iso-8859-1"?>
+//   <Liasse>
+//     <modele><id>N</id></modele>
+//     <resultatFiscal><identifiantFiscal/><exerciceFiscalDu/><exerciceFiscalAu/></resultatFiscal>
+//     <groupeValeursTableau>
+//       <ValeursTableau>
+//         <tableau><id>T</id></tableau>
+//         <groupeValeurs>
+//           <ValeurCellule><cellule><codeEdi>C</codeEdi></cellule><valeur>V</valeur>[<numeroLigne>L</numeroLigne>]</ValeurCellule> …
+//         </groupeValeurs>
+//         [<extraFieldvaleurs><ExtraFieldValeur><extraField><codeEDI>C</codeEDI></extraField><valeur>V</valeur></ExtraFieldValeur> …</extraFieldvaleurs>]
+//       </ValeursTableau> …
+//     </groupeValeursTableau>
+//   </Liasse>
+// ⚠ Les id de modèles/tableaux et les codeEdi des cellules proviennent des ANNEXES DGI
+//   (« Codification des modèles et tableaux » + « Codification des cellules »), NON publiques.
+//   Elles se téléchargent depuis l'espace développeur SIMPL. Sans elles, le fichier est un
+//   APERÇU de structure, pas un dépôt réel. Complétez IS_EDI_MODELE et isEdiTableaux() ci-dessous.
+// ----------------------------------------------------------------------------
+// id des modèles de liasse (annexe DGI). 7 = Modèle Simplifié (exemple officiel du cahier des charges).
+var IS_EDI_MODELE={ normal:0 /* TODO annexe DGI */, simplifie:7 };
+
+function isEdiEsc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function isEdiNum(v){var n=+v||0;return (Math.round(n*100)/100).toString();}          // type Double, séparateur "."
+function isEdiInt(v){return String(Math.round(+v||0));}                                 // type Entier
+// Encode en octets ISO-8859-1 (latin1) — exigé par l'entête du fichier Simpl-IS
+function isEdiLatin1(str){var o=new Uint8Array(str.length);for(var i=0;i<str.length;i++){var cc=str.charCodeAt(i);o[i]=cc<256?cc:63;}return o;}
+
+// Construit les tableaux/cellules depuis les données du dossier.
+// ⚠ SQUELETTE : seules les cellules dont le codeEdi est connu (exemples officiels) sont câblées.
+//   ctx = { capital, calc, d, soc }.  Chaque tableau = { id, cells:[{code,val,ligne?}], extra:[{code,val}] }.
+function isEdiTableaux(ctx){
+  var T=[], cap=ctx.capital;
+  if(cap>0){
+    // Tableau 1 = Passif du bilan (modèle normal) · codeEdi 13400 = Capital social ou personnel (officiel)
+    T.push({ id:1,  cells:[ {code:13400, val:isEdiNum(cap)} ], extra:[] });
+    // Tableau 13 = État de répartition du capital social · extra-field codeEDI 18 = Montant du capital (officiel)
+    T.push({ id:13, cells:[], extra:[ {code:18, val:isEdiNum(cap)} ] });
+  }
+  // TODO — à compléter depuis l'annexe « Codification des cellules » :
+  //   • Tableau Actif du bilan, CPC, ESG, passage résultat comptable→fiscal (réintégrations/déductions),
+  //     immobilisations (tableau illimité → numeroLigne), provisions, créances, dettes, capital, affectation…
+  //   Exemple de cellule à ajouter une fois le code connu :
+  //   T.push({ id:<idTableau>, cells:[ {code:<codeEdi>, val:isEdiNum(ctx.calc.rc)} ] });
+  return T;
+}
+
+function isEdiSerialize(modeleId, ifisc, exDu, exAu, tableaux){
+  var body=(tableaux||[]).map(function(t){
+    var cells=(t.cells||[]).map(function(c){
+      return '        <ValeurCellule>\n          <cellule><codeEdi>'+c.code+'</codeEdi></cellule>\n          <valeur>'+isEdiEsc(c.val)+'</valeur>'+(c.ligne!=null?'\n          <numeroLigne>'+c.ligne+'</numeroLigne>':'')+'\n        </ValeurCellule>';
+    }).join("\n");
+    var extra=(t.extra&&t.extra.length)?('\n      <extraFieldvaleurs>\n'+t.extra.map(function(e){
+      return '        <ExtraFieldValeur><extraField><codeEDI>'+e.code+'</codeEDI></extraField><valeur>'+isEdiEsc(e.val)+'</valeur></ExtraFieldValeur>';
+    }).join("\n")+'\n      </extraFieldvaleurs>'):'';
+    return '      <ValeursTableau>\n        <tableau><id>'+t.id+'</id></tableau>\n        <groupeValeurs>\n'+cells+'\n        </groupeValeurs>'+extra+'\n      </ValeursTableau>';
+  }).join("\n");
+  return '<?xml version="1.0" encoding="iso-8859-1"?>\n<Liasse>\n'
+    +'  <modele><id>'+modeleId+'</id></modele>\n'
+    +'  <resultatFiscal>\n    <identifiantFiscal>'+isEdiEsc(ifisc)+'</identifiantFiscal>\n'
+    +'    <exerciceFiscalDu>'+exDu+'</exerciceFiscalDu>\n    <exerciceFiscalAu>'+exAu+'</exerciceFiscalAu>\n  </resultatFiscal>\n'
+    +'  <groupeValeursTableau>\n'+body+'\n  </groupeValeursTableau>\n</Liasse>\n';
+}
+
+function liasseExportEDI(){
+  var c=clients().find(function(x){return x.id===(S.liasseSel.id||S.curClient);});
+  if(!c){showErr("Sélectionnez un dossier.");return;}
+  var soc=((S.flags[c.id]||{}).societe)||{};
+  var ifisc=String(soc.if||soc.idf||"").replace(/\D/g,"");
+  if(!ifisc){showErr("Identifiant Fiscal (IF) du dossier manquant — obligatoire pour l'EDI Simpl-IS.");return;}
+  var d=liasseGet(), calc=liasseCalc(d);
+  var cap=parseFloat(String(soc.capital||"").replace(/[^\d.]/g,""))||0;
+  var exDu=soc.exerciceDu||(S.year+"-01-01"), exAu=soc.exerciceAu||(S.year+"-12-31");
+  var modeleId=(soc.liasseModele==="simplifie")?IS_EDI_MODELE.simplifie:IS_EDI_MODELE.normal;
+  var tableaux=isEdiTableaux({capital:cap, calc:calc, d:d, soc:soc});
+  var nbCells=tableaux.reduce(function(s,t){return s+(t.cells?t.cells.length:0)+(t.extra?t.extra.length:0);},0);
+  var xml=isEdiSerialize(modeleId, ifisc, exDu, exAu, tableaux);
+  try{
+    var base=(c.dossier||"SOC").replace(/[^A-Za-z0-9]/g,"_")+"_LIASSE_"+S.year;
+    var incomplet=(modeleId===0)||nbCells<10;            // squelette tant que l'annexe n'est pas intégrée
+    var fname=base+(incomplet?"_EDI_apercu.xml":"_EDI.xml");
+    var blob=new Blob([isEdiLatin1(xml)],{type:"application/xml"});
+    var url=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=url;a.download=fname;document.body.appendChild(a);a.click();
+    setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+    if(incomplet){
+      showErr("Aperçu de structure EDI Simpl-IS généré ("+nbCells+" cellule(s) câblée(s)). ⚠️ Fichier NON déposable : les codeEdi des cellules et l'id du modèle doivent être complétés depuis l'annexe DGI « Codification des cellules ». Voir isEdiTableaux() / IS_EDI_MODELE.");
+    }else{
+      showOk("EDI Simpl-IS généré : "+fname+" — modèle "+modeleId+", "+nbCells+" cellules. Déposez-le sur SIMPL-IS → Envoi des fichiers EDI.");
+    }
+  }catch(e){ showErr("Génération EDI Simpl-IS impossible : "+(e.message||e)); }
+}
+
 function liasseISBody(d){
   var calc=liasseCalc(d);
   function lines(kind,arr,phl){return (arr||[]).map(function(r,i){
@@ -11737,6 +11834,7 @@ document.addEventListener("click",e=>{
   else if(a==="balanalyse"){var k=liasseKey();var ta=document.getElementById("balText");var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.balText=ta?ta.value:"";S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liasse_bal_import_click"){if(!S.liasseSel.id){showErr("Sélectionnez d'abord une société.");return;}var binp=document.getElementById("liasse_file_bal");if(binp)binp.click();}
   else if(a==="liasse_bal_del"){if(!window.confirm("Supprimer la balance / grand livre importé de cet exercice ?\n\nLe Bilan, le CPC, l'ESG et le résultat issus de cette balance seront vidés. Vos saisies manuelles (réintégrations, déductions, immobilisations, provisions, tableaux annexes) sont CONSERVÉES."))return;var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.balText="";d.balImportName="";d.balImportAt="";S.liasse[k]=d;save("liasse");renderView();showOk("Balance importée supprimée — vous pouvez réimporter ou coller une nouvelle balance.");}
+  else if(a==="liasse_edi"){liasseExportEDI();}
   else if(a==="balexport"){bilanExport();}
   else if(a==="balreport"){var k=liasseKey();var b=bilanBuild(parseBalance((liasseGet().balText)||""));var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.rc=Math.round(b.resultat*100)/100;S.liasse[k]=d;save("liasse");S.liasseView="is";renderView();}
   else if(a==="immoadd"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.immo=(d.immo||[]).concat([immoNew()]);S.liasse[k]=d;save("liasse");renderView();}
