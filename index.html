@@ -1839,7 +1839,7 @@ function releveDeductionsHtml(c){
   var foot='<tr style="border-top:2px solid #14201C;font-weight:700;background:#F7F4EC"><td colspan="8" style="padding:7px 6px">TOTAUX ('+rows.length+')</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTTC)+'</td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tHT)+'</td><td colspan="2"></td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tTVA)+'</td><td></td><td style="padding:7px 6px;text-align:right" class="mono">'+fmtDH2(tRec)+'</td><td colspan="4"></td></tr>';
   return '<div class="card" style="padding:20px;margin-top:16px">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px"><div class="sectit">'+ic("book")+' Relevé des déductions — '+esc(c.dossier)+(soc.if?' · IF '+esc(soc.if):'')+' · '+esc(S.tvaSel.period||"")+'</div>'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="releve_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button><button class="chip" data-act="releve_xml">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' XML EDI</button></div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="releve_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button><button class="chip" data-act="releve_xml">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' EDI Simpl-TVA (.zip)</button></div></div>'
     +(rows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1100px">'+head+body+foot+'</table></div>':'<div class="note">Aucune déduction pour cette période. Validez des factures d\'achat et sélectionnez une période.</div>')
     +'</div>';
 }
@@ -1859,31 +1859,83 @@ async function releveExportExcel(){
     setSync("synced");showOk("Relevé des déductions exporté ("+rows.length+" lignes).");
   }catch(e){ setSync("synced");showErr("Export impossible : "+(e.message||e)); }
 }
-function releveExportXML(){
+// Charge JSZip à la demande (compression .zip exigée par la DGI)
+function ensureJSZip(){ return new Promise(function(res,rej){ if(window.JSZip)return res(window.JSZip); var s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"; s.onload=function(){res(window.JSZip);}; s.onerror=function(){rej(new Error("Chargement JSZip impossible"));}; document.head.appendChild(s); }); }
+// Mappe le libellé du mode de règlement vers le code DGI (annexe cahier des charges Simpl-TVA)
+// 1:Espèces 2:Chèque 3:Prélèvement 4:Virement 5:Effets 6:Compensation 7:Autres
+function ediModePaiement(m){
+  var s=String(m||"").toLowerCase();
+  if(/esp[eè]ce|cash|num[eé]raire/.test(s))return 1;
+  if(/pr[eé]l[eè]v/.test(s))return 3;
+  if(/virement|\bvir\b|banque|bancaire/.test(s))return 4;   // "Virement/Chèque" -> virement
+  if(/ch[eè]que/.test(s))return 2;
+  if(/effet|traite|\blcn\b/.test(s))return 5;
+  if(/compensation/.test(s))return 6;
+  return 7; // Autres / inconnu
+}
+// Date au format DGI AAAA-MM-JJ (les dates internes sont déjà en YYYY-MM-DD)
+function ediDate(d){ d=String(d||""); return /^\d{4}-\d{2}-\d{2}$/.test(d)?d:""; }
+// ===== EDI Simpl-TVA : relevé des déductions, format officiel <DeclarationReleveDeduction> + zip =====
+async function releveExportXML(){
   var c=clients().find(function(x){return x.id===S.tvaSel.id;})||clients().find(function(x){return x.id===S.curClient;});if(!c){showErr("Sélectionnez un dossier.");return;}
-  var rows=releveDeductionsRows(c.id,S.tvaSel.period);
+  var per=S.tvaSel.period;
+  var rows=releveDeductionsRows(c.id,per);
   if(!rows.length){showErr("Aucune déduction à exporter.");return;}
   var soc=((S.flags[c.id]||{}).societe)||{};
+  var ifisc=String(soc.if||"").replace(/\D/g,"");
+  if(!ifisc){showErr("Identifiant Fiscal (IF) du dossier manquant — obligatoire pour l'EDI. Renseignez-le dans la fiche société.");return;}
+  // Périodicité (regime : 1=mensuelle, 2=trimestrielle) + numéro de période
+  var isMensuel=c.reg==="mensuelle", regime=isMensuel?1:2, periode=0;
+  if(isMensuel){ periode=MONTHS.indexOf(per)+1; }
+  else { var mm=/^T([1-4])$/.exec(per||""); periode=mm?+mm[1]:0; }
+  if(periode<1){showErr("Période TVA non reconnue. Sélectionnez un mois (mensuel) ou un trimestre (T1–T4).");return;}
   function x(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
   function n2(v){return (Math.round((+v||0)*100)/100).toFixed(2);}
-  var lignes=rows.map(function(r){
-    return '    <Detail_Deduction>'
-      +'<Num_Fact>'+x(r.num)+'</Num_Fact><Des_Compte>'+x(r.design)+'</Des_Compte>'
-      +'<Mnt_Fact_TTC>'+n2(r.ttc)+'</Mnt_Fact_TTC><Date_Fact>'+x(r.date)+'</Date_Fact>'
-      +'<IF_Frs>'+x(r.if_)+'</IF_Frs><ICE_Frs>'+x(r.ice)+'</ICE_Frs><Nom_Frs>'+x(r.tiers)+'</Nom_Frs>'
-      +'<Mnt_HT>'+n2(r.ht)+'</Mnt_HT><Taux_TVA>'+x(r.taux)+'</Taux_TVA><Mnt_TVA>'+n2(r.tva)+'</Mnt_TVA>'
-      +'<Mnt_TVA_Recup>'+n2(r.recup)+'</Mnt_TVA_Recup><Taux_Prorata>'+x(r.prorata)+'</Taux_Prorata>'
-      +'<Mode_Paiement>'+x(r.regMode)+'</Mode_Paiement><Date_Paiement>'+x(r.regDate)+'</Date_Paiement>'
-      +'</Detail_Deduction>';
+  // Contrôles pré-dépôt (anomalies fréquentes de rejet DGI)
+  var sansIF=0,sansICE=0;
+  rows.forEach(function(r){ if(!String(r.if_||"").trim())sansIF++; if(!String(r.ice||"").trim())sansICE++; });
+  var rd=rows.map(function(r,i){
+    return '    <rd>\n'
+      +'      <ord>'+(i+1)+'</ord>\n'
+      +'      <num>'+x(r.num)+'</num>\n'
+      +'      <des>'+x(r.design)+'</des>\n'
+      +'      <mht>'+n2(r.ht)+'</mht>\n'
+      +'      <tva>'+n2(r.tva)+'</tva>\n'
+      +'      <ttc>'+n2(r.ttc)+'</ttc>\n'
+      +'      <reff>\n'
+      +'        <if>'+x(r.if_)+'</if>\n'
+      +'        <nom>'+x(r.tiers)+'</nom>\n'
+      +'        <ice>'+x(r.ice)+'</ice>\n'
+      +'      </reff>\n'
+      +'      <tx>'+n2(r.taux)+'</tx>\n'
+      +'      <mp>\n        <id>'+ediModePaiement(r.regMode)+'</id>\n      </mp>\n'
+      +'      <dpai>'+ediDate(r.regDate)+'</dpai>\n'
+      +'      <dfac>'+ediDate(r.date)+'</dfac>\n'
+      +'    </rd>';
   }).join("\n");
-  var xml='<?xml version="1.0" encoding="UTF-8"?>\n<DeclarationTVA>\n'
-    +'  <Identifiant_Fiscal>'+x(soc.if||"")+'</Identifiant_Fiscal>\n  <ICE>'+x(soc.ice||"")+'</ICE>\n'
-    +'  <Raison_Sociale>'+x(c.dossier||"")+'</Raison_Sociale>\n  <Annee>'+S.year+'</Annee>\n  <Periode>'+x(S.tvaSel.period||"")+'</Periode>\n'
-    +'  <Releve_Deductions>\n'+lignes+'\n  </Releve_Deductions>\n</DeclarationTVA>\n';
-  var blob=new Blob([xml],{type:"application/xml;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");
-  a.href=url;a.download=(c.dossier||"SOC").replace(/[^a-zA-Z0-9]/g,"_")+"_TVA_"+(S.tvaSel.period||"")+".xml";
-  document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
-  showOk("XML EDI généré ("+rows.length+" lignes). ⚠️ À vérifier avec le cahier des charges DGI avant dépôt.");
+  var xml='<?xml version="1.0" encoding="UTF-8"?>\n'
+    +'<DeclarationReleveDeduction>\n'
+    +'  <identifiantfiscal>'+x(ifisc)+'</identifiantfiscal>\n'
+    +'  <annee>'+S.year+'</annee>\n'
+    +'  <periode>'+periode+'</periode>\n'
+    +'  <regime>'+regime+'</regime>\n'
+    +'  <relevedeductions>\n'+rd+'\n  </relevedeductions>\n'
+    +'</DeclarationReleveDeduction>\n';
+  try{
+    setSync("saving");
+    await ensureJSZip();
+    var perTag=isMensuel?("M"+String(periode).padStart(2,"0")):("T"+periode);
+    var base=(c.dossier||"SOC").replace(/[^A-Za-z0-9]/g,"_")+"_TVA_"+S.year+"_"+perTag; // sans accents/espaces
+    var zip=new JSZip();
+    zip.file(base+".xml", xml);
+    var blob=await zip.generateAsync({type:"blob",compression:"DEFLATE"});
+    var url=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=url;a.download=base+".zip";
+    document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+    setSync("synced");
+    var warn=(sansIF||sansICE)?(" ⚠️ "+sansIF+" ligne(s) sans IF, "+sansICE+" sans ICE (risque de rejet)."):"";
+    showOk("EDI Simpl-TVA généré : "+base+".zip ("+rows.length+" lignes)."+warn+" Déposez-le sur SIMPL-TVA → Envoi EDI.");
+  }catch(e){ setSync("synced"); showErr("Génération EDI impossible : "+(e.message||e)); }
 }
 function tvaInput(t){
   var key=tvaKey();var d=Object.assign({},S.tva[key]||{ventes:[{base:"",taux:20,code:"81"}],rc:"",ri:"",credit:""});
