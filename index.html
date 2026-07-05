@@ -4480,7 +4480,7 @@ async function paieDamancomFill(files){
   try{
     var text=await files[0].text();
     var lines=text.replace(/\r/g,"").split("\n");
-    var matched=0, unmatched=[], nb=0, totJ=0,totR=0,totP=0, affil="", per="";
+    var matched=0, unmatched=[], nb=0, totJ=0,totR=0,totP=0, affil="", per="", preImms=[];
     for(var i=0;i<lines.length;i++){
       var L=lines[i]; if(!L)continue;
       var typ=L.slice(0,3);
@@ -4488,6 +4488,7 @@ async function paieDamancomFill(files){
       else if(typ==="A02"){
         while(L.length<F.recLen)L+=" ";
         var imm=_dmcNorm(L.slice(F.a02.imm[0],F.a02.imm[1]));
+        preImms.push(L.slice(F.a02.imm[0],F.a02.imm[1]).trim());
         var s=byImm[imm]; nb++;
         if(s){
           matched++;
@@ -4512,7 +4513,13 @@ async function paieDamancomFill(files){
         lines[j]=A;
       }
     }
-    if(!matched){showErr("Aucun salarié du préétabli n'a été rapproché de ta paie de "+MOIS_FULL[+mois-1]+" (vérifie les N° d'immatriculation CNSS).");return;}
+    if(!matched){
+      var appList=(d.emps||[]).map(function(e){return (e.nom||"?")+"="+((String(e.cnss||"").replace(/\s/g,""))||"(vide)");});
+      var pre=preImms.slice(0,5).join(", ")+(preImms.length>5?"…":"");
+      var app=appList.length?appList.slice(0,5).join(" · ")+(appList.length>5?"…":""):"aucun salarié dans ce dossier";
+      showErr("Aucun rapprochement — "+MOIS_FULL[+mois-1]+" "+S.year+". Préétabli (affiliation "+affil.replace(/\D/g,"")+", "+nb+" salarié·s) N° lus : "+(pre||"aucun")+". Fiches salariés de l'appli : "+app+". → Vérifie : (1) c'est bien le préétabli du MÊME dossier ; (2) chaque fiche salarié a le bon N° d'immatriculation CNSS.");
+      return;
+    }
     var out=lines.filter(function(l){return l.length>0;}).join("\r\n")+"\r\n";
     var fname="DS_"+affil.replace(/\D/g,"")+"_"+per+".txt";
     var blob=new Blob([out],{type:"text/plain;charset=iso-8859-1"});
