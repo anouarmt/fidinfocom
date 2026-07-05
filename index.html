@@ -12002,6 +12002,7 @@ document.addEventListener("click",e=>{
     });
     S.liasse[k]=d;save("liasse");renderView();
     showOk(nb?("Détection terminée : résultat net "+fmtDH(fig.rc)+", base CM "+fmtDH(fig.ca+fig.pf+fig.subv)+", "+nb+" poste(s) de réint./déduc. repris depuis la comptabilité "+S.year+". Vérifiez les montants à plafonner."):("Résultat net "+fmtDH(fig.rc)+" et base CM repris. Aucun compte de réintégration/déduction détecté pour "+S.year+"."));}
+  else if(a==="liassereintadd"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.reint=(d.reint||[]).concat([{lib:"",mt:""}]);S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liassereintdel"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.reint=(d.reint||[]).filter(function(_,i){return i!==+t.dataset.i;});if(!d.reint.length)d.reint=[{lib:"",mt:""}];S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liassededucadd"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.deduc=(d.deduc||[]).concat([{lib:"",mt:""}]);S.liasse[k]=d;save("liasse");renderView();}
   else if(a==="liassededucdel"){var k=liasseKey();var d=Object.assign({},liasseGet(),S.liasse[k]||{});d.deduc=(d.deduc||[]).filter(function(_,i){return i!==+t.dataset.i;});if(!d.deduc.length)d.deduc=[{lib:"",mt:""}];S.liasse[k]=d;save("liasse");renderView();}
