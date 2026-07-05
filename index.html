@@ -831,6 +831,7 @@ function dataBackupCard(){
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
     +'<button class="btn-add" data-act="backup_export">'+ic("down")+' Exporter une sauvegarde (.json)</button>'
     +'<button class="chip" data-act="backup_import">'+ic("folder")+' Restaurer une sauvegarde</button>'
+    +'<button class="chip" data-act="diag_storage" title="Vérifie le rattachement des fichiers scannés (lecture seule)">'+ic("check")+' Diagnostic fichiers (lecture seule)</button>'
     +'<input type="file" id="backup_file" accept="application/json,.json" style="display:none">'
     +'</div></div>';
 }
@@ -5651,6 +5652,69 @@ function tiersLabelFor(cp){
   var t=(g.tiers||[]).find(function(x){return comptaCanon(x.compte)===cc;});
   if(t)return (t.type==="client"?"Client ":"Frs ")+(t.nom||("Tiers "+t.seq));
   return "";
+}
+// ===== DIAGNOSTIC STOCKAGE (LECTURE SEULE — ne modifie rien) =====
+// Inventorie le bucket 'documents' et compare aux chemins enregistrés dans les pièces.
+// But : repérer les fichiers dont le chemin ne correspond plus (IDs de dossiers divergents).
+async function _bucketInventory(progress){
+  var files=new Set(), byName={};
+  async function ls(prefix){ try{ var r=await sb.storage.from(DOC_BUCKET).list(prefix,{limit:1000,sortBy:{column:"name",order:"asc"}}); return r.error?[]:(r.data||[]); }catch(e){ return []; } }
+  function isFile(e){ return e && e.id!==null && e.id!==undefined; }
+  var roots=await ls("");
+  for(var i=0;i<roots.length;i++){
+    var rt=roots[i];
+    if(progress)progress("Lecture dossier "+(i+1)+"/"+roots.length+"…");
+    if(isFile(rt)){ files.add(rt.name); (byName[rt.name]=byName[rt.name]||[]).push(rt.name); continue; }
+    var lvl1=await ls(rt.name);
+    for(var j=0;j<lvl1.length;j++){
+      var e=lvl1[j];
+      if(isFile(e)){ var p2=rt.name+"/"+e.name; files.add(p2); (byName[e.name]=byName[e.name]||[]).push(p2); }
+      else{
+        var lvl2=await ls(rt.name+"/"+e.name);
+        for(var k=0;k<lvl2.length;k++){ var f=lvl2[k]; if(isFile(f)){ var p3=rt.name+"/"+e.name+"/"+f.name; files.add(p3); (byName[f.name]=byName[f.name]||[]).push(p3); } }
+      }
+    }
+  }
+  return {files:files, byName:byName};
+}
+async function fidDiagStorage(){
+  if(typeof sb==="undefined"||!sb){alert("Connexion au cloud requise pour le diagnostic.");return;}
+  var ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;color:#fff;font:600 15px system-ui;text-align:center;padding:20px";
+  ov.innerHTML="<div>Diagnostic en cours (lecture seule)…<br><span id='diagP' style='font-weight:400;font-size:13px;opacity:.85'></span></div>";
+  document.body.appendChild(ov);
+  var setP=function(t){var e=document.getElementById("diagP");if(e)e.textContent=t;};
+  try{
+    var inv=await _bucketInventory(setP);
+    setP("Comparaison des pièces…");
+    var byId={}; clients().forEach(function(c){byId[String(c.id)]=c.dossier||("dossier "+c.id);});
+    function lbl(p){ return [(p.fournisseur||p.tiers||""),(p.numero?("n°"+p.numero):""),(p.date||""),(p.ttc!=null&&p.ttc!==""?(p.ttc+" DH"):"")].filter(Boolean).join(" · ")||("pièce "+(p.id||"")); }
+    var rows=[], nTot=0,nOk=0,nFix=0,nMiss=0;
+    function scan(list,g){ (list||[]).forEach(function(p){ if(!p.path)return; nTot++;
+      var fn=String(p.path).split("/").pop();
+      if(inv.files.has(p.path)){ nOk++; return; }
+      var alt=(inv.byName[fn]||[]).filter(function(x){return x!==p.path;});
+      if(alt.length){ nFix++; rows.push([g,byId[g]||("dossier "+g),lbl(p),p.path,alt.join(" | "),"RATTACHABLE"]); }
+      else { nMiss++; rows.push([g,byId[g]||("dossier "+g),lbl(p),p.path,"","INTROUVABLE"]); }
+    }); }
+    Object.keys(S.compta).forEach(function(k){ var g=S.compta[k]; if(!g)return; scan(g.pieces,k); scan(g.operations,k); });
+    // Rapport CSV (téléchargé), + résumé
+    var head="ID_dossier;Dossier;Piece;Chemin_enregistre;Chemin_reel_trouve;Etat";
+    var csv=head+"\n"+rows.map(function(r){return r.map(function(x){return '"'+String(x==null?"":x).replace(/"/g,'""')+'"';}).join(";");}).join("\n");
+    var blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+    var url=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=url;a.download="DIAGNOSTIC_stockage_"+new Date().toISOString().slice(0,10)+".csv";
+    document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+    ov.remove();
+    alert("DIAGNOSTIC STOCKAGE (lecture seule — rien n'a été modifié)\n\n"
+      +"Fichiers trouvés dans le bucket : "+inv.files.size+"\n"
+      +"Pièces avec fichier attendu : "+nTot+"\n"
+      +"  ✅ Correctement rattachées : "+nOk+"\n"
+      +"  🔗 Rattachables (fichier trouvé ailleurs) : "+nFix+"\n"
+      +"  ❌ Introuvables (fichier absent) : "+nMiss+"\n\n"
+      +"Un rapport CSV détaillé vient d'être téléchargé.\n"
+      +(nFix?"→ Les « rattachables » sont récupérables : envoie-moi le CSV, je te prépare la correction ciblée.":"→ Aucune pièce rattachable : les éventuelles introuvables devront être re-scannées."));
+  }catch(e){ ov.remove(); alert("Diagnostic impossible : "+(e.message||e)); }
 }
 function pieceYear(p){ return (p.date&&/^\d{4}/.test(p.date))?+p.date.slice(0,4):S.year; }
 
@@ -12123,6 +12187,7 @@ document.addEventListener("click",e=>{
   }
   else if(a==="notiflog_clear"){if(!window.confirm("Effacer tout l'historique des notifications ?"))return;S.notiflog=[];save("notiflog");renderView();}
   else if(a==="backup_export"){exportBackup();}
+  else if(a==="diag_storage"){fidDiagStorage();}
   else if(a==="backup_import"){triggerImport();}
   else if(a==="copytxt"){var v=t.dataset.copy||"";try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v);}else{var ta=document.createElement("textarea");ta.value=v;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}}catch(_e){}showOk((v.length>40||v.indexOf("\n")>=0)?"Copié dans le presse-papier.":("Copié : "+v));}
   else if(a==="tstype"){S.tsType=t.dataset.v;S.tsPeriod=null;renderView();}
