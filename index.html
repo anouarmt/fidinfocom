@@ -4103,9 +4103,88 @@ function paie9421Body(d,c){
     +'<div><div style="font-weight:700;color:#14201C;font-size:15px">ÉTAT 9421 — Déclaration des traitements et salaires</div>'
     +'<div style="font-size:12px;color:var(--muted);margin-top:3px">Employeur : <b>'+esc(c.dossier)+'</b> · Exercice '+S.year+(ids.length?' · '+ids.join(" · "):'')+'</div>'
     +'<div style="font-size:12px;color:var(--muted);margin-top:2px">Bénéficiaires : <b>'+tb.rows.length+'</b> · Total IR retenu : <b>'+fmtDH2(tb.T.ir)+' DH</b> · Total net : <b>'+fmtDH2(tb.T.net)+' DH</b></div></div>'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="paie_9421_print">'+ic("printer","width:14px;height:14px;vertical-align:-2px")+' Imprimer (PDF)</button><button class="chip" data-act="paie_9421_excel">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' Exporter Excel</button></div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="paie_9421_print">'+ic("printer","width:14px;height:14px;vertical-align:-2px")+' Imprimer (PDF)</button><button class="chip" data-act="paie_9421_excel">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' Exporter Excel</button><button class="chip" data-act="paie_9421_edi">'+ic("down","width:14px;height:14px;vertical-align:-2px")+' EDI Simpl-IR (.xml)</button></div></div>'
     +'<div style="overflow-x:auto;margin-top:14px">'+tb.html+'</div>'
     +'<div class="note" style="font-size:11px;margin-top:12px">Rempli automatiquement à partir du <b>salaire de base</b> de chaque salarié (et des bulletins saisis quand ils existent), pour chaque mois de la période d\'activité : de l\'embauche — ou de janvier — jusqu\'au mois en cours pour '+S.year+' (ou décembre pour une année passée). « Retenues » = CNSS + AMO + CIMR + assurance. Pour ajuster un mois précis (prime, absence…), saisissez son bulletin dans l\'onglet « Bulletins de paie ».</div></div>';
+}
+// ============================================================================
+// EDI Simpl-IR — État 9421 (déclaration des traitements et salaires, personnel permanent)
+// Les DONNÉES sont câblées sur paie9421Rows (fiables). Les NOMS DE BALISES sont regroupés
+// ci-dessous dans IR9421_TAGS : ce sont les seuls éléments à confirmer contre l'exemple XML
+// officiel de la DGI (espace SIMPL-IR). En cas de rejet, le fichier d'erreur DGI nomme la
+// balise attendue → il suffit de corriger la valeur correspondante ici.
+// Balises confirmées par le cahier des charges v2.0 : salaireBaseAnnuel, listElementsExonere.
+var IR9421_TAGS={
+  racine:"DeclarationTS",            // ⚠ à confirmer (racine du fichier)
+  identifiantFiscal:"identifiantFiscal",
+  exercice:"exerciceFiscal",
+  listPermanent:"listPersonnelPermanent",
+  permanent:"PersonnelPermanent",
+  nom:"nom", prenom:"prenom", cin:"cin", cnss:"numCnss", matricule:"matricule",
+  adresse:"adresse", sitFamiliale:"sitFamiliale", nbCharges:"nbDeductions",
+  dateDebut:"dateDebut", dateFin:"dateFin",
+  salaireBaseAnnuel:"salaireBaseAnnuel",          // confirmé v2.0
+  brutImposable:"salaireBrutImposable",
+  elementsExonere:"listElementsExonere",          // confirmé v2.0
+  fraisPro:"fraisProfessionnels",
+  retenues:"retenues",
+  netImposable:"revenuNetImposable",
+  irPreleve:"irPreleve",
+  netPercu:"netPercu"
+};
+function ir9421Esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function ir9421Num(v){return (Math.round((+v||0)*100)/100).toFixed(2);}
+function ir9421Split(nomComplet){ // "NOM Prénom" -> {nom, prenom} best-effort (à ajuster si besoin)
+  var p=String(nomComplet||"").trim().split(/\s+/);
+  if(p.length<=1)return {nom:p[0]||"", prenom:""};
+  return {nom:p[0], prenom:p.slice(1).join(" ")};
+}
+function paie9421ExportEDI(){
+  var c=clients().find(function(x){return x.id===S.curClient;});
+  if(!c){showErr("Sélectionnez un dossier (employeur).");return;}
+  var soc=((S.flags[c.id]||{}).societe)||{};
+  var ifisc=String(soc.if||soc.idf||"").replace(/\D/g,"");
+  if(!ifisc){showErr("Identifiant Fiscal (IF) de l'employeur manquant — obligatoire pour l'EDI Simpl-IR.");return;}
+  var d=paieGet(), rows=paie9421Rows(d);
+  if(!rows.length){showErr("Aucun salarié à déclarer pour "+S.year+".");return;}
+  var T=IR9421_TAGS;
+  function tag(n,v){return '      <'+n+'>'+ir9421Esc(v)+'</'+n+'>';}
+  var sansCnss=0,sansCin=0;
+  var lignes=rows.map(function(r){
+    var e=r.e, np=ir9421Split(e.nom);
+    if(!String(e.cnss||"").trim())sansCnss++; if(!String(e.cin||"").trim())sansCin++;
+    var deb="01/01/"+S.year, fin="31/12/"+S.year;
+    if(e.embauche){var pp=e.embauche.split("-"); if(pp.length===3&&+pp[0]===S.year)deb=pp[2]+"/"+pp[1]+"/"+pp[0];}
+    return '    <'+T.permanent+'>\n'
+      +tag(T.nom,np.nom)+'\n'+tag(T.prenom,np.prenom)+'\n'
+      +tag(T.cin,e.cin||"")+'\n'+tag(T.cnss,e.cnss||"")+'\n'+tag(T.matricule,e.mat||"")+'\n'
+      +tag(T.adresse,soc.adresse||soc.siege||"")+'\n'
+      +tag(T.sitFamiliale,e.sf||"")+'\n'+tag(T.nbCharges,num(e.charges))+'\n'
+      +tag(T.dateDebut,deb)+'\n'+tag(T.dateFin,fin)+'\n'
+      +tag(T.salaireBaseAnnuel,ir9421Num(r.sbg))+'\n'
+      +tag(T.elementsExonere,ir9421Num(r.exo))+'\n'
+      +tag(T.brutImposable,ir9421Num(r.sbi))+'\n'
+      +tag(T.fraisPro,ir9421Num(r.fp))+'\n'
+      +tag(T.retenues,ir9421Num(r.ret))+'\n'
+      +tag(T.netImposable,ir9421Num(r.sni))+'\n'
+      +tag(T.irPreleve,ir9421Num(r.ir))+'\n'
+      +tag(T.netPercu,ir9421Num(r.net))+'\n'
+      +'    </'+T.permanent+'>';
+  }).join("\n");
+  var xml='<?xml version="1.0" encoding="UTF-8"?>\n'
+    +'<'+T.racine+'>\n'
+    +'  <'+T.identifiantFiscal+'>'+ir9421Esc(ifisc)+'</'+T.identifiantFiscal+'>\n'
+    +'  <'+T.exercice+'>'+S.year+'</'+T.exercice+'>\n'
+    +'  <'+T.listPermanent+'>\n'+lignes+'\n  </'+T.listPermanent+'>\n'
+    +'</'+T.racine+'>\n';
+  try{
+    var base=(c.dossier||"SOC").replace(/[^A-Za-z0-9]/g,"_")+"_9421_"+S.year;
+    var blob=new Blob([xml],{type:"application/xml;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=url;a.download=base+"_EDI.xml";document.body.appendChild(a);a.click();
+    setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+    var warn=(sansCnss||sansCin)?(" ⚠️ "+sansCnss+" sans N° CNSS, "+sansCin+" sans CIN."):"";
+    showOk("EDI 9421 généré : "+base+"_EDI.xml ("+rows.length+" salarié·s)."+warn+" ⚠️ Vérifiez les noms de balises (objet IR9421_TAGS) contre l'exemple XML DGI avant dépôt sur SIMPL-IR ; en cas de rejet, le fichier d'erreur DGI nomme la balise attendue.");
+  }catch(e){ showErr("Génération EDI 9421 impossible : "+(e.message||e)); }
 }
 function paie9421Print(){
   var d=paieGet(),c=clients().find(function(x){return x.id===S.paieSel.id;}); if(!c)return;
@@ -4221,7 +4300,7 @@ function paieCnssBody(d,c){
   var mois=paieMoisCur(),t=paieTotMois(d,mois);
   function ln(l,b,tx,v){return '<tr style="border-bottom:1px solid #F0EDE3;font-size:12px"><td style="padding:6px">'+l+'</td><td style="padding:6px;text-align:right" class="mono">'+(b!=null?fmtDH2(b):"—")+'</td><td style="padding:6px;text-align:right" class="mono">'+(tx||"—")+'</td><td style="padding:6px;text-align:right;font-weight:600" class="mono">'+fmtDH2(v)+'</td></tr>';}
   var totCnss=t.cnss+t.amo+t.pat;
-  return '<div class="card mt4" style="padding:16px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><div class="sectit">Pré-déclaration CNSS / Damancom — '+MOIS_FULL[+mois-1]+' '+S.year+'</div><button class="chip" data-act="paie_cnss_excel">'+ic("receipt","width:14px;height:14px")+' Export Excel</button></div>'
+  return '<div class="card mt4" style="padding:16px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><div class="sectit">Pré-déclaration CNSS / Damancom — '+MOIS_FULL[+mois-1]+' '+S.year+'</div><button class="chip" data-act="paie_cnss_excel">'+ic("receipt","width:14px;height:14px")+' Export Excel</button><button class="chip" data-act="paie_damancom_txt">'+ic("down","width:14px;height:14px")+' Générer le DS (charger le préétabli AFFEBDS)</button></div>'
     +'<div class="grid g3 mb3"><div class="card kpi" style="box-shadow:none;border:1px solid var(--line)"><div class="v sm">'+t.n+'</div><div class="l">Salariés déclarés</div></div><div class="card kpi" style="box-shadow:none;border:1px solid var(--line)"><div class="v sm">'+fmtDH2(t.sbi)+'</div><div class="l">Masse salariale déplafonnée</div></div><div class="card kpi" style="box-shadow:none;border:1px solid var(--line)"><div class="v sm">'+fmtDH2(t.cnssPlaf)+'</div><div class="l">Masse plafonnée (6 000)</div></div></div>'
     +'<table style="width:100%;border-collapse:collapse"><tr style="background:#14201C;color:#fff;font-size:10.5px;text-align:left"><th style="padding:6px">Cotisation</th><th style="padding:6px;text-align:right">Assiette</th><th style="padding:6px;text-align:right">Taux</th><th style="padding:6px;text-align:right">Montant</th></tr>'
     +ln("Prestations sociales — part salariale (plaf.)",t.cnssPlaf,"4,48%",t.cnss)
@@ -4361,6 +4440,95 @@ async function paieLivreExcel(){
     var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,"Paie "+mois+"-"+S.year);
     window.XLSX.writeFile(wb,"LivrePaie_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+mois+"_"+S.year+".xlsx");
   }catch(e){showErr("Export Excel impossible : "+e.message);}
+}
+// ===== Damancom (CNSS) — génération du DS en alimentant le préétabli AFFEBDS =====
+// Enregistrements FIXES de 260 caractères. Positions décodées depuis un préétabli réel :
+//   A02 = A02 + affiliation(3-10) + période AAAAMM(10-16) + immatriculation(16-25)
+//         + nom(25-55) + prénom(55-85) + BLOC SALAIRE 20c (85-105) + espaces.
+// On NE régénère PAS les en-têtes : on charge le préétabli de la CNSS et on remplit
+// uniquement le bloc salaire de chaque A02 (+ totaux A03). A00/A01 et identités = verbatim.
+// Codes situation : SO Sortant · DE Décédé · IL maLadie · CS Congé Sans solde · AT Accident Travail
+//                   MS Maintenu Sans solde · MP Maladie Prof. · IT congé maternITé · (vide = présent)
+var DAMANCOM_FMT={
+  recLen:260,
+  decim:0,   // 0 = dirhams entiers ; passer à 2 pour centimes implicites (selon le contrôle CNSS)
+  // Positions CERTAINES (décodées du préétabli AFFEBDS) :
+  a02:{ imm:[16,25], nom:[25,55], prenom:[55,85], jours:[85,87], reel:[87,96], plaf:[96,105] },
+  // Positions du sous-découpage du bloc (jours 2 / réel 9 / plafonné 9) et des totaux A03 :
+  // INFÉRÉES d'un layout CNSS standard → à valider au 1er dépôt (le fichier d'erreur CNSS pointe la position).
+  a03:{ nbSal:[16,22], totJours:[22,30], totReel:[30,42], totPlaf:[42,54] }
+};
+function dmcPadL0(v,n){var s=String(Math.round(+v||0));return (new Array(n+1).join("0")+s).slice(-n);}
+function _dmcNorm(s){return String(s||"").replace(/\D/g,"").replace(/^0+/,"");}
+function _dmcSet(line,a,b,val){ var w=b-a, v=String(val).slice(0,w); return line.slice(0,a)+v+line.slice(a+v.length); }
+async function paieDamancomFill(files){
+  if(!files||!files.length)return;
+  var d=paieGet(),mois=paieMoisCur(),c=clients().find(function(x){return x.id===S.paieSel.id;});
+  if(!c){showErr("Sélectionnez un dossier (employeur).");return;}
+  var F=DAMANCOM_FMT, mult=(F.decim===2?100:1);
+  // Table des salaires du mois, indexée par N° d'immatriculation CNSS
+  var byImm={};
+  (d.emps||[]).forEach(function(e){
+    var b=paieBullOf(d,e.id,mois),cc=paieCalc(e,b,mois);
+    byImm[_dmcNorm(e.cnss)]={
+      jours:(b&&b.jours!=null&&b.jours!=="")?(+b.jours):26,
+      reel:Math.round((cc.sbi||0)*mult),
+      plaf:Math.round(Math.min(cc.sbi||0,PAIE_CT.cnssPlaf)*mult),
+      sit:(e.situation||"").toUpperCase()
+    };
+  });
+  try{
+    var text=await files[0].text();
+    var lines=text.replace(/\r/g,"").split("\n");
+    var matched=0, unmatched=[], nb=0, totJ=0,totR=0,totP=0, affil="", per="";
+    for(var i=0;i<lines.length;i++){
+      var L=lines[i]; if(!L)continue;
+      var typ=L.slice(0,3);
+      if(typ==="A01"){ affil=L.slice(3,10); per=L.slice(10,16); }
+      else if(typ==="A02"){
+        while(L.length<F.recLen)L+=" ";
+        var imm=_dmcNorm(L.slice(F.a02.imm[0],F.a02.imm[1]));
+        var s=byImm[imm]; nb++;
+        if(s){
+          matched++;
+          L=_dmcSet(L,F.a02.jours[0],F.a02.jours[1],dmcPadL0(s.jours,F.a02.jours[1]-F.a02.jours[0]));
+          L=_dmcSet(L,F.a02.reel[0], F.a02.reel[1], dmcPadL0(s.reel, F.a02.reel[1]-F.a02.reel[0]));
+          L=_dmcSet(L,F.a02.plaf[0], F.a02.plaf[1], dmcPadL0(s.plaf, F.a02.plaf[1]-F.a02.plaf[0]));
+          totJ+=s.jours; totR+=s.reel; totP+=s.plaf;
+        } else {
+          unmatched.push(L.slice(F.a02.imm[0],F.a02.imm[1]).trim()+" "+L.slice(F.a02.nom[0],F.a02.nom[1]).trim());
+        }
+        lines[i]=L;
+      }
+    }
+    // Totaux A03 (positions inférées)
+    for(var j=0;j<lines.length;j++){
+      if(lines[j].slice(0,3)==="A03"){
+        var A=lines[j]; while(A.length<F.recLen)A+=" ";
+        A=_dmcSet(A,F.a03.nbSal[0],   F.a03.nbSal[1],   dmcPadL0(nb,   F.a03.nbSal[1]-F.a03.nbSal[0]));
+        A=_dmcSet(A,F.a03.totJours[0],F.a03.totJours[1],dmcPadL0(totJ, F.a03.totJours[1]-F.a03.totJours[0]));
+        A=_dmcSet(A,F.a03.totReel[0], F.a03.totReel[1], dmcPadL0(totR, F.a03.totReel[1]-F.a03.totReel[0]));
+        A=_dmcSet(A,F.a03.totPlaf[0], F.a03.totPlaf[1], dmcPadL0(totP, F.a03.totPlaf[1]-F.a03.totPlaf[0]));
+        lines[j]=A;
+      }
+    }
+    if(!matched){showErr("Aucun salarié du préétabli n'a été rapproché de ta paie de "+MOIS_FULL[+mois-1]+" (vérifie les N° d'immatriculation CNSS).");return;}
+    var out=lines.filter(function(l){return l.length>0;}).join("\r\n")+"\r\n";
+    var fname="DS_"+affil.replace(/\D/g,"")+"_"+per+".txt";
+    var blob=new Blob([out],{type:"text/plain;charset=iso-8859-1"});
+    var url=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=url;a.download=fname;document.body.appendChild(a);a.click();
+    setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+    var msg="DS Damancom « "+fname+" » généré — "+matched+" salarié·s rapproché·s.";
+    if(unmatched.length)msg+=" ⚠️ "+unmatched.length+" du préétabli sans paie ce mois (à traiter en situation : "+unmatched.slice(0,3).join(" ; ")+(unmatched.length>3?"…":"")+").";
+    msg+=" ⚠️ Vérifie au 1er dépôt le sous-découpage du bloc salaire et les totaux A03 (objet DAMANCOM_FMT) ; le fichier d'erreur CNSS pointe toute position à corriger.";
+    showOk(msg);
+  }catch(e){ showErr("Génération DS impossible : "+(e.message||e)); }
+}
+function paieDamancomTxt(){
+  var inp=document.createElement("input"); inp.type="file"; inp.accept=".txt,text/plain";
+  inp.onchange=function(){ paieDamancomFill(inp.files); };
+  inp.click();
 }
 async function paieCnssExcel(){
   var d=paieGet(),mois=paieMoisCur(),c=clients().find(function(x){return x.id===S.paieSel.id;});if(!c)return;
@@ -11765,6 +11933,7 @@ document.addEventListener("click",e=>{
   else if(a==="paie_view"){S.paieView=t.dataset.v;renderView();}
   else if(a==="paie_9421_print"){paie9421Print();}
   else if(a==="paie_9421_excel"){paie9421Export();}
+  else if(a==="paie_9421_edi"){paie9421ExportEDI();}
   else if(a==="paie_mois"){S.paieSel.mois=t.dataset.v;renderView();}
   else if(a==="paie_addemp"){var dP=paieGet();dP.emps=dP.emps.concat([paieEmpNew()]);paieSet(dP);S.paieSel.emp=dP.emps[dP.emps.length-1].id;S.paieView="bulletins";renderView();}
   else if(a==="paie_selemp"){S.paieSel.emp=t.dataset.id;renderView();}
@@ -11794,6 +11963,7 @@ document.addEventListener("click",e=>{
   else if(a==="paie_livre_excel"){paieLivreExcel();}
   else if(a==="paie_livre_pdf"){paieLivrePDF();}
   else if(a==="paie_cnss_excel"){paieCnssExcel();}
+  else if(a==="paie_damancom_txt"){paieDamancomTxt();}
   else if(a==="paie_compta"){paieComptabiliser();}
   else if(a==="liassepreset"){var k=liasseKey();var kind=t.dataset.kind,code=t.dataset.code;var d=Object.assign({},liasseGet(),S.liasse[k]||{});var arr=(d[kind]||[]).slice();
     var idx=arr.findIndex(function(r){return r.code===code;});
