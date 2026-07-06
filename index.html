@@ -800,6 +800,82 @@ function exportBackup(){
     showOk("Sauvegarde complète exportée ("+KEYS.length+" rubriques).");
   }catch(e){showErr("Export impossible : "+(e&&e.message?e.message:e));}
 }
+/* ---- SAUVEGARDE COMPLÈTE : données (.json) + tous les fichiers scannés du cloud, dans un seul ZIP ---- */
+async function exportFullBackup(){
+  if(typeof sb==="undefined"||!sb||typeof session==="undefined"||!session||!session.user){
+    showErr("Connectez-vous d'abord au cloud pour inclure les fichiers scannés dans la sauvegarde.");
+    return;
+  }
+  var ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:#fff;font:600 15px system-ui;text-align:center;padding:20px";
+  ov.innerHTML="<div>Sauvegarde complète en cours…<br><span id='fbP' style='font-weight:400;font-size:13px;opacity:.85'></span><br><span style='font-weight:400;font-size:11.5px;opacity:.6;margin-top:6px;display:inline-block'>Ne fermez pas cette fenêtre.</span></div>";
+  document.body.appendChild(ov);
+  var setP=function(t){var e=document.getElementById("fbP");if(e)e.textContent=t;};
+  try{
+    await ensureJSZip();
+    var zip=new JSZip();
+    /* 1) données structurées (mêmes rubriques que l'export .json) */
+    var payload={app:"FID INFO COM",version:VERSION,exportedAt:new Date().toISOString(),data:{}};
+    KEYS.forEach(function(k){payload.data[k]=S[k];});
+    zip.file("donnees/sauvegarde-fidinfocom-"+new Date().toISOString().slice(0,10)+".json", JSON.stringify(payload));
+    /* 2) noms de dossiers lisibles (id -> nom du client) */
+    var byId={}; try{ clients().forEach(function(c){byId[String(c.id)]=(c.dossier||("dossier "+c.id));}); }catch(e){}
+    function safe(s){ return (String(s||"").replace(/[\\\/:*?"<>|]+/g,"_").replace(/\s+/g," ").trim().slice(0,60))||"dossier"; }
+    /* 3) lister récursivement un bucket (jusqu'à 3 niveaux) */
+    async function lsAll(bucket){
+      var out=[];
+      async function ls(prefix){ try{ var r=await sb.storage.from(bucket).list(prefix,{limit:1000,sortBy:{column:"name",order:"asc"}}); return r.error?[]:(r.data||[]); }catch(e){ return []; } }
+      function isFile(e){ return e && e.id!==null && e.id!==undefined; }
+      var roots=await ls("");
+      for(var i=0;i<roots.length;i++){
+        var rt=roots[i];
+        if(isFile(rt)){ out.push(rt.name); continue; }
+        var lvl1=await ls(rt.name);
+        for(var j=0;j<lvl1.length;j++){
+          var e=lvl1[j];
+          if(isFile(e)){ out.push(rt.name+"/"+e.name); }
+          else{
+            var lvl2=await ls(rt.name+"/"+e.name);
+            for(var k=0;k<lvl2.length;k++){ var f=lvl2[k]; if(isFile(f)) out.push(rt.name+"/"+e.name+"/"+f.name); }
+          }
+        }
+      }
+      return out;
+    }
+    var buckets=[{name:DOC_BUCKET,folder:"factures_et_documents"},{name:"portail",folder:"portail_client"}];
+    var totalOk=0,totalFail=0,grandTotal=0,failNames=[];
+    for(var b=0;b<buckets.length;b++){
+      var bk=buckets[b];
+      setP("Lecture du cloud ("+bk.name+")…");
+      var paths=[];
+      try{ paths=await lsAll(bk.name); }catch(e){ paths=[]; }
+      grandTotal+=paths.length;
+      for(var p=0;p<paths.length;p++){
+        var path=paths[p];
+        setP(bk.folder+" : fichier "+(p+1)+"/"+paths.length+" — "+totalOk+" enregistré(s)");
+        try{
+          var dl=await sb.storage.from(bk.name).download(path);
+          if(dl.error||!dl.data) throw (dl.error||new Error("fichier vide"));
+          var seg=path.split("/");
+          var cid=seg.shift();
+          var inner=safe((byId[cid]?byId[cid]+" ":"")+"["+cid+"]")+"/"+(seg.join("/")||path);
+          zip.file(bk.folder+"/"+inner, dl.data);
+          totalOk++;
+        }catch(e){ totalFail++; if(failNames.length<20) failNames.push(path); }
+      }
+    }
+    setP("Compression du fichier ZIP…");
+    var blob=await zip.generateAsync({type:"blob",compression:"DEFLATE"},function(meta){ setP("Compression… "+Math.round(meta.percent)+"%"); });
+    var url=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=url; a.download="SAUVEGARDE-COMPLETE-fidinfocom-"+new Date().toISOString().slice(0,10)+".zip";
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{document.body.removeChild(a);}catch(e){} URL.revokeObjectURL(url); },2000);
+    ov.remove();
+    showOk("Sauvegarde complète : "+totalOk+" fichier(s) + toutes les données"+(totalFail?(" ("+totalFail+" échec)"):"")+".");
+    if(totalFail){ alert("Sauvegarde terminée.\n\n\u2705 Fichiers enregistrés : "+totalOk+"\n\u274C Échecs : "+totalFail+(failNames.length?("\n\nExemples :\n- "+failNames.slice(0,10).join("\n- ")):"")+"\n\nRelancez la sauvegarde pour récupérer les manquants, ou vérifiez votre connexion internet."); }
+    else if(grandTotal===0){ alert("Sauvegarde générée.\n\nAucun fichier scanné n'a été trouvé dans le cloud — seules les données ont été enregistrées dans le ZIP."); }
+  }catch(e){ try{ov.remove();}catch(_e){} showErr("Sauvegarde complète impossible : "+(e&&e.message?e.message:e)); }
+}
 function triggerImport(){
   var inp=document.getElementById("backup_file");
   if(inp)inp.click();
@@ -827,9 +903,10 @@ function importBackup(file){
 function dataBackupCard(){
   return '<div class="card mt4" style="padding:20px">'
     +'<div class="sectit mb3">'+ic("folder")+' Données &amp; sauvegarde</div>'
-    +'<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:12px">Exportez régulièrement une sauvegarde complète (tous les dossiers, comptabilité, paie, factures, historique…) dans un fichier que vous conservez en lieu sûr. En cas de problème, réimportez-le pour tout restaurer.</div>'
+    +'<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:12px">Sauvegardez régulièrement en lieu sûr (clé USB, disque externe). La <b>Sauvegarde COMPLÈTE</b> (.zip) inclut à la fois toutes vos données <b>et</b> tous vos fichiers scannés (factures, documents…) récupérés du cloud — c\'est la sauvegarde à privilégier. L\'option « Données seules » (.json) est plus rapide mais ne contient pas les fichiers scannés. Pour restaurer les données, utilisez « Restaurer » avec le fichier .json (celui-ci se trouve dans le dossier « donnees » du ZIP).</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-    +'<button class="btn-add" data-act="backup_export">'+ic("down")+' Exporter une sauvegarde (.json)</button>'
+    +'<button class="btn-add" data-act="backup_full" title="Télécharge un seul fichier ZIP contenant toutes vos données ET tous vos fichiers scannés (factures, documents…) récupérés du cloud">'+ic("down")+' Sauvegarde COMPLÈTE (données + fichiers .zip)</button>'
+    +'<button class="chip" data-act="backup_export">'+ic("down")+' Données seules (.json)</button>'
     +'<button class="chip" data-act="backup_import">'+ic("folder")+' Restaurer une sauvegarde</button>'
     +'<button class="chip" data-act="diag_storage" title="Vérifie le rattachement des fichiers scannés (lecture seule)">'+ic("check")+' Diagnostic fichiers (lecture seule)</button>'
     +'<input type="file" id="backup_file" accept="application/json,.json" style="display:none">'
@@ -12186,6 +12263,7 @@ document.addEventListener("click",e=>{
     showOk(sel.length+" message(s) copié(s).");
   }
   else if(a==="notiflog_clear"){if(!window.confirm("Effacer tout l'historique des notifications ?"))return;S.notiflog=[];save("notiflog");renderView();}
+  else if(a==="backup_full"){exportFullBackup();}
   else if(a==="backup_export"){exportBackup();}
   else if(a==="diag_storage"){fidDiagStorage();}
   else if(a==="backup_import"){triggerImport();}
@@ -12993,22 +13071,6 @@ else init();
 
 })();
 
-</script>
-<div id="fidMigBox" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:99999;text-align:center;font-family:system-ui,sans-serif">
-<button onclick="fidMigrate()" style="background:#b45309;color:#fff;border:0;border-radius:10px;padding:12px 18px;font:600 13px system-ui;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.3)">\u2B06\uFE0F Migrer mes dossiers vers le cloud (1 seule fois)</button>
-<div style="font-size:10.5px;color:#b45309;margin-top:5px;background:#fff;padding:2px 8px;border-radius:6px;display:inline-block">Fichier LOCAL \u2014 ne jamais mettre en ligne</div></div>
-<script>
-function fidMigrate(){
-  if(typeof session==="undefined"||!session||!session.user){alert("Connectez-vous d'abord au cloud (votre compte habituel) avant de migrer.");return;}
-  if(!Array.isArray(S.custom))S.custom=[];
-  var have={};S.custom.forEach(function(c){have[c.id]=true;});
-  var toAdd=SEED.filter(function(c){return !have[c.id];});
-  if(!toAdd.length){alert("Rien \u00E0 migrer : vos dossiers sont d\u00E9j\u00E0 dans le cloud (custom: "+S.custom.length+").");return;}
-  if(!confirm("Avez-vous fait une SAUVEGARDE (bouton Exporter) ?\n\nMigrer "+toAdd.length+" dossiers vers le cloud ?\nTotal apr\u00E8s migration : "+(S.custom.length+toAdd.length)+" dossiers."))return;
-  toAdd.forEach(function(c){S.custom.push(Object.assign({},c));});
-  save("custom");
-  alert("\u2705 Migration r\u00E9ussie : "+toAdd.length+" dossiers copi\u00E9s vers le cloud.\nTotal clients : "+S.custom.length+".\n\nV\u00E9rifiez votre liste de clients. Si tout est bon, utilisez d\u00E9sormais la version PROPRE (sans donn\u00E9es) pour h\u00E9berger l'app en ligne.");
-}
 </script>
 </body>
 </html>
