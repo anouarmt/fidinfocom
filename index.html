@@ -6581,6 +6581,7 @@ function comptaBanqueList(c,rows,all){
   var nValide=rows.filter(function(o){return o.status==="valide";}).length;
   var bulk='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">'
     +(nNouveau?'<button class="btn-primary" data-act="banque_validateall">'+ic("check","width:14px;height:14px")+' Comptabiliser tout ('+nNouveau+')</button>':'')
+    +(nNouveau?'<button class="chip" data-act="banque_autocat_all" style="color:#2563EB" title="Attribue un compte de contrepartie à chaque ligne selon son libellé : salaire→4432, CNSS→4441, loyer→6131, IR→4452, TVA→4456, télécom→6145, espèces→5161…">🪄 Auto-catégoriser les libellés</button>':'')
     +(nValide?'<button class="chip" data-act="banque_draftall" style="color:#B5530A">↩ Tout repasser en brouillon ('+nValide+')</button>':'')
     +'</div>';
   var head='<tr style="color:var(--faint);text-align:left;border-bottom:1px solid #E6E2D6;font-size:12px">'
@@ -9005,6 +9006,91 @@ function detectCommission(op){
   else { ht=montant; tva=Math.round(montant*taux/100*100)/100; }
   return {isCommission:true,mode:isTTC?"TTC":"HT",htComm:ht,tvaComm:tva,tauxComm:taux};
 }
+/* ===== AUTO-CATÉGORISATION DES LIGNES DU RELEVÉ BANCAIRE (contrepartie par nature) =====
+   Lit le libellé de l'opération et propose un compte de contrepartie (charge, tiers, État,
+   organisme social, caisse…) selon des mots-clés adaptés aux relevés bancaires marocains.
+   Le SENS est respecté (débit = sortie, crédit = entrée). Rien n'est imposé : le compte reste
+   modifiable dans l'éditeur, un bouton « Re-détecter » relance l'analyse, et le compte d'attente
+   4711 est conservé si aucune nature n'est reconnue (jamais de compte faux imposé en silence). */
+function _bankNorm(s){ return (""+(s||"")).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim(); }
+var BANK_RULES=[
+  // --- SORTIES (débit) : d'abord les tokens SPÉCIFIQUES (organismes sociaux + État),
+  //     AVANT la règle « salaire » (sinon « IGR sur salaires » tomberait à tort sur 4432) ---
+  {sens:"D",rx:/(cnss|\bamo\b|damancom|securite sociale|cotisation sociale|cotisations sociales)/, cpt:"4441", reason:"cotisation CNSS / AMO", conf:"haute"},
+  {sens:"D",rx:/(cimr|\bretraite\b|\brcar\b|caisse de retraite)/, cpt:"4443", reason:"retraite (CIMR / RCAR)", conf:"haute"},
+  {sens:"D",rx:/(mutuelle|\bamc\b|cnops)/, cpt:"4445", reason:"mutuelle", conf:"moyenne"},
+  {sens:"D",rx:/(\bigr\b|ir\/sal|ir salarial|impot ir|\bi\.r\b|retenue ir|ir sur salaire|ir sur traitement)/, cpt:"44525", reason:"IR (impôt sur le revenu)", conf:"haute"},
+  {sens:"D",rx:/(impot.{0,3}societe|impots societe|impot sur les societes|acompte is|is acompte)/, cpt:"4453", reason:"IS (impôt sur les sociétés)", conf:"moyenne"},
+  {sens:"D",rx:/(\btva\b|simpl-?tva|paiement tva|tva due)/, cpt:"4456", reason:"TVA à payer", conf:"moyenne"},
+  {sens:"D",rx:/(\bdgi\b|tresorerie generale|\btgr\b|perception|taxe professionnelle|patente|\btsc\b|\btaxe\b|timbre|enregistrement)/, cpt:"4452", reason:"impôt / taxe (État)", conf:"moyenne"},
+  // --- puis salaires / paie ---
+  {sens:"D",rx:/(salaire|salaires|\bpaie\b|\bpaye\b|vir(ement)?\s*(de\s*)?salaire|remuneration|masse salariale|net a payer)/, cpt:"4432", reason:"salaire / paie", conf:"haute"},
+  {sens:"D",rx:/(credit-?bail|leasing|\bloa\b|redevance cb)/, cpt:"6132", reason:"crédit-bail / leasing", conf:"haute"},
+  {sens:"D",rx:/(\bloyer\b|\blocation\b|\bbail\b)/, cpt:"6131", reason:"loyer / location", conf:"haute"},
+  {sens:"D",rx:/(\bonee\b|lydec|redal|radeema|radeef|radeej|amendis|\bonep\b|electricite|facture eau|facture elec)/, cpt:"6125", reason:"eau / électricité", conf:"haute"},
+  {sens:"D",rx:/(maroc telecom|\biam\b|\binwi\b|\borange\b|menara|telecom|internet|telephone|\badsl\b|\bfibre\b|ligne fixe)/, cpt:"6145", reason:"télécom / internet", conf:"haute"},
+  {sens:"D",rx:/(assurance|\brma\b|wafa assurance|\bsaham\b|\baxa\b|\bsanad\b|atlanta|\bmcma\b|allianz|\bmamda\b)/, cpt:"6134", reason:"assurance", conf:"haute"},
+  {sens:"D",rx:/(\btransport\b|livraison|\bfret\b|messagerie|\bdhl\b|chronopost|\bamana\b|\btransit\b)/, cpt:"6142", reason:"transport", conf:"moyenne"},
+  {sens:"D",rx:/(\bretrait\b|\bgab\b|\bdab\b|retrait especes)/, cpt:"5161", reason:"retrait d'espèces → caisse", conf:"haute"},
+  // --- ENTRÉES (crédit) ---
+  {sens:"C",rx:/(versement especes|versement espece|remise especes|depot especes|versement en especes)/, cpt:"5161", reason:"versement d'espèces → caisse", conf:"haute"},
+  {sens:"C",rx:/(remise cheque|remise cheques|remise lcn|remise effet|versement cheque|encaissement cheque)/, cpt:"3421", reason:"encaissement client (chèque / effet)", conf:"moyenne"},
+  {sens:"C",rx:/(virement recu|vir recu|vir\. recu|recu de|en votre faveur|\bencaissement\b)/, cpt:"3421", reason:"encaissement client (virement)", conf:"moyenne"}
+];
+function detectBankOp(o){
+  var isD=(+o.debit||0)>0, isC=(+o.credit||0)>0;
+  if(!isD && !isC) return null;
+  var s=_bankNorm((o.libelle||"")+" "+(o.reference||""));
+  if(!s) return null;
+  for(var i=0;i<BANK_RULES.length;i++){
+    var r=BANK_RULES[i];
+    if(r.sens==="D" && !isD) continue;
+    if(r.sens==="C" && !isC) continue;
+    if(r.rx.test(s)) return {compte:r.cpt, reason:r.reason, conf:r.conf};
+  }
+  return null;
+}
+// Badge explicatif du compte auto-détecté + bouton « Re-détecter » (éditeur d'opération bancaire)
+function bankCatHint(o){
+  var btn='<button class="chip" data-act="op_redetect" data-id="'+esc(o.id)+'" style="padding:3px 8px;font-size:11px;margin-left:8px">🪄 Re-détecter</button>';
+  if(o.contrepartieManual)
+    return '<div class="note" style="font-size:11px;color:var(--faint);margin-top:5px">Compte fixé manuellement.'+btn+'</div>';
+  if(o.contrepartieAuto && o.contrepartieReason){
+    var col=o.contrepartieConf==="haute"?"#0E7A5F":"#B5530A";
+    var cc=comptaCanon(o.contrepartie), lib=libCompte(cc)||"";
+    return '<div style="font-size:11px;color:'+col+';margin-top:5px">🪄 Détecté automatiquement — '+esc(o.contrepartieReason)+' → <b class="mono">'+esc(cc)+'</b>'+(lib?' '+esc(lib):'')+'.'+btn+'</div>';
+  }
+  return '<div class="note" style="font-size:11px;color:var(--faint);margin-top:5px">Non catégorisé (compte d\'attente 4711).'+btn+'</div>';
+}
+function comptaOpRedetect(oid){
+  var cid=String(S.curClient),g=comptaGet(cid),o=g.operations.find(function(x){return String(x.id)===String(oid);});if(!o)return;
+  var det=detectBankOp(o);
+  if(!det){ showErr("Aucune nature reconnue dans « "+(o.libelle||"")+" ». Choisissez le compte manuellement."); return; }
+  o.contrepartie=det.compte; o.contrepartieAuto=true; o.contrepartieManual=false; o.contrepartieReason=det.reason; o.contrepartieConf=det.conf;
+  if(o.isCommission){ o.isCommission=false; o.htComm=null; o.tvaComm=null; o.tauxComm=null; if(o.codeTva==="142")o.codeTva=""; }
+  if(o.status==="valide"&&o.ecritureId){ var ec=ecritureBanque(o,g),e=g.ecritures.find(function(x){return x.id===o.ecritureId;}); if(e){e.lignes=ec.lignes;} }
+  save("compta"); S.modal={type:"banqueop",oid:oid}; renderModal();
+  showOk("Compte détecté : "+comptaCanon(det.compte)+" · "+(libCompte(comptaCanon(det.compte))||"")+" ("+det.reason+").");
+}
+// Auto-catégorise toutes les opérations bancaires affichées (non validées, non manuelles, non rapprochées)
+function banqueAutoCatAll(){
+  var cid=String(S.curClient),g=comptaGet(cid),fl=S.comptaList,n=0;
+  var rows=g.operations.filter(function(o){return opYear(o)===S.year && comptaOpMatch(o,fl) && (o.status||"nouveau")!=="valide" && !o.contrepartieManual && !o.empLink && ((+o.debit>0)||(+o.credit>0));});
+  rows.forEach(function(o){
+    if((o.affectations||[]).some(function(a){return +a.montant>0;}))return;   // déjà rapprochée à des factures
+    var det=detectBankOp(o);
+    if(det){
+      o.contrepartie=det.compte; o.contrepartieAuto=true; o.contrepartieReason=det.reason; o.contrepartieConf=det.conf;
+      if(o.isCommission){ o.isCommission=false; o.htComm=null; o.tvaComm=null; o.tauxComm=null; if(o.codeTva==="142")o.codeTva=""; }
+      n++;
+    } else if(!o.isCommission && (!o.contrepartie || /^4711/.test(comptaCanon(o.contrepartie)))){
+      var com=detectCommission(o);
+      if(com){ o.isCommission=true;o.mode=com.mode;o.htComm=com.htComm;o.tvaComm=com.tvaComm;o.tauxComm=com.tauxComm;o.contrepartie="61475";o.codeTva="142"; n++; }
+    }
+  });
+  save("compta"); renderView();
+  showOk(n?(n+" opération(s) catégorisée(s) automatiquement."):"Aucune nouvelle opération à catégoriser (libellés non reconnus ou déjà traités).");
+}
 function opSig(o){
   var m=Math.round(((+o.debit||0)-(+o.credit||0))*100);
   var lib=(o.libelle||"").trim().toLowerCase().replace(/\s+/g," ").slice(0,40);
@@ -9038,9 +9124,14 @@ async function comptaUploadReleve(files){
       var op={id:"OP"+Date.now()+"_"+i+"_"+j,date:x.date||"",libelle:x.libelle||"",reference:x.reference||"",
         debit:x.debit!=null?x.debit:"",credit:x.credit!=null?x.credit:"",solde:x.solde!=null?x.solde:"",
         path:path,banque:meta.banque,compte:meta.compte,status:"nouveau",contrepartie:""};
-      // détection automatique commission bancaire (HT vs TTC) + TVA 10%
-      var com=detectCommission(op);
-      if(com){ op.isCommission=true;op.mode=com.mode;op.htComm=com.htComm;op.tvaComm=com.tvaComm;op.tauxComm=com.tauxComm;op.contrepartie="61475";op.codeTva="142"; }
+      // 1) auto-catégorisation par nature (salaire, CNSS, loyer, impôts, télécom, espèces…)
+      var det=detectBankOp(op);
+      if(det){ op.contrepartie=det.compte; op.contrepartieAuto=true; op.contrepartieReason=det.reason; op.contrepartieConf=det.conf; }
+      else {
+        // 2) sinon : commission / frais bancaires (HT + TVA déductible 10%)
+        var com=detectCommission(op);
+        if(com){ op.isCommission=true;op.mode=com.mode;op.htComm=com.htComm;op.tvaComm=com.tvaComm;op.tauxComm=com.tauxComm;op.contrepartie="61475";op.codeTva="142"; }
+      }
       var sig=opSig(op);
       if(sig && seen[sig]){ dupSkip++; continue; }
       seen[sig]=true;
@@ -9787,7 +9878,7 @@ function modalBanqueOp(oid){
         +'<div style="flex:1;min-width:120px"><div class="flbl">Débit</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':debit" value="'+esc(o.debit!=null?o.debit:"")+'"></div>'
         +'<div style="flex:1;min-width:120px"><div class="flbl">Crédit</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':credit" value="'+esc(o.credit!=null?o.credit:"")+'"></div>'
       +'</div>'
-      +'<div style="margin-top:10px"><div class="flbl">Compte de contrepartie</div><input class="ipt mono" list="od_plan" data-opf="'+esc(o.id)+':contrepartie" value="'+esc(o.contrepartie||"4711")+'" placeholder="6111, 3421, 4711…"></div>'
+      +'<div style="margin-top:10px"><div class="flbl">Compte de contrepartie</div><input class="ipt mono" list="od_plan" data-opf="'+esc(o.id)+':contrepartie" value="'+esc(o.contrepartie||"4711")+'" placeholder="6111, 3421, 4711…">'+bankCatHint(o)+'</div>'
       +commBox
       +'<datalist id="od_plan">'+odPlanOptions()+'</datalist>'
       +'<div style="margin-top:10px"><div class="flbl">Notes / informations complémentaires</div><textarea class="ipt" data-opf="'+esc(o.id)+':notes" rows="2" placeholder="Ajoutez une note libre… (laisser vide pour ne rien afficher)" style="resize:vertical;min-height:46px">'+esc(o.notes||"")+'</textarea></div>'
@@ -9806,6 +9897,7 @@ function comptaOpInput(t){
   var f=t.dataset.opf.split(":"),oid=f[0],field=f[1],cid=String(S.curClient),g=comptaGet(cid);
   var o=g.operations.find(function(x){return String(x.id)===String(oid);});if(!o)return;
   o[field]=t.value;
+  if(field==="contrepartie"){ o.contrepartieManual=true; o.contrepartieAuto=false; }
   if(field==="tauxComm"){ // recalc HT/TVA à partir du débit si commission TTC
     var taux=+t.value||0, ttc=+o.debit||0;
     if(ttc>0 && taux>0){ var tva=ttc*taux/(100+taux); o.tvaComm=Math.round(tva*100)/100; o.htComm=Math.round((ttc-tva)*100)/100; }
@@ -12342,6 +12434,7 @@ document.addEventListener("click",e=>{
   else if(a==="comptalist_validateall"){comptaListValidateAll();}
   else if(a==="banque_validate"){banqueValidate(t.dataset.id);}
   else if(a==="banque_validateall"){banqueValidateAll();}
+  else if(a==="banque_autocat_all"){banqueAutoCatAll();}
   else if(a==="banque_draftall"){banqueDraftAll();}
   else if(a==="banque_del"){banqueDel(t.dataset.id);}
   else if(a==="banque_edit"){banqueEdit(t.dataset.id);}
@@ -12349,6 +12442,7 @@ document.addEventListener("click",e=>{
   else if(a==="op_opendoc"){comptaOpenDoc(t.dataset.id);}
   else if(a==="op_draft"){banqueDraft(t.dataset.id);}
   else if(a==="op_validate"){banqueValidate(t.dataset.id);if(S.modal&&S.modal.type==="banqueop")renderModal();}
+  else if(a==="op_redetect"){comptaOpRedetect(t.dataset.id);}
   else if(a==="lettrage_open"){S._letOpen=true;S.modal={type:"lettrage",cid:+t.dataset.id,compte:t.dataset.compte};renderModal();}
   else if(a==="tiers_merge"){ var nMrg=comptaMergeTiers(+t.dataset.id); renderView(); showOk(nMrg>0?(nMrg+" doublon(s) de tiers fusionné(s).") :"Aucun doublon détecté."); }
   else if(a==="let_apply"){
