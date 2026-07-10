@@ -6245,8 +6245,13 @@ function comptaSaisieBody(c){
   var allPy=g.pieces.filter(function(p){return pieceYear(p)===S.year&&p.path;});
   var printAll=allPy.length?('<div style="margin-top:14px"><button class="chip" data-act="comptaprintall">'+ic("printer","width:14px;height:14px;vertical-align:-2px")+' Imprimer toutes les factures ('+allPy.length+')</button></div>'):'';
   var allCk=av.length>0&&compSelIds().length===av.length;
+  var apOn=(cabinetGet().autopilot!==false);
+  var apBar='<div class="card" style="margin-top:14px;padding:12px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:'+(apOn?'#EAF5F0':'#FBFAF5')+';border:1px solid '+(apOn?'#cfe7dd':'#E6E2D6')+'">'
+    +'<label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-weight:600;font-size:13px;color:'+(apOn?'#0a5f4a':'#6b6858')+'"><input type="checkbox" data-autopilot'+(apOn?' checked':'')+' style="width:17px;height:17px;accent-color:#0E7A5F"> 🤖 Pilote automatique '+(apOn?'activé':'désactivé')+'</label>'
+    +'<span class="note" style="font-size:11.5px;flex:1;min-width:220px">Dès que vous déposez des documents, les pièces cohérentes sont validées et passées au Journal / Balance / Liasse automatiquement (la TVA lit déjà les pièces). Les pièces douteuses restent « à valider » avec la raison. <b>Aucun télédépôt automatique.</b></span>'
+    +'</div>';
   var rev=av.length?('<div style="display:flex;justify-content:space-between;align-items:center;margin:22px 0 12px;flex-wrap:wrap;gap:8px"><div class="sectit"><label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="comp_checkall" class="fac-cb"'+(allCk?' checked':'')+' title="Tout sélectionner"> À valider ('+av.length+')</label></div><button class="btn-primary" data-act="comptavalidateall">'+ic("check","width:15px;height:15px")+' Tout valider ('+av.length+')</button></div><div id="comp_bulkwrap">'+compBulkBar()+'</div>'+av.map(reviewCard).join("")):'<div class="note mt5">Aucune pièce à valider. Cliquez « Importer » sur la carte Achats pour déposer une facture (OCR automatique).</div>';
-  return cards+printAll+rev;
+  return cards+apBar+printAll+rev;
 }
 // ===== Saisie manuelle des écritures comptables (journal OD / AC / VE / BQ) =====
 var OD_JOURNALS=[["OD","Opérations diverses"],["AN","À-nouveaux (report N-1)"],["AC","Achats"],["VE","Ventes"],["BQ","Banque"],["CA","Caisse"]];
@@ -7348,6 +7353,7 @@ function reviewCard(p){
     +'</div>';
   return '<div class="card" style="padding:16px;margin-bottom:12px">'
     +(p.dupSuspect?'<div class="note" style="background:#FCEEE0;color:#B5530A;border-radius:8px;padding:7px 10px;font-size:12px;margin-bottom:10px">⚠️ Doublon possible — une facture avec le même n°, le même montant et le même tiers existe déjà. Elle a quand même été importée ; vérifiez puis supprimez ce doublon si nécessaire.</div>':'')
+    +((p.autoWhy&&p.status==="avalider")?'<div class="note" style="background:#FBFAF5;color:#8a6d1f;border:1px solid #ece4c9;border-radius:8px;padding:7px 10px;font-size:12px;margin-bottom:10px">🤖 Non validée automatiquement — '+esc(p.autoWhy)+'. Corrigez le champ concerné puis validez.</div>':'')
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px"><div style="font-weight:600;color:#14201C"><input type="checkbox" class="fac-cb" data-compcheck="'+p.id+'"'+ck+' style="margin-right:8px;vertical-align:-3px" title="Sélectionner cette pièce">'+badge+' '+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' '+esc(p.name||"Facture")+'</div><div style="display:flex;gap:6px"><button class="chip" data-act="comptaedit" data-id="'+p.id+'">✎ Éditer</button><button class="chip" data-act="comptaprint_one" data-id="'+p.id+'">'+ic("printer","width:13px;height:13px;vertical-align:-2px")+' Imprimer</button><button class="chip" data-act="comptaview_doc" data-id="'+p.id+'">Nouvel onglet</button><button class="chip" data-act="comptamove_one" data-id="'+p.id+'">Déplacer</button><button class="iconbtn" data-act="comptadel" data-id="'+p.id+'" style="color:#cfccc0">'+ic("trash")+'</button></div></div>'
     +'<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch">'+form+prev+'</div></div>';
 }
@@ -9091,6 +9097,71 @@ function banqueAutoCatAll(){
   save("compta"); renderView();
   showOk(n?(n+" opération(s) catégorisée(s) automatiquement."):"Aucune nouvelle opération à catégoriser (libellés non reconnus ou déjà traités).");
 }
+/* ===== PILOTE AUTOMATIQUE — « zéro clic » après dépôt des documents =====
+   Dès qu'un document est déposé et lu (OCR), les pièces qui passent TOUS les contrôles de
+   cohérence sont validées automatiquement : elles alimentent alors instantanément le Journal,
+   le Grand Livre, la Balance et la Liasse (IS). La TVA, elle, lit déjà les pièces sans validation.
+   Les pièces DOUTEUSES restent « à valider » avec la raison affichée (contrôle en quelques secondes).
+   AUCUNE déclaration n'est jamais télédéposée automatiquement — le dépôt DGI/CNSS reste ta décision.
+   Interrupteur persistant : cabinet.autopilot (défaut : activé). */
+function autopilotOn(){ return (cabinetGet().autopilot!==false); }
+function pieceAutoOK(p){
+  if(!p || p.rejected)                                 return {ok:false,why:"pièce rejetée"};
+  if(p.isImport)                                       return {ok:false,why:"dossier d'import (DUM) — à vérifier"};
+  if(p.dupSuspect)                                     return {ok:false,why:"doublon possible"};
+  if(p.ocrError)                                       return {ok:false,why:"lecture OCR incomplète"};
+  if(!p.date || !/^\d{4}-\d{2}-\d{2}/.test(p.date))    return {ok:false,why:"date manquante ou illisible"};
+  if(!p.fournisseur || !String(p.fournisseur).trim())  return {ok:false,why:"tiers (fournisseur / client) manquant"};
+  if(!p.numero || !String(p.numero).trim())            return {ok:false,why:"n° de facture manquant"};
+  if(!p.compte)                                        return {ok:false,why:"compte non détecté"};
+  if(p.compteConf==="faible")                          return {ok:false,why:"compte incertain (à confirmer)"};
+  var ht=+p.ht||0, tva=+p.tva||0, ttc=+p.ttc||(ht+tva);
+  if(!(ht>0))                                          return {ok:false,why:"montant HT manquant"};
+  if(Math.abs((ht+tva)-ttc) > Math.max(1, ttc*0.01))   return {ok:false,why:"HT + TVA ≠ TTC"};
+  if(tva>0){ var t=tva/ht*100; var okT=[7,10,11,12,14,16,20].some(function(v){return Math.abs(t-v)<=1.2;}); if(!okT) return {ok:false,why:"taux TVA inhabituel ("+Math.round(t)+" %)"}; }
+  return {ok:true};
+}
+function bankOpAutoOK(o){
+  if(o.empLink) return false;
+  if(!((+o.debit>0)||(+o.credit>0))) return false;
+  if((o.affectations||[]).some(function(a){return +a.montant>0;})) return false;   // déjà rapprochée à des factures
+  if(o.isCommission && +o.tvaComm>0) return true;                                   // commission : ventilation sûre
+  if(o.contrepartieAuto && o.contrepartieConf==="haute" && o.contrepartie && !/^4711/.test(comptaCanon(o.contrepartie))) return true;
+  return false;
+}
+function autopilotProcess(cid){
+  if(!autopilotOn()) return {v:0,skip:0,ops:0,on:false};
+  var g=comptaGet(cid); if(!g) return {v:0,skip:0,ops:0,on:true};
+  var v=0,skip=0,opsV=0;
+  (g.pieces||[]).forEach(function(p){
+    if(pieceYear(p)!==S.year || p.status!=="avalider" || p._auto) return;  // arbitré une seule fois
+    p._auto=true;
+    var r=pieceAutoOK(p);
+    if(r.ok){ p.status="valide"; delete p.autoWhy; v++; }
+    else { p.autoWhy=r.why; skip++; }                                      // reste « à valider », raison mémorisée
+  });
+  (g.operations||[]).forEach(function(o){
+    if(opYear(o)!==S.year || (o.status||"nouveau")!=="nouveau" || o._auto) return;
+    o._auto=true;
+    if(bankOpAutoOK(o)){
+      var eid="EB"+Date.now()+"_ap"+opsV, ec=ecritureBanque(o,g);
+      g.ecritures.push({id:eid,opId:o.id,date:o.date||(S.year+"-01-01"),journal:"BQ",piece:o.reference||o.libelle||"Banque",lignes:ec.lignes});
+      o.status="valide"; o.ecritureId=eid; opsV++;
+    }
+  });
+  return {v:v,skip:skip,ops:opsV,on:true};
+}
+function autopilotToast(res){
+  if(!res || res.on===false) return;
+  if(res.v||res.ops){
+    var parts=[];
+    if(res.v)parts.push(res.v+" pièce(s) validée(s)");
+    if(res.ops)parts.push(res.ops+" opération(s) bancaire(s) comptabilisée(s)");
+    showOk("🤖 Pilote auto : "+parts.join(" · ")+(res.skip?(" · "+res.skip+" à vérifier"):"")+". Déclarations à jour.");
+  } else if(res.skip){
+    showErr("🤖 Pilote auto : "+res.skip+" pièce(s) à vérifier avant validation (raison indiquée sur chaque pièce dans « À valider »).");
+  }
+}
 function opSig(o){
   var m=Math.round(((+o.debit||0)-(+o.credit||0))*100);
   var lib=(o.libelle||"").trim().toLowerCase().replace(/\s+/g," ").slice(0,40);
@@ -9138,9 +9209,11 @@ async function comptaUploadReleve(files){
       g.operations.push(op);totalOp++;
     }
   }
+  var _ap=autopilotProcess(cid);comptaAutoPost(g);
   save("compta");setSync("synced");
   if(st)st.textContent=totalOp+" opération(s) importée(s)."+(dupSkip?" "+dupSkip+" doublon(s) ignoré(s).":"");
   if(totalOp)showOk(totalOp+" opération(s) bancaire(s) importée(s).");
+  autopilotToast(_ap);
   S.comptaList.type="banque";S.comptaView="list";renderView();
 }
 // ===== Tiers pertinent selon le sens =====
@@ -9236,6 +9309,7 @@ async function comptaUpload(type,files){
       g.pieces.push(piece);totalFac++;
     }
   }
+  var _ap=autopilotProcess(cid);
   comptaAutoPost(g);
   save("compta");setSync("synced");
   var _note=importYearNote(_yr);
@@ -9243,6 +9317,7 @@ async function comptaUpload(type,files){
   showOk(totalFac+" facture(s) importée(s)."+_note+(dupSkip?" "+dupSkip+" doublon(s) possible(s) signalé(s) « à vérifier ».":""));
   if(tooBig)showErr(tooBig+" fichier(s) dépassent 50 Mo et n'ont pas pu être importés — compressez-les ou scannez en plus basse résolution.");
   try{ window._lastOcrTrace=_trace2; }catch(eD){}
+  autopilotToast(_ap);
   renderView();
 }
 // ===== Import d'UN PDF contenant PLUSIEURS factures, avec DÉTECTION des frontières =====
@@ -9384,6 +9459,7 @@ async function comptaUploadGrouped(type,files){
       g.pieces.push(piece);totalFac++;
     }
   }
+  var _ap=autopilotProcess(cid);
   comptaAutoPost(g);
   save("compta");setSync("synced");
   var _note=importYearNote(_yr);
@@ -9391,6 +9467,7 @@ async function comptaUploadGrouped(type,files){
   showOk(totalFac+" facture(s) détectée(s) — les pages d'une même facture ont été regroupées automatiquement."+_note);
   if(tooBig)showErr(tooBig+" fichier(s) dépassent 50 Mo et n'ont pas pu être importés.");
   try{ window._lastOcrTrace=_trace; }catch(eD){}
+  autopilotToast(_ap);
   renderView();
 }
 // signature d'une facture pour repérer les doublons (n° + TTC + tiers, sinon date + TTC + tiers)
@@ -12568,6 +12645,7 @@ document.addEventListener("change",e=>{
   if(t.dataset.cp!=null){comptaInput(t);return;}
   if(t.dataset.opf!=null){comptaOpInput(t);return;}
   if(t.dataset.opcomm!=null){comptaOpComm(t.dataset.opcomm);return;}
+  if(t.dataset.autopilot!=null){ cabinetSet("autopilot",t.checked); if(t.checked&&S.curClient!=null){ var _apr=autopilotProcess(String(S.curClient)); comptaAutoPost(comptaGet(S.curClient)); save("compta"); autopilotToast(_apr); } renderView(); return; }
   if(t.dataset.relcode!=null){releveSetCode(t.dataset.relcode,t.value);return;}
   if(t.id==="tsclient"){S.curClient=t.value===""?null:+t.value;renderView();return;}
   if(t.id==="tsperiod"){S.tsPeriod=t.value;renderView();return;}
