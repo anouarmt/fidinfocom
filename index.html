@@ -9945,14 +9945,16 @@ function modalBanqueOp(oid){
     +'</div>'):('<div class="note" style="font-size:11.5px;margin-top:12px">Cette opération n\'est pas détectée comme une commission/frais bancaire. Cochez ci-dessous pour la traiter comme telle (TVA déductible 10%).</div>'
     +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px"><input type="checkbox" data-opcomm="'+esc(o.id)+'" style="width:16px;height:16px;accent-color:#0E7A5F"> <span style="font-size:13px">Traiter comme commission bancaire (TVA déductible)</span></label>');
   var prev=o.path
-    ? '<div id="op_prevwrap" style="height:100%;min-height:360px;background:#f3f1ea;border-radius:10px;overflow:hidden"><div class="note" style="padding:20px">Chargement du relevé…</div></div>'
+    ? '<div class="note" style="padding:20px">Chargement du relevé…</div>'
     : '<div class="note" style="padding:20px;text-align:center;color:#9A9684">Aucun fichier relevé lié à cette opération.</div>';
-  return '<div class="ov"><div class="modal" data-stop style="max-width:1000px;width:100%">'
-    +'<div class="mh"><div><h3 class="ff">Opération bancaire</h3><div class="meta"><span>'+ic("book")+esc(o.banque||"Banque")+'</span><span>'+esc(o.date||"")+' · '+sens+'</span></div></div>'
-    +'<div style="display:flex;gap:8px;align-items:center">'+(o.path?'<button class="chip" data-act="op_opendoc" data-id="'+esc(o.id)+'">'+ic("receipt","width:13px;height:13px;vertical-align:-2px")+' Ouvrir</button>':"")+'<button class="xbtn" data-act="close">'+ic("x")+'</button></div></div>'
-    +'<div class="mb" style="padding:0">'
-    +'<div style="display:flex;flex-wrap:wrap;gap:0">'
-    +'<div style="flex:1;min-width:300px;padding:18px;border-right:1px solid var(--line)">'
+  return '<div class="ov"><div class="modal" data-stop style="max-width:1180px;width:100%;height:88vh;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border-radius:18px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:14px 20px;background:var(--ink);color:#fff;flex-wrap:wrap">'
+      +'<div style="min-width:0"><div style="font-weight:600;font-size:15px">'+ic("book","width:15px;height:15px;vertical-align:-2px")+' Opération bancaire</div>'
+      +'<div style="font-size:12px;opacity:.82;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.banque||"Banque")+' · '+esc(o.date||"")+' · '+sens+'</div></div>'
+      +'<div style="display:flex;gap:8px;align-items:center">'+(o.path?'<button class="chip" data-act="op_opendoc" data-id="'+esc(o.id)+'">'+ic("receipt","width:13px;height:13px;vertical-align:-2px")+' Ouvrir</button>':"")+'<button class="chip" data-act="close" style="background:#EBC873;border:0">Fermer ✕</button></div>'
+    +'</div>'
+    +'<div class="edbody">'
+    +'<div class="edform">'
       +'<div class="flbl">Libellé</div><input class="ipt" data-opf="'+esc(o.id)+':libelle" value="'+esc(o.libelle||"")+'">'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">'
         +'<div style="flex:1;min-width:120px"><div class="flbl">Débit</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':debit" value="'+esc(o.debit!=null?o.debit:"")+'"></div>'
@@ -9967,10 +9969,9 @@ function modalBanqueOp(oid){
       +(o.status==="valide"?'<button class="chip" data-act="op_draft" data-id="'+esc(o.id)+'" style="color:#B5530A">↩ Repasser en brouillon</button>':'<button class="chip" data-act="op_validate" data-id="'+esc(o.id)+'" style="color:#0E7A5F">'+ic("check","width:13px;height:13px;vertical-align:-2px")+' Comptabiliser</button>')
       +'</div>'
     +'</div>'
-    +'<div style="flex:1;min-width:300px;padding:18px">'
-      +'<div class="flbl">Aperçu du relevé bancaire</div>'+prev
+    +'<div id="op_prevwrap" class="edprev">'+prev+'</div>'
     +'</div>'
-    +'</div></div></div></div>';
+    +'</div></div>';
 }
 // Champ d'une opération bancaire édité (data-opf="id:field")
 function comptaOpInput(t){
