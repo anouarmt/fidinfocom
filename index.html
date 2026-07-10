@@ -6579,6 +6579,29 @@ function banqueReportBox(c,all){
     +cell("Solde final calculé",soldeFinal,soldeFinal<0?"#B42318":"#14201C")
     +rappro+'</div>';
 }
+// ---- Visualiseur de relevé bancaire directement sur la page des opérations ----
+function banquePrevFiles(all,cid){
+  var docs=(S.docs[cid]||[]), seen={}, files=[];
+  (all||[]).forEach(function(o){
+    if(!o.path||seen[o.path])return; seen[o.path]=true;
+    var d=docs.find(function(m){return m.path===o.path;});
+    var label=d?d.name:((o.banque?o.banque+" — ":"")+"Relevé — "+(String(o.path).split("/").pop()||""));
+    files.push({path:o.path,label:label});
+  });
+  return files;
+}
+function banquePrevRender(){
+  var wrap=document.getElementById("banqueprevwrap"); if(!wrap)return;
+  var path=(S.banquePrev||{}).path;
+  if(!path){ wrap.innerHTML='<div class="note" style="padding:20px">Aucun relevé lié.</div>'; return; }
+  comptaSignedUrlPath(path).then(function(url){ wrap.innerHTML=previewHtml(url,path,null); })
+    .catch(function(e){ wrap.innerHTML='<div class="note" style="padding:20px;color:#B5530A">Aperçu indisponible : '+esc(e.message||e)+'</div>'; });
+}
+async function banquePrevOpen(){
+  var path=(S.banquePrev||{}).path; if(!path){showErr("Aucun relevé sélectionné.");return;}
+  try{ var url=await comptaSignedUrlPath(path); window.open(url,"_blank"); }catch(e){ showErr("Ouverture impossible : "+(e.message||e)); }
+}
+function banquePrevToggle(){ if(!S.banquePrev)S.banquePrev={open:true,path:""}; S.banquePrev.open=!(S.banquePrev.open!==false); renderView(); }
 function comptaBanqueList(c,rows,all){
   var reportBox=banqueReportBox(c,all);
   if(!all.length)return reportBox+'<div class="empty mt4">Aucune opération bancaire pour '+S.year+'. Saisissez le solde initial ci-dessus, puis cliquez « Importer » sur la carte Rel. bancaires pour déposer un relevé (OCR).</div>';
@@ -6589,6 +6612,25 @@ function comptaBanqueList(c,rows,all){
     +(nNouveau?'<button class="chip" data-act="banque_autocat_all" style="color:#2563EB" title="Attribue un compte de contrepartie à chaque ligne selon son libellé : salaire→4432, CNSS→4441, loyer→6131, IR→4452, TVA→4456, télécom→6145, espèces→5161…">🪄 Auto-catégoriser les libellés</button>':'')
     +(nValide?'<button class="chip" data-act="banque_draftall" style="color:#B5530A">↩ Tout repasser en brouillon ('+nValide+')</button>':'')
     +'</div>';
+  // panneau visualiseur du relevé scanné
+  var _files=banquePrevFiles(all,String(c.id)), prevPanel="";
+  if(_files.length){
+    if(!S.banquePrev)S.banquePrev={open:true,path:""};
+    if(!S.banquePrev.path||!_files.some(function(f){return f.path===S.banquePrev.path;}))S.banquePrev.path=_files[0].path;
+    var _open=S.banquePrev.open!==false;
+    var _sel=_files.length>1
+      ? '<select class="ipt" data-banqueprev style="flex:1;min-width:180px;max-width:380px">'+_files.map(function(f){return '<option value="'+esc(f.path)+'"'+(f.path===S.banquePrev.path?" selected":"")+'>'+esc(f.label)+'</option>';}).join("")+'</select>'
+      : '<div style="flex:1;min-width:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(_files[0].label)+'</div>';
+    prevPanel='<div class="card" style="padding:0;margin:14px 0;overflow:hidden">'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#F7F4EC'+(_open?';border-bottom:1px solid #E6E2D6':'')+'">'
+        +'<div style="font-weight:600;color:#14201C;font-size:13px;white-space:nowrap">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' Relevé bancaire</div>'
+        +_sel
+        +(_open?'<button class="chip" data-act="banque_prev_open" title="Ouvrir dans un onglet">Plein écran ↗</button>':'')
+        +'<button class="chip" data-act="banque_prev_toggle">'+(_open?'Masquer ▲':'Afficher ▼')+'</button>'
+      +'</div>'
+      +(_open?'<div id="banqueprevwrap" style="height:64vh;min-height:420px;background:#f3f1ea"><div class="note" style="padding:20px">Chargement du relevé…</div></div>':'')
+    +'</div>';
+  }
   var head='<tr style="color:var(--faint);text-align:left;border-bottom:1px solid #E6E2D6;font-size:12px">'
     +'<th style="padding:8px 6px">Date</th><th style="padding:8px 6px">Libellé</th><th style="padding:8px 6px;text-align:right">Débit</th><th style="padding:8px 6px;text-align:right">Crédit</th><th style="padding:8px 6px;text-align:right">Solde</th><th style="padding:8px 6px;text-align:center">Statut</th><th style="padding:8px 6px;text-align:right">Actions</th></tr>';
   var body=rows.map(function(o){
@@ -6611,7 +6653,7 @@ function comptaBanqueList(c,rows,all){
   var tD=rows.reduce(function(a,o){return a+(+o.debit||0);},0),tC=rows.reduce(function(a,o){return a+(+o.credit||0);},0);
   var foot='<tr style="border-top:2px solid #14201C;font-weight:700;color:#14201C"><td colspan="2" style="padding:10px 6px">TOTAL ('+rows.length+')</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tD)+'</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tC)+'</td><td colspan="3"></td></tr>';
   var tbl='<div class="card" style="padding:14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:680px">'+head+body+foot+'</table></div>';
-  return reportBox+bulk+tbl;
+  return reportBox+bulk+prevPanel+tbl;
 }
 function comptaListBody(c){
   var type=S.comptaList.type||"achat";
@@ -12077,6 +12119,7 @@ function renderView(){
   const v=vmap[S.tab]();
   document.getElementById("view").innerHTML=voletToggle()+v;
   enhanceClientSelects();
+  banquePrevRender();
 }
 /* ====== RECHERCHE GLOBALE (palette) — dossiers · pièces · factures · documents ====== */
 // Construit les résultats groupés à partir de l'état en mémoire (lecture seule, aucune mutation).
@@ -12516,6 +12559,8 @@ document.addEventListener("click",e=>{
   else if(a==="banque_validate"){banqueValidate(t.dataset.id);}
   else if(a==="banque_validateall"){banqueValidateAll();}
   else if(a==="banque_autocat_all"){banqueAutoCatAll();}
+  else if(a==="banque_prev_toggle"){banquePrevToggle();}
+  else if(a==="banque_prev_open"){banquePrevOpen();}
   else if(a==="banque_draftall"){banqueDraftAll();}
   else if(a==="banque_del"){banqueDel(t.dataset.id);}
   else if(a==="banque_edit"){banqueEdit(t.dataset.id);}
@@ -12650,6 +12695,7 @@ document.addEventListener("change",e=>{
   if(t.dataset.opf!=null){comptaOpInput(t);return;}
   if(t.dataset.opcomm!=null){comptaOpComm(t.dataset.opcomm);return;}
   if(t.dataset.autopilot!=null){ cabinetSet("autopilot",t.checked); if(t.checked&&S.curClient!=null){ var _apr=autopilotProcess(String(S.curClient)); comptaAutoPost(comptaGet(S.curClient)); save("compta"); autopilotToast(_apr); } renderView(); return; }
+  if(t.dataset.banqueprev!=null){ if(!S.banquePrev)S.banquePrev={open:true,path:""}; S.banquePrev.path=t.value; banquePrevRender(); return; }
   if(t.dataset.relcode!=null){releveSetCode(t.dataset.relcode,t.value);return;}
   if(t.id==="tsclient"){S.curClient=t.value===""?null:+t.value;renderView();return;}
   if(t.id==="tsperiod"){S.tsPeriod=t.value;renderView();return;}
