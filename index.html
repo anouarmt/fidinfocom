@@ -6626,6 +6626,7 @@ function comptaBanqueList(c,rows,all){
         +'<div style="font-weight:600;color:#14201C;font-size:13px;white-space:nowrap">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' Relevé bancaire</div>'
         +_sel
         +(_open?'<button class="chip" data-act="banque_prev_open" title="Ouvrir dans un onglet">Plein écran ↗</button>':'')
+        +'<button class="chip" data-act="banque_del_releve" style="color:#B5530A" title="Supprimer toutes les opérations de ce relevé">'+ic("trash","width:13px;height:13px;vertical-align:-2px")+' Supprimer ce relevé</button>'
         +'<button class="chip" data-act="banque_prev_toggle">'+(_open?'Masquer ▲':'Afficher ▼')+'</button>'
       +'</div>'
       +(_open?'<div id="banqueprevwrap" style="height:64vh;min-height:420px;background:#f3f1ea"><div class="note" style="padding:20px">Chargement du relevé…</div></div>':'')
@@ -9927,6 +9928,27 @@ function banqueDel(oid){
   g.operations=g.operations.filter(function(x){return String(x.id)!==String(oid);});
   save("compta");renderView();showOk("Opération supprimée.");
 }
+// Supprime TOUT un relevé : ses opérations, leurs écritures, son fichier et son entrée Documents
+async function banqueDelReleve(){
+  var cid=String(S.curClient),g=comptaGet(cid),path=(S.banquePrev||{}).path;
+  if(!path){showErr("Aucun relevé sélectionné.");return;}
+  var victims=g.operations.filter(function(o){return o.path===path;});
+  if(!victims.length){showErr("Aucune opération liée à ce relevé.");return;}
+  var nVal=victims.filter(function(o){return o.status==="valide";}).length;
+  var msg="Supprimer TOUT ce relevé ?\n\n"+victims.length+" opération(s) seront supprimées"
+    +(nVal?(" (dont "+nVal+" déjà comptabilisée(s) — leurs écritures seront retirées du journal)"):"")
+    +", ainsi que le fichier scanné et son entrée dans Documents.\n\nCette action est irréversible.";
+  if(!confirm(msg))return;
+  var ids={},ecr={};
+  victims.forEach(function(o){ ids[String(o.id)]=true; if(o.ecritureId)ecr[o.ecritureId]=true; });
+  g.ecritures=g.ecritures.filter(function(e){ return !ecr[e.id] && !(e.opId&&ids[String(e.opId)]); });
+  g.operations=g.operations.filter(function(o){ return o.path!==path; });
+  if(S.docs[cid])S.docs[cid]=S.docs[cid].filter(function(m){return m.path!==path;});
+  try{ if(sb) await sb.storage.from(DOC_BUCKET).remove([path]); }catch(e){}
+  if(S.banquePrev)S.banquePrev.path="";
+  comptaAutoPost(g); save("compta"); save("docs"); renderView();
+  showOk(victims.length+" opération(s) du relevé supprimée(s).");
+}
 // Options <option> de tous les codes TVA déductibles (pour correction manuelle)
 function tvaDedCodeOptions(sel){
   sel=String(sel||"");
@@ -12561,6 +12583,7 @@ document.addEventListener("click",e=>{
   else if(a==="banque_autocat_all"){banqueAutoCatAll();}
   else if(a==="banque_prev_toggle"){banquePrevToggle();}
   else if(a==="banque_prev_open"){banquePrevOpen();}
+  else if(a==="banque_del_releve"){banqueDelReleve();}
   else if(a==="banque_draftall"){banqueDraftAll();}
   else if(a==="banque_del"){banqueDel(t.dataset.id);}
   else if(a==="banque_edit"){banqueEdit(t.dataset.id);}
