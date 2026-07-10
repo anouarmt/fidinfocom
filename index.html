@@ -5192,7 +5192,7 @@ function vDocs(){
   var docs=docsList();
   var cards=docs.length?docs.slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"");}).map(function(m){
     return '<div class="card" style="padding:12px 14px;margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1;min-width:0"><div style="font-weight:600;color:#14201C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+ic("folder","width:14px;height:14px;vertical-align:-2px")+' '+esc(m.name)+'</div><div style="font-size:11.5px;color:var(--faint);margin-top:2px">'+(m.cat?esc(m.cat)+" · ":"")+fmtSize(m.size)+" · "+fmtDate(new Date(m.date))+'</div></div>'
-      +'<button class="chip" data-act="docextract" data-id="'+m.id+'" id="dx_'+m.id+'">'+ic("receipt","width:14px;height:14px")+(m.extracted?' Ré-extraire':' Extraire')+'</button>'
+      +(m.isReleve?'':'<button class="chip" data-act="docextract" data-id="'+m.id+'" id="dx_'+m.id+'">'+ic("receipt","width:14px;height:14px")+(m.extracted?' Ré-extraire':' Extraire')+'</button>')
       +'<button class="chip" data-act="docview" data-id="'+m.id+'">'+ic("down","width:14px;height:14px")+' Ouvrir</button>'
       +'<button class="iconbtn" data-act="docdel" data-id="'+m.id+'" style="color:#cfccc0">'+ic("trash")+'</button></div>'
       +(m.extracted?extractedPanel(m.extracted,m.id,m.reportedTVA):'')+'</div>';
@@ -9172,7 +9172,7 @@ async function comptaUploadReleve(files){
   files=Array.prototype.slice.call(files||[]);if(!files.length)return;
   var c=clients().find(function(x){return x.id===S.curClient;})||{},cid=String(S.curClient);
   var st=document.getElementById("comptastatus");setSync("saving");
-  var g=comptaGet(cid),totalOp=0,dupSkip=0;
+  var g=comptaGet(cid),totalOp=0,dupSkip=0,addedDocs=[];
   var seen={};
   g.operations.forEach(function(o){ if(opYear(o)===S.year)seen[opSig(o)]=true; });
   for(var i=0;i<files.length;i++){
@@ -9190,6 +9190,8 @@ async function comptaUploadReleve(files){
       meta={banque:data.banque||"",compte:data.compte||"",periode:data.periode||""};
     }catch(e){ err=(e.message||e); }
     if(err){ if(st)st.textContent="Erreur : "+err; showErr("Lecture du relevé impossible : "+err+". Avez-vous bien créé la fonction extract-releve ?"); setSync("synced"); return; }
+    // archive le relevé scanné dans le module « Documents » (même fichier, même bucket)
+    addedDocs.push({id:Date.now()+"_rel"+i, name:(meta.banque?meta.banque+" — ":"")+"Relevé bancaire"+(meta.periode?" "+meta.periode:"")+" — "+f.name, size:f.size, date:new Date().toISOString(), cat:"Relevé bancaire", path:path, isReleve:true});
     for(var j=0;j<ops.length;j++){
       var x=ops[j]||{};
       var op={id:"OP"+Date.now()+"_"+i+"_"+j,date:x.date||"",libelle:x.libelle||"",reference:x.reference||"",
@@ -9210,6 +9212,7 @@ async function comptaUploadReleve(files){
     }
   }
   var _ap=autopilotProcess(cid);comptaAutoPost(g);
+  if(addedDocs.length){ S.docs[cid]=(S.docs[cid]||[]).concat(addedDocs); save("docs"); }
   save("compta");setSync("synced");
   if(st)st.textContent=totalOp+" opération(s) importée(s)."+(dupSkip?" "+dupSkip+" doublon(s) ignoré(s).":"");
   if(totalOp)showOk(totalOp+" opération(s) bancaire(s) importée(s).");
