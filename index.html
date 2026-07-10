@@ -6621,15 +6621,15 @@ function comptaBanqueList(c,rows,all){
     var _sel=_files.length>1
       ? '<select class="ipt" data-banqueprev style="flex:1;min-width:180px;max-width:380px">'+_files.map(function(f){return '<option value="'+esc(f.path)+'"'+(f.path===S.banquePrev.path?" selected":"")+'>'+esc(f.label)+'</option>';}).join("")+'</select>'
       : '<div style="flex:1;min-width:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(_files[0].label)+'</div>';
-    prevPanel='<div class="card" style="padding:0;margin:14px 0;overflow:hidden">'
+    prevPanel='<div class="card" style="padding:0;margin:0;overflow:hidden">'
       +'<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#F7F4EC'+(_open?';border-bottom:1px solid #E6E2D6':'')+'">'
         +'<div style="font-weight:600;color:#14201C;font-size:13px;white-space:nowrap">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' Relevé bancaire</div>'
         +_sel
-        +(_open?'<button class="chip" data-act="banque_prev_open" title="Ouvrir dans un onglet">Plein écran ↗</button>':'')
-        +'<button class="chip" data-act="banque_del_releve" style="color:#B5530A" title="Supprimer toutes les opérations de ce relevé">'+ic("trash","width:13px;height:13px;vertical-align:-2px")+' Supprimer ce relevé</button>'
+        +(_open?'<button class="chip" data-act="banque_prev_open" title="Ouvrir dans un onglet">↗</button>':'')
+        +'<button class="chip" data-act="banque_del_releve" style="color:#B5530A" title="Supprimer toutes les opérations de ce relevé">'+ic("trash","width:13px;height:13px;vertical-align:-2px")+'</button>'
         +'<button class="chip" data-act="banque_prev_toggle">'+(_open?'Masquer ▲':'Afficher ▼')+'</button>'
       +'</div>'
-      +(_open?'<div id="banqueprevwrap" style="height:64vh;min-height:420px;background:#f3f1ea"><div class="note" style="padding:20px">Chargement du relevé…</div></div>':'')
+      +(_open?'<div id="banqueprevwrap" style="height:calc(100vh - 150px);min-height:460px;background:#f3f1ea"><div class="note" style="padding:20px">Chargement du relevé…</div></div>':'')
     +'</div>';
   }
   var head='<tr style="color:var(--faint);text-align:left;border-bottom:1px solid #E6E2D6;font-size:12px">'
@@ -6654,6 +6654,14 @@ function comptaBanqueList(c,rows,all){
   var tD=rows.reduce(function(a,o){return a+(+o.debit||0);},0),tC=rows.reduce(function(a,o){return a+(+o.credit||0);},0);
   var foot='<tr style="border-top:2px solid #14201C;font-weight:700;color:#14201C"><td colspan="2" style="padding:10px 6px">TOTAL ('+rows.length+')</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tD)+'</td><td style="padding:10px 6px;text-align:right" class="mono">'+fmtDH2(tC)+'</td><td colspan="3"></td></tr>';
   var tbl='<div class="card" style="padding:14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:680px">'+head+body+foot+'</table></div>';
+  if(_files.length && S.banquePrev && S.banquePrev.open!==false){
+    // détail à gauche, relevé à droite (même niveau, panneau collant au défilement)
+    return reportBox+bulk
+      +'<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">'
+        +'<div style="flex:1.4;min-width:340px;max-width:100%">'+tbl+'</div>'
+        +'<div style="flex:1;min-width:320px;position:sticky;top:12px;align-self:flex-start">'+prevPanel+'</div>'
+      +'</div>';
+  }
   return reportBox+bulk+prevPanel+tbl;
 }
 function comptaListBody(c){
@@ -6666,7 +6674,7 @@ function comptaListBody(c){
   if(isBank){
     all=g.operations.filter(function(o){return opYear(o)===S.year;});
     rows=all.filter(function(o){return comptaOpMatch(o,fl);});
-    rows.sort(function(a,b){return (b.date||"").localeCompare(a.date||"");});
+    rows.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
   }else{
     all=g.pieces.filter(function(p){return (p.type||"achat")===type && pieceYear(p)===S.year;});
     rows=all.filter(function(p){return comptaListMatch(p,fl);});
