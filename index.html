@@ -6635,7 +6635,7 @@ function modalJustifier(){
   return '<div class="ov"><div class="modal" data-stop style="max-width:940px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">'
     +'<div class="mh"><div><h3 class="ff">📋 État à justifier</h3><div class="meta"><span>Exercice '+S.year+'</span><span>Après saisie automatique</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
     +'<div class="mb" style="overflow:auto;padding:20px">'
-      +'<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="chip" data-act="justif_portal" style="font-weight:600;border-color:#bcd6ea;color:#1D6FB8" title="Créer les demandes dans l\'espace client — il verra la liste et pourra déposer ses justificatifs">🔗 Demander via le portail</button><button class="btn-primary" data-act="justif_envoi" style="width:auto;margin:0;padding:9px 16px">📤 Envoyer (WhatsApp / Email)</button></div>'
+      +'<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="chip" data-act="rappro_auto" style="font-weight:600;border-color:#bcd6ea;color:#1D6FB8" title="Marquer réglées les factures dont le paiement est sur le relevé">🔗 Rapprocher les paiements</button><button class="chip" data-act="justif_portal" style="font-weight:600;border-color:#bcd6ea;color:#1D6FB8" title="Créer les demandes dans l\'espace client — il verra la liste et pourra déposer ses justificatifs">🔗 Demander via le portail</button><button class="btn-primary" data-act="justif_envoi" style="width:auto;margin:0;padding:9px 16px">📤 Envoyer (WhatsApp / Email)</button></div>'
       +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">'
         +'<div class="card" style="flex:1;min-width:220px;padding:14px 16px"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Montants du relevé à justifier</div><div class="mono" style="font-size:22px;font-weight:700;color:#B5530A;margin-top:4px">'+fmtDH(totBank)+'</div><div style="font-size:12px;color:var(--muted)">'+e.bank.length+" ligne(s) sur compte d'attente 4711</div></div>"
         +'<div class="card" style="flex:1;min-width:220px;padding:14px 16px"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Factures à justifier (non réglées)</div><div class="mono" style="font-size:22px;font-weight:700;color:#B5530A;margin-top:4px">'+fmtDH(totFac)+'</div><div style="font-size:12px;color:var(--muted)">'+e.fac.length+' facture(s) sans règlement bancaire</div></div>'
@@ -7024,6 +7024,7 @@ function comptaListBody(c){
   var nAvalider=rows.filter(function(p){return p.status==="avalider"&&p.compte&&+p.ht>0;}).length;
   var bulk='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">'
     +(nAvalider?'<button class="btn-primary" data-act="comptalist_validateall">'+ic("check","width:14px;height:14px")+' Valider tout ('+nAvalider+')</button>':'')
+    +'<button class="chip" data-act="rappro_auto" style="color:#1D6FB8;font-weight:600" title="Marquer comme réglées les factures dont le paiement figure sur le relevé (montant exact + tiers)">🔗 Rapprocher les paiements</button>'
     +'<button class="chip" data-act="list_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Tableau Excel</button>'
     +'<button class="chip" data-act="list_pdf">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Tableau PDF</button>'
     +'<button class="chip" data-act="comptaprintall">'+ic("printer","width:13px;height:13px;vertical-align:-2px")+' Imprimer les factures</button>'
@@ -9364,6 +9365,51 @@ function rapprochSuggestions(o,g){
   scored.sort(function(a,b){return (b.dejaLie?1:0)-(a.dejaLie?1:0) || a.score-b.score;});
   return scored.slice(0,12);
 }
+// Rapprochement AUTOMATIQUE des paiements bancaires aux factures.
+// Conservateur : n'associe que si le montant correspond EXACTEMENT, et (le tiers OU le n° de
+// facture apparaît dans le libellé bancaire) OU c'est le seul match exact possible.
+function rapprochementAuto(cid){
+  var g=comptaGet(cid), n=0, details=[];
+  var ops=(g.operations||[]).filter(function(o){
+    if(opYear(o)!==S.year||o.isCommission||o.empLink)return false;
+    var montant=(+o.debit>0)?+o.debit:(+o.credit||0); if(!(montant>0))return false;
+    var affSum=(o.affectations||[]).reduce(function(s,a){return s+(+a.montant||0);},0);
+    return (montant-affSum)>0.01;
+  });
+  ops.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
+  ops.forEach(function(o){
+    var montant=(+o.debit>0)?+o.debit:(+o.credit||0);
+    var affSum=(o.affectations||[]).reduce(function(s,a){return s+(+a.montant||0);},0);
+    var dispo=Math.round((montant-affSum)*100)/100; if(dispo<=0.01)return;
+    var exacts=rapprochSuggestions(o,g).filter(function(s){return !s.dejaLie && Math.abs(s.reste-dispo)<0.01;});
+    if(!exacts.length)return;
+    var lib=_bankNorm((o.libelle||"")+" "+(o.reference||""));
+    function confident(s){
+      var tiers=_bankNorm(s.p.fournisseur||""), num=_bankNorm(s.p.numero||"");
+      var tiersHit=tiers && tiers.split(" ").filter(function(w){return w.length>=4;}).some(function(w){return lib.indexOf(w)>=0;});
+      var numHit=num && num.length>=4 && lib.indexOf(num)>=0;
+      return tiersHit||numHit;
+    }
+    var conf=exacts.filter(confident), chosen=null;
+    if(conf.length===1)chosen=conf[0];            // 1 match exact confirmé (tiers/numéro)
+    else if(exacts.length===1)chosen=exacts[0];   // 1 seul match exact (sans ambiguïté)
+    if(!chosen)return;
+    if(!o.affectations)o.affectations=[];
+    o.affectations.push({pieceId:chosen.p.id,montant:dispo});
+    o.contrepartie=((+o.debit||0)>0)?"4411":"3421";
+    o.matchLabel=(chosen.p.fournisseur||"")+(chosen.p.numero?" Fac "+chosen.p.numero:"");
+    if(o.status!=="valide")o.status="rapproche";
+    if(o.status==="valide"&&o.ecritureId){var ec=ecritureBanque(o,g),e=g.ecritures.find(function(x){return x.id===o.ecritureId;});if(e){e.lignes=ec.lignes;e.piece=o.matchLabel||o.libelle;}}
+    chosen.p.paye=pieceSolde(chosen.p,g);
+    n++; details.push(o.matchLabel+" — "+fmtDH(dispo));
+  });
+  return {n:n,details:details,g:g};
+}
+function rapprochementAutoRun(){
+  var cid=String(S.curClient), r=rapprochementAuto(cid);
+  if(r.n){ comptaAutoPost(r.g); save("compta"); renderView(); showOk("🔗 "+r.n+" paiement(s) rapproché(s) automatiquement à leur facture."); }
+  else showOk("Aucun nouveau paiement à rapprocher automatiquement (montant exact + tiers requis).");
+}
 // détecte si une opération bancaire est une commission/frais, et calcule HT + TVA (10%)
 var COMM_RX=/(commission|comm\.|frais|agios?|tenue de compte|abonnement|cotisation|carte|change|t[ée]l[ée]compensation|virement|prélèvement bancaire|gestion|relev[ée]|interrogation|sms banking|e-?banking|net ?banking)/i;
 function detectCommission(op){
@@ -9521,7 +9567,8 @@ function autopilotProcess(cid){
       o.status="valide"; o.ecritureId=eid; opsV++;
     }
   });
-  return {v:v,skip:skip,ops:opsV,on:true};
+  var rap=rapprochementAuto(cid);
+  return {v:v,skip:skip,ops:opsV,rap:(rap&&rap.n)||0,on:true};
 }
 function autopilotToast(res){
   if(!res || res.on===false) return;
@@ -9529,7 +9576,10 @@ function autopilotToast(res){
     var parts=[];
     if(res.v)parts.push(res.v+" pièce(s) validée(s)");
     if(res.ops)parts.push(res.ops+" opération(s) bancaire(s) comptabilisée(s)");
+    if(res.rap)parts.push(res.rap+" paiement(s) rapproché(s)");
     showOk("🤖 Pilote auto : "+parts.join(" · ")+(res.skip?(" · "+res.skip+" à vérifier"):"")+". Déclarations à jour.");
+  } else if(res.rap){
+    showOk("🔗 "+res.rap+" paiement(s) rapproché(s) automatiquement à leur facture.");
   } else if(res.skip){
     showErr("🤖 Pilote auto : "+res.skip+" pièce(s) à vérifier avant validation (raison indiquée sur chaque pièce dans « À valider »).");
   }
@@ -12949,6 +12999,7 @@ document.addEventListener("click",e=>{
   else if(a==="etat_justifier"){S.modal={type:"justifier"};renderModal();}
   else if(a==="justif_envoi"){S.modal={type:"justifenvoi"};renderModal();}
   else if(a==="justif_portal"){justifToPortal(String(S.curClient));}
+  else if(a==="rappro_auto"){var _wasJ=(S.modal&&S.modal.type==="justifier");rapprochementAutoRun();if(_wasJ){S.modal={type:"justifier"};renderModal();}}
   else if(a==="justif_wa"){ var _n=((document.getElementById("justif_num")||{}).value||"").replace(/\D/g,""); var _m=(document.getElementById("justif_msg")||{}).value||""; if(!_n){showErr("Aucun numéro renseigné.");return;} window.open("https://wa.me/"+_n+"?text="+encodeURIComponent(_m),"_blank"); }
   else if(a==="justif_sms"){ var _n2=((document.getElementById("justif_num")||{}).value||"").replace(/\D/g,""); var _m2=(document.getElementById("justif_msg")||{}).value||""; if(!_n2){showErr("Aucun numéro renseigné.");return;} window.open("sms:+"+_n2+"?body="+encodeURIComponent(_m2),"_blank"); }
   else if(a==="justif_email"){ var _em=((document.getElementById("justif_email")||{}).value||"").trim(); var _m3=(document.getElementById("justif_msg")||{}).value||""; if(!_em){showErr("Aucun email renseigné.");return;} window.open("mailto:"+_em+"?subject="+encodeURIComponent("Justificatifs à fournir — comptabilité "+S.year)+"&body="+encodeURIComponent(_m3),"_blank"); }
