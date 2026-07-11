@@ -6653,10 +6653,15 @@ function assistantContext(cid){
   var ops=(g.operations||[]).filter(function(o){return opYear(o)===year;}).slice(0,200).map(function(o){
     return {id:o.id,date:o.date||"",libelle:o.libelle||"",debit:(+o.debit||0)||null,credit:(+o.credit||0)||null,compte:o.contrepartie||"",statut:o.status||"nouveau"};
   });
+  var pieces=(g.pieces||[]).filter(function(p){return pieceYear(p)===year;}).slice(0,150).map(function(p){
+    return {id:p.id,date:p.date||"",tiers:p.fournisseur||"",numero:p.numero||"",type:p.type||"",ht:+p.ht||0,tva:+p.tva||0,ttc:pieceTTCb(p),compte:p.compte||"",statut:p.status||""};
+  });
   var ej=etatJustifier(cid);
   var cl=(clients()||[]).find(function(x){return String(x.id)===String(cid);});
-  return {client:(cl&&(cl.dossier||cl.nom))||"",exercice:year,nb_operations:ops.length,
-    a_justifier:{lignes_banque:ej.bank.length,factures_non_reglees:ej.fac.length},operations:ops};
+  return {client:(cl&&(cl.dossier||cl.nom))||"",exercice:year,onglet_actuel:S.tab,
+    nb_operations:ops.length,nb_factures:pieces.length,
+    a_justifier:{lignes_banque:ej.bank.length,factures_non_reglees:ej.fac.length},
+    operations:ops,factures:pieces};
 }
 function _asstValidate(o,g){ if(o.status==="valide")return; var ec=ecritureBanque(o,g); var eid="EB"+Date.now()+"_as"+Math.floor(Math.random()*10000); g.ecritures.push({id:eid,opId:o.id,date:o.date||(S.year+"-01-01"),journal:"BQ",piece:o.reference||o.libelle||"Banque",lignes:ec.lignes}); o.status="valide"; o.ecritureId=eid; }
 function assistantExec(a,g,cid){
@@ -6691,23 +6696,66 @@ function assistantExec(a,g,cid){
     g.operations=g.operations.filter(function(x){return String(x.id)!==String(o4.id);});
     return "Ligne supprimée : « "+(o4.libelle||"")+" »";
   }
+  // ---- FACTURES / PIÈCES ----
+  var findP=function(id){return (g.pieces||[]).find(function(p){return String(p.id)===String(id);});};
+  if(a.type==="piece_valider"){
+    var p=findP(a.pieceId); if(!p)return "⚠ facture introuvable ("+a.pieceId+")";
+    if(p.status!=="valide")p.status="valide";
+    return "Facture « "+(p.fournisseur||"")+" » validée";
+  }
+  if(a.type==="piece_modifier"){
+    var p2=findP(a.pieceId); if(!p2)return "⚠ facture introuvable ("+a.pieceId+")";
+    var ch2=a.champs||{}, done2=[];
+    ["date","fournisseur","numero","ice","if","ht","tva","ttc","compte","codeTva","type"].forEach(function(k){
+      if(ch2[k]!=null&&ch2[k]!==""){ p2[k]=ch2[k]; done2.push(k); }
+    });
+    return "Facture « "+(p2.fournisseur||"")+" » modifiée ("+done2.join(", ")+")";
+  }
+  if(a.type==="piece_supprimer"){
+    var p3=findP(a.pieceId); if(!p3)return "⚠ facture introuvable ("+a.pieceId+")";
+    g.pieces=g.pieces.filter(function(x){return String(x.id)!==String(p3.id);});
+    (g.operations||[]).forEach(function(o){ if(o.affectations)o.affectations=o.affectations.filter(function(af){return String(af.pieceId)!==String(p3.id);}); });
+    return "Facture supprimée : « "+(p3.fournisseur||"")+" »";
+  }
+  // ---- NAVIGATION ----
+  if(a.type==="naviguer"){
+    var key=_bankNorm(a.module||a.tab||"");
+    var NAV_MAP={"tableau de bord":"dash","dashboard":"dash","accueil":"dash","analyse":"analyse","pilotage":"analyse",
+      "comptabilite":"compta","compta":"compta","saisie":"compta","journal":"compta","grand livre":"compta","balance":"compta",
+      "controle":"controle","audit":"controle","tva":"tva","liasse":"liasse","is":"liasse","bilan":"liasse","cpc":"liasse",
+      "echeance":"ech","echeances":"ech","teledeclaration":"teledec","teledec":"teledec","dgi":"teledec","edi":"teledec",
+      "paie":"paie","bulletin":"paie","social":"paie","cnss":"paie","facturation":"fac","facture":"fac",
+      "honoraire":"hon","honoraires":"hon","client":"cli","clients":"cli","portail":"portal","espace client":"portal",
+      "delais":"delais","relance":"relances","relances":"relances","equipe":"team","taches":"team",
+      "document":"docs","documents":"docs","archive":"docs","juridique":"jur",
+      "banque":"__banque","releve":"__banque","bancaire":"__banque","releve bancaire":"__banque"};
+    var tab=NAV_MAP[key]||a.module||a.tab;
+    if(tab==="__banque"){ S.tab="compta"; S.comptaView="list"; S.comptaList=S.comptaList||{}; S.comptaList.type="banque"; return "Navigation → Relevés bancaires"; }
+    if(TAB_LABELS[tab]){ S.tab=tab; if(tab==="compta")S.comptaView="saisie"; return "Navigation → "+TAB_LABELS[tab]; }
+    return "⚠ module inconnu : "+(a.module||a.tab||"");
+  }
   return "";
 }
 function assistantExecAll(actions,cid){
   var g=comptaGet(cid), log=[];
   (actions||[]).forEach(function(a){ var r=assistantExec(a,g,cid); if(r)log.push(r); });
-  if(log.length){ comptaAutoPost(g); save("compta"); renderView(); }
+  if(log.length){ comptaAutoPost(g); save("compta"); render(); }
   return log;
 }
 async function assistantSend(){
   var inp=document.getElementById("asstInput"); if(!inp)return;
-  var msg=(inp.value||"").trim(); if(!msg)return;
+  var msg=(inp.value||"").trim();
   if(!S.assistant)S.assistant={msgs:[]};
+  var pf=S.assistant.pendingFile||null;
+  if(!msg&&!pf)return;
   if(S.curClient==null){ S.assistant.msgs.push({role:"assistant",text:"Sélectionnez d'abord un dossier client."}); renderModal(); return; }
-  S.assistant.msgs.push({role:"user",text:msg}); S.assistant.busy=true; renderModal();
+  S.assistant.msgs.push({role:"user",text:(msg||"(vérifier le document)")+(pf?" 📎 "+pf.name:"")}); S.assistant.busy=true; renderModal();
   try{
     var cid=String(S.curClient), ctx=assistantContext(cid);
-    var resp=await sb.functions.invoke("assistant-comptable",{body:{message:msg,context:ctx,history:S.assistant.msgs.slice(-8).map(function(m){return {role:m.role,text:m.text};})}});
+    var body={message:msg,context:ctx,history:S.assistant.msgs.slice(-8).map(function(m){return {role:m.role,text:m.text};})};
+    if(pf){ body.fileBase64=pf.base64; body.mediaType=pf.mediaType; }
+    S.assistant.pendingFile=null;
+    var resp=await sb.functions.invoke("assistant-comptable",{body:body});
     if(resp.error)throw resp.error;
     var data=resp.data||{};
     var log=assistantExecAll(data.actions,cid);
@@ -6725,11 +6773,15 @@ function modalAssistant(){
     return '<div style="display:flex;justify-content:'+(isU?"flex-end":"flex-start")+';margin:8px 0"><div style="max-width:82%;padding:9px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;background:'+(isU?"var(--emerald);color:#fff":"#F1EEE6;color:#14201C")+'">'+esc(m.text||"").replace(/\n/g,"<br>")+logHtml+'</div></div>';
   }).join("");
   var busy=S.assistant.busy?'<div style="font-size:12px;color:var(--muted);padding:4px 6px">🤖 réflexion…</div>':"";
-  return '<div class="ov"><div class="modal" data-stop style="max-width:560px;width:100%;height:86vh;max-height:86vh;display:flex;flex-direction:column;overflow:hidden">'
-    +'<div class="mh"><div><h3 class="ff">🤖 Robot comptable</h3><div class="meta"><span>Exécution directe</span><span>Domaine bancaire</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+  var pf=S.assistant.pendingFile;
+  var fileChip=pf?'<div style="padding:7px 12px;background:#EEF1FB;border-top:1px solid var(--line);font-size:12px;display:flex;justify-content:space-between;align-items:center"><span>📎 '+esc(pf.name)+' — sera lu pour vérification</span><button class="chip" data-act="asst_clearfile" style="padding:2px 8px">✕</button></div>':"";
+  return '<div class="ov"><div class="modal" data-stop style="max-width:580px;width:100%;height:86vh;max-height:86vh;display:flex;flex-direction:column;overflow:hidden">'
+    +'<div class="mh"><div><h3 class="ff">🤖 Robot comptable</h3><div class="meta"><span>Exécution directe</span><span>Toute l\'application</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
     +'<div id="asstScroll" class="mb" style="flex:1;overflow:auto;padding:16px 18px;background:#FBFAF7">'+msgs+busy+'</div>'
-    +'<div style="padding:12px;border-top:1px solid var(--line);display:flex;gap:8px;background:#fff">'
-      +'<input id="asstInput" class="ipt" placeholder="Votre ordre ou question…" style="flex:1"'+(S.assistant.busy?" disabled":"")+'>'
+    +fileChip
+    +'<div style="padding:12px;border-top:1px solid var(--line);display:flex;gap:8px;background:#fff;align-items:center">'
+      +'<label class="chip" style="cursor:pointer;padding:9px 11px" title="Joindre un PDF ou une image à vérifier">📎<input type="file" accept="application/pdf,image/*" data-asstfile style="display:none"></label>'
+      +'<input id="asstInput" class="ipt" placeholder="Ordre, question, ou joignez un PDF à vérifier…" style="flex:1"'+(S.assistant.busy?" disabled":"")+'>'
       +'<button class="btn-primary" data-act="asst_send" style="width:auto;margin:0;padding:11px 16px"'+(S.assistant.busy?" disabled":"")+'>Envoyer</button>'
     +'</div>'
   +'</div></div>';
@@ -11049,7 +11101,8 @@ function voletToggle(){
 }
 function renderNav(){
   var _gsBtn='<button data-act="gsearch_open" title="Recherche globale (Ctrl/Cmd + K)">'+ic("search")+'<span>Rechercher</span></button>';
-  document.getElementById("nav").innerHTML=_gsBtn+GROUPS.map(function(g){var active=g.tabs.indexOf(S.tab)>=0;var badge="";if(g.tabs.indexOf("portal")>=0){try{var u=portalGet().notifs.filter(function(x){return !x.read;}).length;if(u)badge='<span style="background:#B42318;color:#fff;border-radius:20px;padding:0 6px;font-size:10px;margin-left:auto;font-weight:700">'+u+'</span>';}catch(e){}}return '<button class="'+(active?"on":"")+'" data-act="volet" data-g="'+g.id+'">'+ic(g.icon)+'<span>'+g.label+'</span>'+badge+'</button>';}).join("");
+  var _asstBtn='<button data-act="asst_open" title="Robot comptable"><b style="font-size:17px;width:18px;display:inline-flex;justify-content:center;flex-shrink:0;font-weight:400">🤖</b><span>Assistant</span></button>';
+  document.getElementById("nav").innerHTML=_gsBtn+_asstBtn+GROUPS.map(function(g){var active=g.tabs.indexOf(S.tab)>=0;var badge="";if(g.tabs.indexOf("portal")>=0){try{var u=portalGet().notifs.filter(function(x){return !x.read;}).length;if(u)badge='<span style="background:#B42318;color:#fff;border-radius:20px;padding:0 6px;font-size:10px;margin-left:auto;font-weight:700">'+u+'</span>';}catch(e){}}return '<button class="'+(active?"on":"")+'" data-act="volet" data-g="'+g.id+'">'+ic(g.icon)+'<span>'+g.label+'</span>'+badge+'</button>';}).join("");
   document.getElementById("foot").innerHTML='Exercice <b class="mono">'+S.year+'</b><br>'+clients().length+' dossiers suivis'+syncBadge()+(CLOUD?'':'<button data-act="cloudinfo" style="display:block;margin-top:8px;font-size:11px;color:var(--gold);text-decoration:underline">☁ Configurer la synchronisation</button>')+'<div style="margin-top:8px;font-size:10px;color:rgba(167,206,190,.5);letter-spacing:.04em">'+VERSION+'</div>';
   try{ var _app=document.querySelector(".app"); if(_app){ var _min=cabinetGet().sideMin===true; _app.classList.toggle("sidemin",_min); var _b=document.getElementById("sideToggle"); if(_b)_b.textContent=_min?"»":"«"; } }catch(e){}
 }
@@ -12784,6 +12837,7 @@ document.addEventListener("click",e=>{
   else if(a==="etat_justifier"){S.modal={type:"justifier"};renderModal();}
   else if(a==="asst_open"){S.modal={type:"assistant"};renderModal();}
   else if(a==="asst_send"){assistantSend();}
+  else if(a==="asst_clearfile"){if(S.assistant)S.assistant.pendingFile=null;renderModal();}
   else if(a==="banque_draftall"){banqueDraftAll();}
   else if(a==="banque_del"){banqueDel(t.dataset.id);}
   else if(a==="banque_edit"){banqueEdit(t.dataset.id);}
@@ -12919,6 +12973,7 @@ document.addEventListener("change",e=>{
   if(t.dataset.opcomm!=null){comptaOpComm(t.dataset.opcomm);return;}
   if(t.dataset.autopilot!=null){ cabinetSet("autopilot",t.checked); if(t.checked&&S.curClient!=null){ var _apr=autopilotProcess(String(S.curClient)); comptaAutoPost(comptaGet(S.curClient)); save("compta"); autopilotToast(_apr); } renderView(); return; }
   if(t.dataset.banqueprev!=null){ if(!S.banquePrev)S.banquePrev={open:true,path:""}; S.banquePrev.path=t.value; banquePrevRender(); return; }
+  if(t.dataset.asstfile!=null){ var _f=t.files&&t.files[0]; if(_f){ blobToB64(_f).then(function(b64){ if(!S.assistant)S.assistant={msgs:[]}; S.assistant.pendingFile={name:_f.name,base64:b64,mediaType:_f.type||"application/pdf"}; renderModal(); }).catch(function(){ showErr("Lecture du fichier impossible."); }); } return; }
   if(t.dataset.relcode!=null){releveSetCode(t.dataset.relcode,t.value);return;}
   if(t.id==="tsclient"){S.curClient=t.value===""?null:+t.value;renderView();return;}
   if(t.id==="tsperiod"){S.tsPeriod=t.value;renderView();return;}
