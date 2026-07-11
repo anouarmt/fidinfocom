@@ -6635,6 +6635,7 @@ function modalJustifier(){
   return '<div class="ov"><div class="modal" data-stop style="max-width:940px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">'
     +'<div class="mh"><div><h3 class="ff">📋 État à justifier</h3><div class="meta"><span>Exercice '+S.year+'</span><span>Après saisie automatique</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
     +'<div class="mb" style="overflow:auto;padding:20px">'
+      +'<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="chip" data-act="justif_portal" style="font-weight:600;border-color:#bcd6ea;color:#1D6FB8" title="Créer les demandes dans l\'espace client — il verra la liste et pourra déposer ses justificatifs">🔗 Demander via le portail</button><button class="btn-primary" data-act="justif_envoi" style="width:auto;margin:0;padding:9px 16px">📤 Envoyer (WhatsApp / Email)</button></div>'
       +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">'
         +'<div class="card" style="flex:1;min-width:220px;padding:14px 16px"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Montants du relevé à justifier</div><div class="mono" style="font-size:22px;font-weight:700;color:#B5530A;margin-top:4px">'+fmtDH(totBank)+'</div><div style="font-size:12px;color:var(--muted)">'+e.bank.length+" ligne(s) sur compte d'attente 4711</div></div>"
         +'<div class="card" style="flex:1;min-width:220px;padding:14px 16px"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Factures à justifier (non réglées)</div><div class="mono" style="font-size:22px;font-weight:700;color:#B5530A;margin-top:4px">'+fmtDH(totFac)+'</div><div style="font-size:12px;color:var(--muted)">'+e.fac.length+' facture(s) sans règlement bancaire</div></div>'
@@ -6647,7 +6648,81 @@ function modalJustifier(){
     +'</div>'
   +'</div></div>';
 }
-// ---- ROBOT COMPTABLE (exécution directe des ordres en langage naturel, domaine bancaire) ----
+// Crée les demandes de justificatifs dans le PORTAIL CLIENT (le client les voit et y dépose ses pièces)
+async function justifToPortal(cid){
+  var e=etatJustifier(cid);
+  if(!e.bank.length&&!e.fac.length){ showOk("Rien à justifier — aucune demande à créer."); return; }
+  var p=portalGet(), have={};
+  p.requests.forEach(function(r){ have[(r.type||"")+"|"+(r.desc||"")]=true; });
+  var toCreate=[];
+  e.bank.forEach(function(x){ var d=x.date+" · "+(x.libelle||"(sans libellé)")+" : "+fmtDH(x.montant)+". Merci de préciser la nature de cette opération et de joindre le justificatif.", ty="Justificatif — opération bancaire"; if(!have[ty+"|"+d])toCreate.push({type:ty,desc:d}); });
+  e.fac.forEach(function(x){ var d=x.date+" · "+(x.tiers||"")+(x.num?" (n° "+x.num+")":"")+" : reste "+fmtDH(x.reste)+". Merci de préciser le mode et la date de règlement et de joindre l'avis/reçu.", ty="Justificatif — facture non réglée"; if(!have[ty+"|"+d])toCreate.push({type:ty,desc:d}); });
+  if(!toCreate.length){ showOk("Toutes les demandes de justificatifs existent déjà dans le portail."); return; }
+  var connected=(typeof CLOUD!=="undefined"&&CLOUD&&sb&&session);
+  if(connected){
+    try{
+      setSync&&setSync("saving");
+      for(var i=0;i<toCreate.length;i++){
+        var it=toCreate[i];
+        var ins=await sb.from("portal_requests").insert({client_id:Number(cid),type:it.type,description:it.desc,statut:"demande",source:"cabinet"}).select().single();
+        if(ins.error)throw ins.error;
+        p.requests.unshift({id:"CLOUD:"+ins.data.id,rid:ins.data.id,cloud:true,cid:Number(cid),type:it.type,desc:it.desc,statut:"demande",by:"cabinet",created:ins.data.created_at||new Date().toISOString(),updated:ins.data.updated_at||new Date().toISOString()});
+      }
+      save("portal"); setSync&&setSync("synced"); renderNav(); renderView();
+      showOk(toCreate.length+" demande(s) de justificatif envoyée(s) au portail client. Le client les verra dans son espace et pourra y déposer ses pièces.");
+    }catch(e2){ setSync&&setSync("synced"); showErr("Envoi au portail impossible : "+(e2.message||e2)+". Vérifiez que les tables du portail sont créées et que votre compte est autorisé (onglet Clients › Espace client)."); }
+  }else{
+    toCreate.forEach(function(it){ p.requests.unshift({id:"RQ"+Date.now()+Math.floor(Math.random()*1e4),cid:Number(cid),type:it.type,desc:it.desc,statut:"demande",by:"cabinet",created:new Date().toISOString(),updated:new Date().toISOString()}); });
+    save("portal"); renderNav(); renderView();
+    showErr(toCreate.length+" demande(s) créée(s) localement. Connectez-vous au cloud pour que le client les voie.");
+  }
+}
+// ---- ENVOI DE L'ÉTAT À JUSTIFIER AU CLIENT (WhatsApp / Email / SMS) ----
+function justifMessage(cid){
+  var e=etatJustifier(cid), cl=(clients()||[]).find(function(x){return String(x.id)===String(cid);})||{};
+  var L=[];
+  L.push("Bonjour,");
+  L.push("");
+  L.push("Dans le cadre de la tenue de votre comptabilité ("+S.year+"), merci de nous communiquer les justificatifs des éléments suivants :");
+  if(e.bank.length){
+    L.push("");
+    L.push("• Opérations bancaires à justifier ("+e.bank.length+") — nature de l'opération et/ou facture correspondante :");
+    e.bank.forEach(function(x){ L.push("   - "+x.date+" · "+(x.libelle||"(sans libellé)")+" : "+fmtDH(x.montant)); });
+  }
+  if(e.fac.length){
+    L.push("");
+    L.push("• Factures non réglées ("+e.fac.length+") — merci de préciser le mode et la date de règlement :");
+    e.fac.forEach(function(x){ L.push("   - "+x.date+" · "+(x.tiers||"")+(x.num?" (n° "+x.num+")":"")+" : reste "+fmtDH(x.reste)); });
+  }
+  if(!e.bank.length&&!e.fac.length) L.push("\n(Aucun élément à justifier pour le moment — tout est en ordre.)");
+  L.push("");
+  L.push("Vous pouvez répondre à ce message en joignant les justificatifs (factures, avis, reçus).");
+  L.push("Merci d'avance.");
+  L.push("Cabinet FID INFO COM — Kénitra");
+  return L.join("\n");
+}
+function modalJustifEnvoi(){
+  var cid=String(S.curClient), cl=(clients()||[]).find(function(x){return String(x.id)===String(cid);})||{};
+  var e=etatJustifier(cid), msg=justifMessage(cid);
+  var nums=waNumbers(cl.tel||""), num=nums[0]||"", email=cl.email||"";
+  return '<div class="ov"><div class="modal" data-stop style="max-width:620px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden">'
+    +'<div class="mh"><div><h3 class="ff">📤 Envoyer au client</h3><div class="meta"><span>'+esc(cl.dossier||cl.nom||"")+'</span><span>'+(e.bank.length+e.fac.length)+' point(s) à justifier</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="overflow:auto;padding:18px">'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">'
+        +'<div style="flex:1;min-width:180px"><div class="flbl">N° WhatsApp / SMS</div><input id="justif_num" class="ipt mono" value="'+esc(num?waPretty(num):"")+'" placeholder="+212 6.."></div>'
+        +'<div style="flex:1;min-width:180px"><div class="flbl">Email</div><input id="justif_email" class="ipt" value="'+esc(email)+'" placeholder="client@..."></div>'
+      +'</div>'
+      +'<div class="flbl">Message (modifiable)</div><textarea id="justif_msg" class="ipt" style="min-height:280px;resize:vertical;font-size:13px;line-height:1.55">'+esc(msg)+'</textarea>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">'
+        +'<button class="btn-primary" data-act="justif_wa" style="width:auto;margin:0;background:#25D366;padding:11px 16px">'+ic("whatsapp","width:16px;height:16px")+' WhatsApp</button>'
+        +'<button class="chip" data-act="justif_email" style="padding:11px 16px">✉️ Email</button>'
+        +'<button class="chip" data-act="justif_sms" style="padding:11px 16px">SMS</button>'
+      +'</div>'
+      +'<div class="note" style="margin-top:12px;font-size:11.5px">Le message s\'ouvre dans WhatsApp / votre messagerie, pré-rempli. Quand le client renvoie ses justificatifs (documents), déposez-les dans le 🤖 Assistant (bouton 📎) en demandant de compléter — il lira et imputera.</div>'
+    +'</div>'
+  +'</div></div>';
+}
+// ---- ROBOT COMPTABLE (exécution directe des ordres en langage naturel) ----
 function assistantContext(cid){
   var g=comptaGet(cid), year=S.year, ej=etatJustifier(cid);
   var bankJust={}; ej.bank.forEach(function(x){bankJust[String(x.id)]=x.montant;});
@@ -12480,6 +12555,7 @@ function renderModal(){
   if(S.modal.type==="balgl"){o.innerHTML=modalBalGL(S.modal.cid,S.modal.compte,S.modal.sugg);return;}
   if(S.modal.type==="banqueop"){o.innerHTML=modalBanqueOp(S.modal.oid);setTimeout(function(){comptaOpPrev(S.modal.oid);},30);return;}
   if(S.modal.type==="justifier"){o.innerHTML=modalJustifier();return;}
+  if(S.modal.type==="justifenvoi"){o.innerHTML=modalJustifEnvoi();return;}
   if(S.modal.type==="assistant"){o.innerHTML=modalAssistant();setTimeout(function(){var i=document.getElementById("asstInput");if(i){i.focus();i.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();assistantSend();}};}var sc=document.getElementById("asstScroll");if(sc)sc.scrollTop=sc.scrollHeight;},30);return;}
   if(S.modal.type==="lettrage"){o.innerHTML=modalLettrage(S.modal.cid,S.modal.compte);setTimeout(lettrageModalSetup,20);return;}
   if(S.modal.type==="creds"){o.innerHTML=modalCreds();return;}
@@ -12843,6 +12919,11 @@ document.addEventListener("click",e=>{
   else if(a==="banque_del_releve"){banqueDelReleve();}
   else if(a==="banque_add"){banqueAddOp();}
   else if(a==="etat_justifier"){S.modal={type:"justifier"};renderModal();}
+  else if(a==="justif_envoi"){S.modal={type:"justifenvoi"};renderModal();}
+  else if(a==="justif_portal"){justifToPortal(String(S.curClient));}
+  else if(a==="justif_wa"){ var _n=((document.getElementById("justif_num")||{}).value||"").replace(/\D/g,""); var _m=(document.getElementById("justif_msg")||{}).value||""; if(!_n){showErr("Aucun numéro renseigné.");return;} window.open("https://wa.me/"+_n+"?text="+encodeURIComponent(_m),"_blank"); }
+  else if(a==="justif_sms"){ var _n2=((document.getElementById("justif_num")||{}).value||"").replace(/\D/g,""); var _m2=(document.getElementById("justif_msg")||{}).value||""; if(!_n2){showErr("Aucun numéro renseigné.");return;} window.open("sms:+"+_n2+"?body="+encodeURIComponent(_m2),"_blank"); }
+  else if(a==="justif_email"){ var _em=((document.getElementById("justif_email")||{}).value||"").trim(); var _m3=(document.getElementById("justif_msg")||{}).value||""; if(!_em){showErr("Aucun email renseigné.");return;} window.open("mailto:"+_em+"?subject="+encodeURIComponent("Justificatifs à fournir — comptabilité "+S.year)+"&body="+encodeURIComponent(_m3),"_blank"); }
   else if(a==="asst_open"){S.modal={type:"assistant"};renderModal();}
   else if(a==="asst_send"){assistantSend();}
   else if(a==="asst_clearfile"){if(S.assistant)S.assistant.pendingFile=null;renderModal();}
