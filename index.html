@@ -6649,18 +6649,26 @@ function modalJustifier(){
 }
 // ---- ROBOT COMPTABLE (exécution directe des ordres en langage naturel, domaine bancaire) ----
 function assistantContext(cid){
-  var g=comptaGet(cid), year=S.year;
+  var g=comptaGet(cid), year=S.year, ej=etatJustifier(cid);
+  var bankJust={}; ej.bank.forEach(function(x){bankJust[String(x.id)]=x.montant;});
+  var facJust={}; ej.fac.forEach(function(x){facJust[String(x.id)]=x.reste;});
   var ops=(g.operations||[]).filter(function(o){return opYear(o)===year;}).slice(0,200).map(function(o){
-    return {id:o.id,date:o.date||"",libelle:o.libelle||"",debit:(+o.debit||0)||null,credit:(+o.credit||0)||null,compte:o.contrepartie||"",statut:o.status||"nouveau"};
+    return {id:o.id,date:o.date||"",libelle:o.libelle||"",debit:(+o.debit||0)||null,credit:(+o.credit||0)||null,compte:o.contrepartie||"",statut:o.status||"nouveau",rapprochee:(o.affectations||[]).some(function(a){return +a.montant>0;}),a_justifier:(bankJust[String(o.id)]!=null)};
   });
   var pieces=(g.pieces||[]).filter(function(p){return pieceYear(p)===year;}).slice(0,150).map(function(p){
-    return {id:p.id,date:p.date||"",tiers:p.fournisseur||"",numero:p.numero||"",type:p.type||"",ht:+p.ht||0,tva:+p.tva||0,ttc:pieceTTCb(p),compte:p.compte||"",statut:p.status||""};
+    return {id:p.id,date:p.date||"",tiers:p.fournisseur||"",numero:p.numero||"",type:p.type||"",ht:+p.ht||0,tva:+p.tva||0,ttc:pieceTTCb(p),compte:p.compte||"",statut:p.status||"",reste:(facJust[String(p.id)]||0)};
   });
-  var ej=etatJustifier(cid);
   var cl=(clients()||[]).find(function(x){return String(x.id)===String(cid);});
   return {client:(cl&&(cl.dossier||cl.nom))||"",exercice:year,onglet_actuel:S.tab,
     nb_operations:ops.length,nb_factures:pieces.length,
-    a_justifier:{lignes_banque:ej.bank.length,factures_non_reglees:ej.fac.length},
+    etat_a_justifier:{  // ← liste OFFICIELLE (identique au panneau « État à justifier »), fait foi
+      nb_lignes_banque:ej.bank.length,
+      total_banque:Math.round(ej.bank.reduce(function(s,x){return s+x.montant;},0)*100)/100,
+      lignes_banque:ej.bank.map(function(x){return {id:x.id,date:x.date,libelle:x.libelle,montant:x.montant};}),
+      nb_factures:ej.fac.length,
+      total_factures:Math.round(ej.fac.reduce(function(s,x){return s+x.reste;},0)*100)/100,
+      factures:ej.fac.map(function(x){return {id:x.id,tiers:x.tiers,num:x.num,reste:x.reste};})
+    },
     operations:ops,factures:pieces};
 }
 function _asstValidate(o,g){ if(o.status==="valide")return; var ec=ecritureBanque(o,g); var eid="EB"+Date.now()+"_as"+Math.floor(Math.random()*10000); g.ecritures.push({id:eid,opId:o.id,date:o.date||(S.year+"-01-01"),journal:"BQ",piece:o.reference||o.libelle||"Banque",lignes:ec.lignes}); o.status="valide"; o.ecritureId=eid; }
