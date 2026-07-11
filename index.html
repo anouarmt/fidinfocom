@@ -6723,15 +6723,27 @@ function modalJustifEnvoi(){
   +'</div></div>';
 }
 // ---- ROBOT COMPTABLE (exécution directe des ordres en langage naturel) ----
+function resolveDocPath(a,cid){
+  var g=comptaGet(cid);
+  if(a.kind==="piece"||a.pieceId){ var p=(g.pieces||[]).find(function(x){return String(x.id)===String(a.id||a.pieceId);}); return p&&p.path; }
+  var o=(g.operations||[]).find(function(x){return String(x.id)===String(a.id||a.opId);}); return o&&o.path;
+}
+async function fetchStoredB64(path){
+  var url=await comptaSignedUrlPath(path);
+  var r=await fetch(url); if(!r.ok)throw new Error("téléchargement du document ("+r.status+")");
+  var blob=await r.blob(); var b64=await blobToB64(blob);
+  var mime=blob.type||(String(path).toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)?"image/jpeg":"application/pdf");
+  return {b64:b64,mime:mime};
+}
 function assistantContext(cid){
   var g=comptaGet(cid), year=S.year, ej=etatJustifier(cid);
   var bankJust={}; ej.bank.forEach(function(x){bankJust[String(x.id)]=x.montant;});
   var facJust={}; ej.fac.forEach(function(x){facJust[String(x.id)]=x.reste;});
   var ops=(g.operations||[]).filter(function(o){return opYear(o)===year;}).slice(0,200).map(function(o){
-    return {id:o.id,date:o.date||"",libelle:o.libelle||"",debit:(+o.debit||0)||null,credit:(+o.credit||0)||null,compte:o.contrepartie||"",statut:o.status||"nouveau",rapprochee:(o.affectations||[]).some(function(a){return +a.montant>0;}),a_justifier:(bankJust[String(o.id)]!=null)};
+    return {id:o.id,date:o.date||"",libelle:o.libelle||"",debit:(+o.debit||0)||null,credit:(+o.credit||0)||null,compte:o.contrepartie||"",statut:o.status||"nouveau",rapprochee:(o.affectations||[]).some(function(a){return +a.montant>0;}),a_justifier:(bankJust[String(o.id)]!=null),doc:!!o.path};
   });
   var pieces=(g.pieces||[]).filter(function(p){return pieceYear(p)===year;}).slice(0,150).map(function(p){
-    return {id:p.id,date:p.date||"",tiers:p.fournisseur||"",numero:p.numero||"",type:p.type||"",ht:+p.ht||0,tva:+p.tva||0,ttc:pieceTTCb(p),compte:p.compte||"",statut:p.status||"",reste:(facJust[String(p.id)]||0)};
+    return {id:p.id,date:p.date||"",tiers:p.fournisseur||"",numero:p.numero||"",type:p.type||"",ht:+p.ht||0,tva:+p.tva||0,ttc:pieceTTCb(p),compte:p.compte||"",statut:p.status||"",reste:(facJust[String(p.id)]||0),doc:!!p.path};
   });
   var cl=(clients()||[]).find(function(x){return String(x.id)===String(cid);});
   return {client:(cl&&(cl.dossier||cl.nom))||"",exercice:year,onglet_actuel:S.tab,
@@ -6841,6 +6853,22 @@ async function assistantSend(){
     var resp=await sb.functions.invoke("assistant-comptable",{body:body});
     if(resp.error)throw resp.error;
     var data=resp.data||{};
+    // Le robot veut lire un document déjà présent dans le logiciel → on le récupère et on relance
+    var da=(data.actions||[]).find(function(a){return a.type==="lire_document";});
+    if(da&&!pf){
+      var dp=resolveDocPath(da,cid);
+      if(dp){
+        S.assistant.msgs.push({role:"assistant",text:"📄 Lecture du document lié…"}); renderModal();
+        try{
+          var fb=await fetchStoredB64(dp);
+          var resp2=await sb.functions.invoke("assistant-comptable",{body:{message:(msg||"Vérifie ce document."),context:ctx,history:S.assistant.msgs.slice(-8).map(function(m){return {role:m.role,text:m.text};}),fileBase64:fb.b64,mediaType:fb.mime}});
+          if(!resp2.error&&resp2.data)data=resp2.data;
+        }catch(fe){ data.reply=(data.reply?data.reply+"\n":"")+"(Je n'ai pas pu récupérer le document lié : "+(fe.message||fe)+")"; }
+        S.assistant.msgs=S.assistant.msgs.filter(function(m){return m.text!=="📄 Lecture du document lié…";});
+      } else {
+        data.reply=(data.reply||"")+" (Aucun fichier n'est lié à cet élément dans le logiciel — joignez le PDF avec 📎.)";
+      }
+    }
     var log=assistantExecAll(data.actions,cid);
     S.assistant.msgs.push({role:"assistant",text:data.reply||"",log:log});
   }catch(e){
