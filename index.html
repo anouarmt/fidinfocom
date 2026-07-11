@@ -27,7 +27,15 @@ input,select{font-family:inherit}
 .app{display:flex;height:100vh;overflow:hidden}
 /* SIDEBAR */
 .side{width:256px;flex-shrink:0;background:var(--ink);color:#E8EDEA;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
-.brand{padding:28px 24px 22px;border-bottom:1px solid rgba(255,255,255,.1)}
+.brand{padding:28px 24px 22px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:center;gap:11px}
+.brandtxt{flex:1;min-width:0}
+.side-toggle{display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);color:#A9B8B2;border:0;border-radius:8px;width:30px;height:30px;font-size:16px;cursor:pointer;line-height:1;flex-shrink:0;transition:all .15s}
+.side-toggle:hover{color:#fff;background:rgba(255,255,255,.14)}
+.app.sidemin .side{width:72px}
+.app.sidemin .brand{padding:16px 0;justify-content:center;gap:0}
+.app.sidemin .brandtxt,.app.sidemin .nav button span,.app.sidemin .foot{display:none}
+.app.sidemin .nav{padding:14px 9px}
+.app.sidemin .nav button{justify-content:center;padding:11px 0;gap:0}
 .brand h1{font-size:22px;font-weight:700;color:var(--gold);letter-spacing:-.5px}
 .brand .sub{font-size:10.5px;letter-spacing:.18em;color:rgba(167,206,190,.6);margin-top:4px}
 .nav{flex:1;padding:18px 12px;display:flex;flex-direction:column;gap:4px}
@@ -274,7 +282,7 @@ select.ipt{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xm
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand"><h1>FID INFO COM</h1><div class="sub">CABINET FIDUCIAIRE · KÉNITRA</div></div>
+    <div class="brand"><button id="sideToggle" class="side-toggle" data-act="side_toggle" title="Réduire / agrandir le menu">«</button><div class="brandtxt"><h1>FID INFO COM</h1><div class="sub">CABINET FIDUCIAIRE · KÉNITRA</div></div></div>
     <nav class="nav" id="nav"></nav>
     <div class="foot" id="foot"></div>
   </aside>
@@ -10873,6 +10881,13 @@ function renderNav(){
   var _gsBtn='<button data-act="gsearch_open" title="Recherche globale (Ctrl/Cmd + K)">'+ic("search")+'<span>Rechercher</span></button>';
   document.getElementById("nav").innerHTML=_gsBtn+GROUPS.map(function(g){var active=g.tabs.indexOf(S.tab)>=0;var badge="";if(g.tabs.indexOf("portal")>=0){try{var u=portalGet().notifs.filter(function(x){return !x.read;}).length;if(u)badge='<span style="background:#B42318;color:#fff;border-radius:20px;padding:0 6px;font-size:10px;margin-left:auto;font-weight:700">'+u+'</span>';}catch(e){}}return '<button class="'+(active?"on":"")+'" data-act="volet" data-g="'+g.id+'">'+ic(g.icon)+'<span>'+g.label+'</span>'+badge+'</button>';}).join("");
   document.getElementById("foot").innerHTML='Exercice <b class="mono">'+S.year+'</b><br>'+clients().length+' dossiers suivis'+syncBadge()+(CLOUD?'':'<button data-act="cloudinfo" style="display:block;margin-top:8px;font-size:11px;color:var(--gold);text-decoration:underline">☁ Configurer la synchronisation</button>')+'<div style="margin-top:8px;font-size:10px;color:rgba(167,206,190,.5);letter-spacing:.04em">'+VERSION+'</div>';
+  try{ var _app=document.querySelector(".app"); if(_app){ var _min=cabinetGet().sideMin===true; _app.classList.toggle("sidemin",_min); var _b=document.getElementById("sideToggle"); if(_b)_b.textContent=_min?"»":"«"; } }catch(e){}
+}
+function sideToggle(){
+  var app=document.querySelector(".app"); if(!app)return;
+  var min=app.classList.toggle("sidemin");
+  try{cabinetSet("sideMin",min);}catch(e){}
+  var b=document.getElementById("sideToggle"); if(b)b.textContent=min?"»":"«";
 }
 /* ===== MODULE DÉLAIS DE PAIEMENT (loi marocaine) ===== */
 function delaiFrs(cid,fournisseur){
@@ -12262,6 +12277,7 @@ document.addEventListener("click",e=>{
   else if(a==="echreg"){S.echReg=t.dataset.v;renderView();}
   else if(a==="echgo"){S.echUrg=t.dataset.v||"active";S.echCat="all";S.echMois="all";S.echReg="all";S.echq="";S.tab="ech";if(!S.voletLast)S.voletLast={};var _g=groupOf("ech");if(_g)S.voletLast[_g.id]="ech";S.modal=null;render();}
   else if(a==="gsearch_open"){S.gq="";S.modal={type:"gsearch"};renderModal();}
+  else if(a==="side_toggle"){sideToggle();}
   else if(a==="gsearch_go"){gsearchGo(t);}
   else if(a==="toggle"){const k=t.dataset.key;if(S.done[k])delete S.done[k];else S.done[k]=true;save("done");
       if(t.dataset.stay==="client"){S.modal={type:"client",id:+t.dataset.cid};}render();}
