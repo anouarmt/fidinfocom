@@ -6588,6 +6588,152 @@ function banqueReportBox(c,all){
     +cell("Solde final calculé",soldeFinal,soldeFinal<0?"#B42318":"#14201C")
     +rappro+'</div>';
 }
+// ---- ÉTAT À JUSTIFIER : montants du relevé sur compte d'attente + factures non réglées ----
+function etatJustifier(cid){
+  var g=comptaGet(cid), year=S.year, bank=[], fac=[];
+  (g.operations||[]).forEach(function(o){
+    if(opYear(o)!==year)return;
+    var montant=(+o.debit>0)?+o.debit:(+o.credit||0); if(!(montant>0))return;
+    var affSum=(o.affectations||[]).reduce(function(s,a){return s+(+a.montant||0);},0);
+    var isWait=!o.contrepartie || /^4711/.test(comptaCanon(o.contrepartie));
+    var unexplained=isWait?(montant-affSum):0;
+    if(unexplained>0.01) bank.push({id:o.id,date:o.date||"",libelle:o.libelle||"",sens:(+o.debit>0?"D":"C"),montant:Math.round(unexplained*100)/100,status:o.status||"nouveau"});
+  });
+  bank.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
+  (g.pieces||[]).forEach(function(p){
+    if(pieceYear(p)!==year)return;
+    if(p.status!=="valide"&&p.status!=="exporte")return;
+    if(p.isImport)return;
+    var ttc=pieceTTCb(p), reste=pieceReste(p,g);
+    if(reste>0.01) fac.push({id:p.id,date:p.date||"",tiers:p.fournisseur||"",num:p.numero||"",type:p.type||"",ttc:ttc,regle:Math.round((ttc-reste)*100)/100,reste:reste});
+  });
+  fac.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
+  return {bank:bank,fac:fac};
+}
+function modalJustifier(){
+  var cid=String(S.curClient), e=etatJustifier(cid);
+  var totBank=e.bank.reduce(function(s,x){return s+x.montant;},0);
+  var totFac=e.fac.reduce(function(s,x){return s+x.reste;},0);
+  var bankRows=e.bank.length? e.bank.map(function(x){
+    return '<tr style="border-top:1px solid #f0ede3">'
+      +'<td class="mono" style="padding:6px 8px;white-space:nowrap">'+esc(x.date)+'</td>'
+      +'<td style="padding:6px 8px">'+esc(x.libelle||"(sans libellé)")+'</td>'
+      +'<td class="mono" style="padding:6px 8px;text-align:right;white-space:nowrap">'+(x.sens==="D"?"−":"+")+fmtDH(x.montant)+'</td>'
+      +'<td style="padding:6px 8px;text-align:right"><button class="chip" data-act="banque_edit" data-id="'+esc(x.id)+'">Justifier →</button></td>'
+    +'</tr>';
+  }).join("") : '<tr><td colspan="4" style="padding:14px;color:#0E7A5F">✓ Toutes les lignes du relevé sont justifiées.</td></tr>';
+  var facRows=e.fac.length? e.fac.map(function(x){
+    return '<tr style="border-top:1px solid #f0ede3">'
+      +'<td class="mono" style="padding:6px 8px;white-space:nowrap">'+esc(x.date)+'</td>'
+      +'<td style="padding:6px 8px">'+esc(x.tiers||"—")+(x.num?' · <span class="mono" style="color:var(--faint)">'+esc(x.num)+'</span>':'')+'</td>'
+      +'<td class="mono" style="padding:6px 8px;text-align:right;white-space:nowrap">'+fmtDH(x.ttc)+'</td>'
+      +'<td class="mono" style="padding:6px 8px;text-align:right;white-space:nowrap;color:#0E7A5F">'+fmtDH(x.regle)+'</td>'
+      +'<td class="mono" style="padding:6px 8px;text-align:right;white-space:nowrap;color:#B5530A;font-weight:600">'+fmtDH(x.reste)+'</td>'
+      +'<td style="padding:6px 8px;text-align:right"><button class="chip" data-act="comptafull" data-id="'+esc(x.id)+'">Ouvrir →</button></td>'
+    +'</tr>';
+  }).join("") : '<tr><td colspan="6" style="padding:14px;color:#0E7A5F">✓ Toutes les factures sont réglées / rapprochées.</td></tr>';
+  return '<div class="ov"><div class="modal" data-stop style="max-width:940px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">'
+    +'<div class="mh"><div><h3 class="ff">📋 État à justifier</h3><div class="meta"><span>Exercice '+S.year+'</span><span>Après saisie automatique</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="overflow:auto;padding:20px">'
+      +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">'
+        +'<div class="card" style="flex:1;min-width:220px;padding:14px 16px"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Montants du relevé à justifier</div><div class="mono" style="font-size:22px;font-weight:700;color:#B5530A;margin-top:4px">'+fmtDH(totBank)+'</div><div style="font-size:12px;color:var(--muted)">'+e.bank.length+" ligne(s) sur compte d'attente 4711</div></div>"
+        +'<div class="card" style="flex:1;min-width:220px;padding:14px 16px"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Factures à justifier (non réglées)</div><div class="mono" style="font-size:22px;font-weight:700;color:#B5530A;margin-top:4px">'+fmtDH(totFac)+'</div><div style="font-size:12px;color:var(--muted)">'+e.fac.length+' facture(s) sans règlement bancaire</div></div>'
+      +'</div>'
+      +'<div class="sectit" style="margin:6px 0 8px">Montants du relevé bancaire à justifier</div>'
+      +'<div class="card" style="padding:6px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="font-size:11px;color:var(--faint);text-transform:uppercase"><th style="padding:6px 8px;text-align:left">Date</th><th style="padding:6px 8px;text-align:left">Libellé</th><th style="padding:6px 8px;text-align:right">À justifier</th><th></th></tr></thead><tbody>'+bankRows+'</tbody></table></div>'
+      +'<div class="sectit" style="margin:18px 0 8px">Factures non réglées / à justifier</div>'
+      +'<div class="card" style="padding:6px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="font-size:11px;color:var(--faint);text-transform:uppercase"><th style="padding:6px 8px;text-align:left">Date</th><th style="padding:6px 8px;text-align:left">Tiers · N°</th><th style="padding:6px 8px;text-align:right">TTC</th><th style="padding:6px 8px;text-align:right">Réglé</th><th style="padding:6px 8px;text-align:right">Reste</th><th></th></tr></thead><tbody>'+facRows+'</tbody></table></div>'
+      +'<div class="note" style="margin-top:14px;font-size:11.5px">« À justifier » = montants restés sur le compte d\'attente 4711 (non imputés à un compte définitif ni rapprochés d\'une facture), et factures validées sans mouvement bancaire correspondant. « Justifier » ouvre la ligne pour lui donner un compte ; « Ouvrir » ouvre la facture.</div>'
+    +'</div>'
+  +'</div></div>';
+}
+// ---- ROBOT COMPTABLE (exécution directe des ordres en langage naturel, domaine bancaire) ----
+function assistantContext(cid){
+  var g=comptaGet(cid), year=S.year;
+  var ops=(g.operations||[]).filter(function(o){return opYear(o)===year;}).slice(0,200).map(function(o){
+    return {id:o.id,date:o.date||"",libelle:o.libelle||"",debit:(+o.debit||0)||null,credit:(+o.credit||0)||null,compte:o.contrepartie||"",statut:o.status||"nouveau"};
+  });
+  var ej=etatJustifier(cid);
+  var cl=(clients()||[]).find(function(x){return String(x.id)===String(cid);});
+  return {client:(cl&&(cl.dossier||cl.nom))||"",exercice:year,nb_operations:ops.length,
+    a_justifier:{lignes_banque:ej.bank.length,factures_non_reglees:ej.fac.length},operations:ops};
+}
+function _asstValidate(o,g){ if(o.status==="valide")return; var ec=ecritureBanque(o,g); var eid="EB"+Date.now()+"_as"+Math.floor(Math.random()*10000); g.ecritures.push({id:eid,opId:o.id,date:o.date||(S.year+"-01-01"),journal:"BQ",piece:o.reference||o.libelle||"Banque",lignes:ec.lignes}); o.status="valide"; o.ecritureId=eid; }
+function assistantExec(a,g,cid){
+  if(!a||!a.type)return "";
+  var find=function(id){return g.operations.find(function(o){return String(o.id)===String(id);});};
+  if(a.type==="set_contrepartie"){
+    var o=find(a.opId); if(!o)return "⚠ ligne introuvable ("+a.opId+")";
+    o.contrepartie=a.compte; o.contrepartieManual=true; o.contrepartieAuto=false;
+    if(o.status==="valide"&&o.ecritureId){ var ec=ecritureBanque(o,g),e=g.ecritures.find(function(x){return x.id===o.ecritureId;}); if(e)e.lignes=ec.lignes; }
+    return "Compte de « "+(o.libelle||"")+" » → "+comptaCanon(a.compte)+" "+(libCompte(comptaCanon(a.compte))||"");
+  }
+  if(a.type==="comptabiliser"){
+    if(a.all){ var n=0; g.operations.forEach(function(o){ if(opYear(o)===S.year&&(o.status||"nouveau")!=="valide"&&((+o.debit>0)||(+o.credit>0))){ _asstValidate(o,g); n++; } }); return n+" ligne(s) comptabilisée(s)"; }
+    var o2=find(a.opId); if(!o2)return "⚠ ligne introuvable ("+a.opId+")"; _asstValidate(o2,g); return "« "+(o2.libelle||"")+" » comptabilisée";
+  }
+  if(a.type==="modifier"){
+    var o3=find(a.opId); if(!o3)return "⚠ ligne introuvable ("+a.opId+")";
+    var ch=a.champs||{}, done=[];
+    ["date","libelle","reference","debit","credit","solde","compte"].forEach(function(k){
+      if(ch[k]!=null&&ch[k]!==""){ if(k==="compte"){o3.contrepartie=ch[k];o3.contrepartieManual=true;} else o3[k]=ch[k]; done.push(k); }
+    });
+    if(o3.status==="valide"&&o3.ecritureId){ var ec2=ecritureBanque(o3,g),e2=g.ecritures.find(function(x){return x.id===o3.ecritureId;}); if(e2)e2.lignes=ec2.lignes; }
+    return "« "+(o3.libelle||"")+" » modifiée ("+done.join(", ")+")";
+  }
+  if(a.type==="ajouter"){
+    var op={id:"OPM"+Date.now()+"_"+Math.floor(Math.random()*1000),date:a.date||(S.year+"-01-01"),libelle:a.libelle||"",reference:"",debit:a.debit!=null?a.debit:"",credit:a.credit!=null?a.credit:"",solde:"",path:(S.banquePrev||{}).path||"",banque:"",compte:"",status:"nouveau",contrepartie:a.compte||"4711",manual:true};
+    g.operations.push(op); return "Ligne ajoutée : « "+(op.libelle||"")+" » "+fmtDH((+op.debit||+op.credit||0));
+  }
+  if(a.type==="supprimer"){
+    var o4=find(a.opId); if(!o4)return "⚠ ligne introuvable ("+a.opId+")";
+    if(o4.ecritureId)g.ecritures=g.ecritures.filter(function(e){return e.id!==o4.ecritureId;});
+    g.operations=g.operations.filter(function(x){return String(x.id)!==String(o4.id);});
+    return "Ligne supprimée : « "+(o4.libelle||"")+" »";
+  }
+  return "";
+}
+function assistantExecAll(actions,cid){
+  var g=comptaGet(cid), log=[];
+  (actions||[]).forEach(function(a){ var r=assistantExec(a,g,cid); if(r)log.push(r); });
+  if(log.length){ comptaAutoPost(g); save("compta"); renderView(); }
+  return log;
+}
+async function assistantSend(){
+  var inp=document.getElementById("asstInput"); if(!inp)return;
+  var msg=(inp.value||"").trim(); if(!msg)return;
+  if(!S.assistant)S.assistant={msgs:[]};
+  if(S.curClient==null){ S.assistant.msgs.push({role:"assistant",text:"Sélectionnez d'abord un dossier client."}); renderModal(); return; }
+  S.assistant.msgs.push({role:"user",text:msg}); S.assistant.busy=true; renderModal();
+  try{
+    var cid=String(S.curClient), ctx=assistantContext(cid);
+    var resp=await sb.functions.invoke("assistant-comptable",{body:{message:msg,context:ctx,history:S.assistant.msgs.slice(-8).map(function(m){return {role:m.role,text:m.text};})}});
+    if(resp.error)throw resp.error;
+    var data=resp.data||{};
+    var log=assistantExecAll(data.actions,cid);
+    S.assistant.msgs.push({role:"assistant",text:data.reply||"",log:log});
+  }catch(e){
+    S.assistant.msgs.push({role:"assistant",text:"Erreur : "+(e.message||e)+" — la fonction « assistant-comptable » est-elle déployée sur le projet htbzuplccjokijviwqbl ?"});
+  }
+  S.assistant.busy=false; renderModal();
+}
+function modalAssistant(){
+  if(!S.assistant)S.assistant={msgs:[{role:"assistant",text:"Bonjour 👋 Donnez un ordre — « impute la ligne CIMR au 4443 », « comptabilise tout », « ajoute une ligne du 2026-05-12 loyer 4000 débit au 6131 », « supprime la ligne en double ASIAN FUSION » — ou posez une question : « combien de lignes à justifier ? »."}]};
+  var msgs=S.assistant.msgs.map(function(m){
+    var isU=m.role==="user";
+    var logHtml=(m.log&&m.log.length)?'<div style="margin-top:6px;border-top:1px dashed #d9d6cc;padding-top:6px">'+m.log.map(function(l){var warn=/^⚠/.test(l);return '<div style="font-size:11.5px;color:'+(warn?"#B5530A":"#0E7A5F")+'">'+(warn?"":"✓ ")+esc(l)+'</div>';}).join("")+'</div>':"";
+    return '<div style="display:flex;justify-content:'+(isU?"flex-end":"flex-start")+';margin:8px 0"><div style="max-width:82%;padding:9px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;background:'+(isU?"var(--emerald);color:#fff":"#F1EEE6;color:#14201C")+'">'+esc(m.text||"").replace(/\n/g,"<br>")+logHtml+'</div></div>';
+  }).join("");
+  var busy=S.assistant.busy?'<div style="font-size:12px;color:var(--muted);padding:4px 6px">🤖 réflexion…</div>':"";
+  return '<div class="ov"><div class="modal" data-stop style="max-width:560px;width:100%;height:86vh;max-height:86vh;display:flex;flex-direction:column;overflow:hidden">'
+    +'<div class="mh"><div><h3 class="ff">🤖 Robot comptable</h3><div class="meta"><span>Exécution directe</span><span>Domaine bancaire</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+    +'<div id="asstScroll" class="mb" style="flex:1;overflow:auto;padding:16px 18px;background:#FBFAF7">'+msgs+busy+'</div>'
+    +'<div style="padding:12px;border-top:1px solid var(--line);display:flex;gap:8px;background:#fff">'
+      +'<input id="asstInput" class="ipt" placeholder="Votre ordre ou question…" style="flex:1"'+(S.assistant.busy?" disabled":"")+'>'
+      +'<button class="btn-primary" data-act="asst_send" style="width:auto;margin:0;padding:11px 16px"'+(S.assistant.busy?" disabled":"")+'>Envoyer</button>'
+    +'</div>'
+  +'</div></div>';
+}
 // ---- Visualiseur de relevé bancaire directement sur la page des opérations ----
 function banquePrevFiles(all,cid){
   var docs=(S.docs[cid]||[]), seen={}, files=[];
@@ -6617,6 +6763,9 @@ function comptaBanqueList(c,rows,all){
   var nNouveau=rows.filter(function(o){return (o.status||"nouveau")==="nouveau";}).length;
   var nValide=rows.filter(function(o){return o.status==="valide";}).length;
   var bulk='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">'
+    +'<button class="chip" data-act="banque_add" style="color:#0E7A5F;font-weight:600;border-color:#bfe3d3" title="Ajouter manuellement une ligne présente dans le PDF mais non détectée">＋ Ajouter une opération</button>'
+    +(function(){var ej=etatJustifier(String(c.id)),nj=ej.bank.length+ej.fac.length;return '<button class="chip" data-act="etat_justifier" style="color:'+(nj?'#B5530A':'#0E7A5F')+';font-weight:600" title="Montants du relevé sur compte d\'attente 4711 et factures non réglées">📋 État à justifier'+(nj?' ('+nj+')':' ✓')+'</button>';})()
+    +'<button class="chip" data-act="asst_open" style="color:#6D28D9;font-weight:600" title="Donner des ordres en langage naturel — exécution directe">🤖 Assistant</button>'
     +(nNouveau?'<button class="btn-primary" data-act="banque_validateall">'+ic("check","width:14px;height:14px")+' Comptabiliser tout ('+nNouveau+')</button>':'')
     +(nNouveau?'<button class="chip" data-act="banque_autocat_all" style="color:#2563EB" title="Attribue un compte de contrepartie à chaque ligne selon son libellé : salaire→4432, CNSS→4441, loyer→6131, IR→4452, TVA→4456, télécom→6145, espèces→5161…">🪄 Auto-catégoriser les libellés</button>':'')
     +(nValide?'<button class="chip" data-act="banque_draftall" style="color:#B5530A">↩ Tout repasser en brouillon ('+nValide+')</button>':'')
@@ -9945,6 +10094,21 @@ function banqueDel(oid){
   g.operations=g.operations.filter(function(x){return String(x.id)!==String(oid);});
   save("compta");renderView();showOk("Opération supprimée.");
 }
+// Ajoute manuellement une opération (ligne présente dans le PDF mais non détectée par l'OCR)
+function banqueAddOp(){
+  var cid=String(S.curClient),g=comptaGet(cid);
+  var selPath=(S.banquePrev||{}).path||"", selBanque="";
+  if(selPath){ var ref=g.operations.find(function(o){return o.path===selPath;}); if(ref)selBanque=ref.banque||""; }
+  var y=String(S.year), td=new Date().toISOString().slice(0,10);
+  var d=(td.slice(0,4)===y)?td:(y+"-01-01");
+  var op={id:"OPM"+Date.now(),date:d,libelle:"",reference:"",debit:"",credit:"",solde:"",path:selPath,banque:selBanque,compte:"",status:"nouveau",contrepartie:"4711",manual:true};
+  g.operations.push(op);
+  save("compta");
+  S.comptaList.type="banque";S.comptaView="list";
+  S.modal={type:"banqueop",oid:op.id};
+  renderModal();
+  showOk("Nouvelle ligne créée. Renseignez la date, le libellé et le montant, puis enregistrez.");
+}
 // Supprime TOUT un relevé : ses opérations, leurs écritures, son fichier et son entrée Documents
 async function banqueDelReleve(){
   var cid=String(S.curClient),g=comptaGet(cid),path=(S.banquePrev||{}).path;
@@ -10036,10 +10200,15 @@ function modalBanqueOp(oid){
     +'</div>'
     +'<div class="edbody">'
     +'<div class="edform">'
-      +'<div class="flbl">Libellé</div><input class="ipt" data-opf="'+esc(o.id)+':libelle" value="'+esc(o.libelle||"")+'">'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+        +'<div style="flex:1;min-width:140px"><div class="flbl">Date</div><input class="ipt mono" type="date" data-opf="'+esc(o.id)+':date" value="'+esc(o.date||"")+'"></div>'
+        +'<div style="flex:1;min-width:140px"><div class="flbl">Référence / N° pièce</div><input class="ipt" data-opf="'+esc(o.id)+':reference" value="'+esc(o.reference||"")+'" placeholder="ex. 2967970"></div>'
+      +'</div>'
+      +'<div style="margin-top:10px"><div class="flbl">Libellé</div><input class="ipt" data-opf="'+esc(o.id)+':libelle" value="'+esc(o.libelle||"")+'"></div>'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">'
         +'<div style="flex:1;min-width:120px"><div class="flbl">Débit</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':debit" value="'+esc(o.debit!=null?o.debit:"")+'"></div>'
         +'<div style="flex:1;min-width:120px"><div class="flbl">Crédit</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':credit" value="'+esc(o.credit!=null?o.credit:"")+'"></div>'
+        +'<div style="flex:1;min-width:120px"><div class="flbl">Solde</div><input class="ipt mono" type="number" step="0.01" data-opf="'+esc(o.id)+':solde" value="'+esc(o.solde!=null?o.solde:"")+'"></div>'
       +'</div>'
       +'<div style="margin-top:10px"><div class="flbl">Compte de contrepartie</div><input class="ipt mono" list="od_plan" data-opf="'+esc(o.id)+':contrepartie" value="'+esc(o.contrepartie||"4711")+'" placeholder="6111, 3421, 4711…">'+bankCatHint(o)+'</div>'
       +commBox
@@ -12249,6 +12418,8 @@ function renderModal(){
   if(S.modal.type==="suivi"){o.innerHTML=modalSuivi(S.modal.cid,S.modal.eid);return;}
   if(S.modal.type==="balgl"){o.innerHTML=modalBalGL(S.modal.cid,S.modal.compte,S.modal.sugg);return;}
   if(S.modal.type==="banqueop"){o.innerHTML=modalBanqueOp(S.modal.oid);setTimeout(function(){comptaOpPrev(S.modal.oid);},30);return;}
+  if(S.modal.type==="justifier"){o.innerHTML=modalJustifier();return;}
+  if(S.modal.type==="assistant"){o.innerHTML=modalAssistant();setTimeout(function(){var i=document.getElementById("asstInput");if(i){i.focus();i.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();assistantSend();}};}var sc=document.getElementById("asstScroll");if(sc)sc.scrollTop=sc.scrollHeight;},30);return;}
   if(S.modal.type==="lettrage"){o.innerHTML=modalLettrage(S.modal.cid,S.modal.compte);setTimeout(lettrageModalSetup,20);return;}
   if(S.modal.type==="creds"){o.innerHTML=modalCreds();return;}
   if(S.modal.type==="notif"){o.innerHTML=modalNotif(S.modal.key);return;}
@@ -12609,6 +12780,10 @@ document.addEventListener("click",e=>{
   else if(a==="banque_prev_toggle"){banquePrevToggle();}
   else if(a==="banque_prev_open"){banquePrevOpen();}
   else if(a==="banque_del_releve"){banqueDelReleve();}
+  else if(a==="banque_add"){banqueAddOp();}
+  else if(a==="etat_justifier"){S.modal={type:"justifier"};renderModal();}
+  else if(a==="asst_open"){S.modal={type:"assistant"};renderModal();}
+  else if(a==="asst_send"){assistantSend();}
   else if(a==="banque_draftall"){banqueDraftAll();}
   else if(a==="banque_del"){banqueDel(t.dataset.id);}
   else if(a==="banque_edit"){banqueEdit(t.dataset.id);}
