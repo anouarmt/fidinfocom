@@ -6567,10 +6567,15 @@ function soldeInitBanque(cid){ var g=comptaGet(cid); return (g.soldeInit&&g.sold
 function setSoldeInitBanque(cid,val){ var g=comptaGet(cid); if(!g.soldeInit)g.soldeInit={}; if(val===""||val==null||isNaN(+val))delete g.soldeInit[String(S.year)]; else g.soldeInit[String(S.year)]=Math.round((+val)*100)/100; save("compta"); }
 // Bloc « report » : solde initial saisissable + solde final calculé (pointage du relevé)
 function banqueReportBox(c,all){
-  var si=soldeInitBanque(c.id);
-  var tD=all.reduce(function(a,o){return a+(+o.debit||0);},0);
-  var tC=all.reduce(function(a,o){return a+(+o.credit||0);},0);
+  var g=comptaGet(c.id), yr=String(S.year);
+  var reportLines=all.filter(isReportLine), real=all.filter(function(o){return !isReportLine(o);});
+  var tD=real.reduce(function(a,o){return a+(+o.debit||0);},0);
+  var tC=real.reduce(function(a,o){return a+(+o.credit||0);},0);
+  var manualSet=(g.soldeInit&&g.soldeInit[yr]!=null);
+  var reportAmt=Math.round(reportLines.reduce(function(a,o){return a+(+o.credit||0)-(+o.debit||0);},0)*100)/100;
+  var si=manualSet?(+g.soldeInit[yr]):(reportLines.length?reportAmt:0);
   var soldeFinal=Math.round((si+tC-tD)*100)/100;
+  var reportNote=(reportLines.length&&!manualSet)?'<div style="flex-basis:100%;font-size:11.5px;color:#6b6858;background:#F7F4EC;border-radius:9px;padding:7px 12px">ℹ️ Le « report de solde antérieur » ('+fmtDH2(reportAmt)+') est utilisé comme <b>solde initial</b> et exclu des mouvements (ce n\'est pas une opération).</div>':"";
   // dernier solde lu sur le relevé (pour rapprochement), s'il existe
   var withSolde=all.filter(function(o){return o.solde!==""&&o.solde!=null&&o.date;}).sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
   var lastReleve=withSolde.length?+withSolde[withSolde.length-1].solde:null;
@@ -6586,13 +6591,13 @@ function banqueReportBox(c,all){
     +'<input class="ipt mono" id="banque_soldeinit" type="number" step="0.01" value="'+(si?si:"")+'" placeholder="0,00" style="text-align:right;min-width:160px"></div>'
     +cell("Total débits",tD,"#B42318")+cell("Total crédits",tC,"#0E7A5F")
     +cell("Solde final calculé",soldeFinal,soldeFinal<0?"#B42318":"#14201C")
-    +rappro+'</div>';
+    +reportNote+rappro+'</div>';
 }
 // ---- ÉTAT À JUSTIFIER : montants du relevé sur compte d'attente + factures non réglées ----
 function etatJustifier(cid){
   var g=comptaGet(cid), year=S.year, bank=[], fac=[];
   (g.operations||[]).forEach(function(o){
-    if(opYear(o)!==year)return;
+    if(opYear(o)!==year||isReportLine(o))return;
     var montant=(+o.debit>0)?+o.debit:(+o.credit||0); if(!(montant>0))return;
     var affSum=(o.affectations||[]).reduce(function(s,a){return s+(+a.montant||0);},0);
     var isWait=!o.contrepartie || /^4711/.test(comptaCanon(o.contrepartie));
@@ -9371,7 +9376,7 @@ function rapprochSuggestions(o,g){
 function rapprochementAuto(cid){
   var g=comptaGet(cid), n=0, details=[];
   var ops=(g.operations||[]).filter(function(o){
-    if(opYear(o)!==S.year||o.isCommission||o.empLink)return false;
+    if(opYear(o)!==S.year||o.isCommission||o.empLink||isReportLine(o))return false;
     var montant=(+o.debit>0)?+o.debit:(+o.credit||0); if(!(montant>0))return false;
     var affSum=(o.affectations||[]).reduce(function(s,a){return s+(+a.montant||0);},0);
     return (montant-affSum)>0.01;
@@ -9437,7 +9442,15 @@ function detectCommission(op){
    modifiable dans l'éditeur, un bouton « Re-détecter » relance l'analyse, et le compte d'attente
    4711 est conservé si aucune nature n'est reconnue (jamais de compte faux imposé en silence). */
 function _bankNorm(s){ return (""+(s||"")).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim(); }
+// Détecte une ligne « report de solde antérieur / solde reporté » : ce n'est PAS une opération,
+// c'est le solde initial de la période. À exclure des mouvements et des écritures.
+function isReportLine(o){
+  var s=_bankNorm(o&&o.libelle||"");
+  return /report de solde|report du solde|solde anterieur|solde reporte|report a nouveau|ancien solde|solde ancien|solde de depart|report solde/.test(s);
+}
 var BANK_RULES=[
+  // --- Compte courant d'associé (apport / avance / remboursement) — les deux sens (pas de champ sens) ---
+  {rx:/(compte courant|\bcc associe\b|\bc\.c\b|apport associe|avance associe|apport en compte courant|apport en cc|versement associe|associe apport|apport gerant|compte associe)/, cpt:"4463", reason:"compte courant d'associé", conf:"moyenne"},
   // --- SORTIES (débit) : d'abord les tokens SPÉCIFIQUES (organismes sociaux + État),
   //     AVANT la règle « salaire » (sinon « IGR sur salaires » tomberait à tort sur 4432) ---
   {sens:"D",rx:/(cnss|\bamo\b|damancom|securite sociale|cotisation sociale|cotisations sociales)/, cpt:"4441", reason:"cotisation CNSS / AMO", conf:"haute"},
@@ -9462,6 +9475,7 @@ var BANK_RULES=[
   {sens:"C",rx:/(virement recu|vir recu|vir\. recu|recu de|en votre faveur|\bencaissement\b)/, cpt:"3421", reason:"encaissement client (virement)", conf:"moyenne"}
 ];
 function detectBankOp(o){
+  if(isReportLine(o)) return null;
   var isD=(+o.debit||0)>0, isC=(+o.credit||0)>0;
   if(!isD && !isC) return null;
   var s=_bankNorm((o.libelle||"")+" "+(o.reference||""));
@@ -9540,7 +9554,7 @@ function pieceAutoOK(p){
   return {ok:true};
 }
 function bankOpAutoOK(o){
-  if(o.empLink) return false;
+  if(o.empLink||isReportLine(o)) return false;
   if(!((+o.debit>0)||(+o.credit>0))) return false;
   if((o.affectations||[]).some(function(a){return +a.montant>0;})) return false;   // déjà rapprochée à des factures
   if(o.isCommission && +o.tvaComm>0) return true;                                   // commission : ventilation sûre
@@ -9559,7 +9573,7 @@ function autopilotProcess(cid){
     else { p.autoWhy=r.why; skip++; }                                      // reste « à valider », raison mémorisée
   });
   (g.operations||[]).forEach(function(o){
-    if(opYear(o)!==S.year || (o.status||"nouveau")!=="nouveau" || o._auto) return;
+    if(opYear(o)!==S.year || (o.status||"nouveau")!=="nouveau" || o._auto || isReportLine(o)) return;
     o._auto=true;
     if(bankOpAutoOK(o)){
       var eid="EB"+Date.now()+"_ap"+opsV, ec=ecritureBanque(o,g);
