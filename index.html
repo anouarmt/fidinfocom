@@ -6566,7 +6566,7 @@ function comptaOpMatch(o,fl){
   return true;
 }
 function soldeInitBanque(cid){ var g=comptaGet(cid); return (g.soldeInit&&g.soldeInit[String(S.year)]!=null)?+g.soldeInit[String(S.year)]:0; }
-function setSoldeInitBanque(cid,val){ var g=comptaGet(cid); if(!g.soldeInit)g.soldeInit={}; if(val===""||val==null||isNaN(+val))delete g.soldeInit[String(S.year)]; else g.soldeInit[String(S.year)]=Math.round((+val)*100)/100; save("compta"); }
+function setSoldeInitBanque(cid,val){ var g=comptaGet(cid),yr=String(S.year); if(!g.soldeInit)g.soldeInit={}; if(val===""||val==null||isNaN(+val))delete g.soldeInit[yr]; else g.soldeInit[yr]=Math.round((+val)*100)/100; if(g.soldeInitAuto)delete g.soldeInitAuto[yr]; if(g.soldeInitAutoDate)delete g.soldeInitAutoDate[yr]; save("compta"); }
 // Bloc « report » : solde initial saisissable + solde final calculé (pointage du relevé)
 function banqueReportBox(c,all){
   var g=comptaGet(c.id), yr=String(S.year);
@@ -6574,26 +6574,31 @@ function banqueReportBox(c,all){
   var tD=real.reduce(function(a,o){return a+(+o.debit||0);},0);
   var tC=real.reduce(function(a,o){return a+(+o.credit||0);},0);
   var manualSet=(g.soldeInit&&g.soldeInit[yr]!=null);
+  var autoSet=manualSet&&g.soldeInitAuto&&g.soldeInitAuto[yr];
   var reportAmt=Math.round(reportLines.reduce(function(a,o){return a+(+o.credit||0)-(+o.debit||0);},0)*100)/100;
   var si=manualSet?(+g.soldeInit[yr]):(reportLines.length?reportAmt:0);
   var soldeFinal=Math.round((si+tC-tD)*100)/100;
   var reportNote=(reportLines.length&&!manualSet)?'<div style="flex-basis:100%;font-size:11.5px;color:#6b6858;background:#F7F4EC;border-radius:9px;padding:7px 12px">ℹ️ Le « report de solde antérieur » ('+fmtDH2(reportAmt)+') est utilisé comme <b>solde initial</b> et exclu des mouvements (ce n\'est pas une opération).</div>':"";
-  // dernier solde lu sur le relevé (pour rapprochement), s'il existe
-  var withSolde=all.filter(function(o){return o.solde!==""&&o.solde!=null&&o.date;}).sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
-  var lastReleve=withSolde.length?+withSolde[withSolde.length-1].solde:null;
+  var autoNote=autoSet?'<div style="flex-basis:100%;font-size:11.5px;color:#0a5f4a;background:#E7F4EF;border-radius:9px;padding:7px 12px">🤖 Solde initial détecté automatiquement sur le relevé du '+fmtDateFr(g.soldeInitAutoDate[yr])+' (vous pouvez le corriger, il ne sera alors plus écrasé automatiquement).</div>':"";
+  // solde de fin lu directement sur le relevé le plus récent (champ dédié, extrait par l'OCR — plus fiable
+  // que de reconstituer le solde ligne à ligne) ; à défaut, on retombe sur le dernier solde-ligne connu.
+  var withDate=all.filter(function(o){return o.date;}).sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
+  var lastOp=withDate.length?withDate[withDate.length-1]:null;
+  var lastReleve=(lastOp&&lastOp.soldeFinal!=null)?+lastOp.soldeFinal
+    :(function(){ var ws=all.filter(function(o){return o.solde!==""&&o.solde!=null&&o.date;}).sort(function(a,b){return (a.date||"").localeCompare(b.date||"");}); return ws.length?+ws[ws.length-1].solde:null; })();
   var ecart=(lastReleve!=null)?Math.round((soldeFinal-lastReleve)*100)/100:null;
   function cell(lbl,val,col){return '<div style="min-width:150px"><div class="flbl">'+lbl+'</div><div class="mono" style="font-size:18px;font-weight:700;'+(col?"color:"+col:"")+'">'+fmtDH2(val)+'</div></div>';}
   var rappro="";
   if(lastReleve!=null){
-    if(Math.abs(ecart)<0.01)rappro='<div style="flex-basis:100%;font-size:12px;color:#0a5f4a;background:#E7F4EF;border-radius:9px;padding:8px 12px">\u2713 Rapprochement OK : le solde calcul\u00e9 correspond au dernier solde du relev\u00e9 ('+fmtDH2(lastReleve)+').</div>';
-    else rappro='<div style="flex-basis:100%;font-size:12px;color:#8a3a30;background:#FBEAE8;border-radius:9px;padding:8px 12px">\u26A0 \u00c9cart de '+fmtDH2(ecart)+' entre le solde calcul\u00e9 et le dernier solde du relev\u00e9 ('+fmtDH2(lastReleve)+'). V\u00e9rifiez le solde initial ou une op\u00e9ration manquante.</div>';
+    if(Math.abs(ecart)<0.01)rappro='<div style="flex-basis:100%;font-size:12px;color:#0a5f4a;background:#E7F4EF;border-radius:9px;padding:8px 12px">\u2713 Rapprochement OK : le solde calcul\u00e9 correspond au solde final du relev\u00e9 ('+fmtDH2(lastReleve)+').</div>';
+    else rappro='<div style="flex-basis:100%;font-size:12px;color:#8a3a30;background:#FBEAE8;border-radius:9px;padding:8px 12px">\u26A0 \u00c9cart de '+fmtDH2(ecart)+' entre le solde calcul\u00e9 et le solde final du relev\u00e9 ('+fmtDH2(lastReleve)+'). V\u00e9rifiez le solde initial ou une op\u00e9ration manquante.</div>';
   }
   return '<div class="card mt4" style="padding:14px;display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap">'
-    +'<div style="min-width:210px"><div class="flbl">Solde initial banque au 01/01/'+S.year+' (report)</div>'
+    +'<div style="min-width:210px"><div class="flbl">Solde initial banque au 01/01/'+S.year+' (report)'+(autoSet?' 🤖':'')+'</div>'
     +'<input class="ipt mono" id="banque_soldeinit" type="number" step="0.01" value="'+(si?si:"")+'" placeholder="0,00" style="text-align:right;min-width:160px"></div>'
     +cell("Total débits",tD,"#B42318")+cell("Total crédits",tC,"#0E7A5F")
     +cell("Solde final calculé",soldeFinal,soldeFinal<0?"#B42318":"#14201C")
-    +reportNote+rappro+'</div>';
+    +reportNote+autoNote+rappro+'</div>';
 }
 // ---- ÉTAT À JUSTIFIER : montants du relevé sur compte d'attente + factures non réglées ----
 function etatJustifier(cid){
@@ -6951,11 +6956,13 @@ function comptaBanqueList(c,rows,all){
     var _sel=_files.length>1
       ? '<select class="ipt" data-banqueprev style="flex:1;min-width:180px;max-width:380px">'+_files.map(function(f){return '<option value="'+esc(f.path)+'"'+(f.path===S.banquePrev.path?" selected":"")+'>'+esc(f.label)+'</option>';}).join("")+'</select>'
       : '<div style="flex:1;min-width:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(_files[0].label)+'</div>';
-    var _meta=(_curOp.periode||_curOp.banque||_curOp.compte)
+    var _meta=(_curOp.periode||_curOp.banque||_curOp.compte||_curOp.soldeInitial!=null||_curOp.soldeFinal!=null)
       ? '<div style="padding:7px 14px;font-size:11.5px;color:var(--muted);border-bottom:1px solid #E6E2D6;background:#FBFAF6">'
         +(_curOp.periode?'Période relevé : <b style="color:#14201C">'+esc(_curOp.periode)+'</b>':'')
         +(_curOp.banque?' · Banque : '+esc(_curOp.banque):'')
         +(_curOp.compte?' · Compte : '+esc(_curOp.compte):'')
+        +(_curOp.soldeInitial!=null?' · Solde initial : <b style="color:#14201C">'+fmtDH2(_curOp.soldeInitial)+'</b>':'')
+        +(_curOp.soldeFinal!=null?' · Solde final : <b style="color:#14201C">'+fmtDH2(_curOp.soldeFinal)+'</b>':'')
         +'</div>'
       : '';
     prevPanel='<div class="card" style="padding:0;margin:0;overflow:hidden">'
@@ -9643,7 +9650,9 @@ async function comptaUploadReleve(files){
       if(resp.error)throw resp.error;
       var data=resp.data||{};
       ops=Array.isArray(data.operations)?data.operations:[];
-      meta={banque:data.banque||"",compte:data.compte||"",periode:data.periode||""};
+      meta={banque:data.banque||"",compte:data.compte||"",periode:data.periode||"",
+        soldeInitial:(data.soldeInitial!=null&&data.soldeInitial!==""?+data.soldeInitial:null),
+        soldeFinal:(data.soldeFinal!=null&&data.soldeFinal!==""?+data.soldeFinal:null)};
     }catch(e){ err=(e.message||e); }
     if(err){ if(st)st.textContent="Erreur : "+err; showErr("Lecture du relevé impossible : "+err+". Avez-vous bien créé la fonction extract-releve ?"); setSync("synced"); return; }
     // archive le relevé scanné dans le module « Documents » (même fichier, même bucket)
@@ -9652,7 +9661,8 @@ async function comptaUploadReleve(files){
       var x=ops[j]||{};
       var op={id:"OP"+Date.now()+"_"+i+"_"+j,date:x.date||"",libelle:x.libelle||"",reference:x.reference||"",
         debit:x.debit!=null?x.debit:"",credit:x.credit!=null?x.credit:"",solde:x.solde!=null?x.solde:"",
-        path:path,banque:meta.banque,compte:meta.compte,periode:meta.periode,status:"nouveau",contrepartie:""};
+        path:path,banque:meta.banque,compte:meta.compte,periode:meta.periode,
+        soldeInitial:meta.soldeInitial,soldeFinal:meta.soldeFinal,status:"nouveau",contrepartie:""};
       // 1) auto-catégorisation par nature (salaire, CNSS, loyer, impôts, télécom, espèces…)
       var det=detectBankOp(op);
       if(det){ op.contrepartie=det.compte; op.contrepartieAuto=true; op.contrepartieReason=det.reason; op.contrepartieConf=det.conf; }
@@ -9665,6 +9675,26 @@ async function comptaUploadReleve(files){
       if(sig && seen[sig]){ dupSkip++; continue; }
       seen[sig]=true;
       g.operations.push(op);totalOp++;
+    }
+    // Solde initial détecté par l'OCR sur CE relevé -> sert à préremplir le « solde initial banque au
+    // 01/01 » de l'année, mais seulement s'il n'a jamais été saisi à la main, et seulement pour le relevé
+    // le plus ancien importé jusqu'ici (celui dont le solde initial précède réellement les mouvements).
+    if(meta.soldeInitial!=null && ops.length){
+      var _minDate=null;
+      for(var k=0;k<ops.length;k++){ var _d=ops[k]&&ops[k].date; if(_d&&(!_minDate||_d<_minDate))_minDate=_d; }
+      if(_minDate){
+        var _yr=String(S.year);
+        if(!g.soldeInit)g.soldeInit={};
+        if(!g.soldeInitAuto)g.soldeInitAuto={};
+        if(!g.soldeInitAutoDate)g.soldeInitAutoDate={};
+        var _wasManual=(g.soldeInit[_yr]!=null)&&!g.soldeInitAuto[_yr];
+        var _curAutoDate=g.soldeInitAutoDate[_yr];
+        if(!_wasManual && (_curAutoDate==null || _minDate<_curAutoDate)){
+          g.soldeInit[_yr]=Math.round(meta.soldeInitial*100)/100;
+          g.soldeInitAuto[_yr]=true;
+          g.soldeInitAutoDate[_yr]=_minDate;
+        }
+      }
     }
   }
   var _ap=autopilotProcess(cid);comptaAutoPost(g);
