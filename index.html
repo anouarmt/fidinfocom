@@ -6941,20 +6941,31 @@ function comptaBanqueList(c,rows,all){
   // panneau visualiseur du relevé scanné
   var _files=banquePrevFiles(all,String(c.id)), prevPanel="";
   if(_files.length){
-    if(!S.banquePrev)S.banquePrev={open:true,path:""};
+    if(!S.banquePrev)S.banquePrev={open:true,path:"",filterList:true};
     if(!S.banquePrev.path||!_files.some(function(f){return f.path===S.banquePrev.path;}))S.banquePrev.path=_files[0].path;
     var _open=S.banquePrev.open!==false;
+    var _filterOn=S.banquePrev.filterList!==false;
+    var _curOp=all.find(function(o){return o.path===S.banquePrev.path;})||{};
     var _sel=_files.length>1
       ? '<select class="ipt" data-banqueprev style="flex:1;min-width:180px;max-width:380px">'+_files.map(function(f){return '<option value="'+esc(f.path)+'"'+(f.path===S.banquePrev.path?" selected":"")+'>'+esc(f.label)+'</option>';}).join("")+'</select>'
       : '<div style="flex:1;min-width:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(_files[0].label)+'</div>';
+    var _meta=(_curOp.periode||_curOp.banque||_curOp.compte)
+      ? '<div style="padding:7px 14px;font-size:11.5px;color:var(--muted);border-bottom:1px solid #E6E2D6;background:#FBFAF6">'
+        +(_curOp.periode?'Période relevé : <b style="color:#14201C">'+esc(_curOp.periode)+'</b>':'')
+        +(_curOp.banque?' · Banque : '+esc(_curOp.banque):'')
+        +(_curOp.compte?' · Compte : '+esc(_curOp.compte):'')
+        +'</div>'
+      : '';
     prevPanel='<div class="card" style="padding:0;margin:0;overflow:hidden">'
       +'<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#F7F4EC'+(_open?';border-bottom:1px solid #E6E2D6':'')+'">'
         +'<div style="font-weight:600;color:#14201C;font-size:13px;white-space:nowrap">'+ic("receipt","width:14px;height:14px;vertical-align:-2px")+' Relevé bancaire</div>'
         +_sel
+        +'<button class="chip" data-act="banque_prev_filter" style="color:'+(_filterOn?"#0E7A5F":"#57534e")+';font-weight:600;white-space:nowrap" title="Limiter le tableau des opérations (à gauche) aux lignes de ce relevé uniquement, au lieu de tous les mois de l\'année">'+(_filterOn?"☑ Ce relevé uniquement":"☐ Tous les relevés")+'</button>'
         +(_open?'<button class="chip" data-act="banque_prev_open" title="Ouvrir dans un onglet">↗</button>':'')
         +'<button class="chip" data-act="banque_del_releve" style="color:#B5530A" title="Supprimer toutes les opérations de ce relevé">'+ic("trash","width:13px;height:13px;vertical-align:-2px")+'</button>'
         +'<button class="chip" data-act="banque_prev_toggle">'+(_open?'Masquer ▲':'Afficher ▼')+'</button>'
       +'</div>'
+      +_meta
       +(_open?'<div id="banqueprevwrap" style="height:calc(100vh - 150px);min-height:460px;background:#f3f1ea"><div class="note" style="padding:20px">Chargement du relevé…</div></div>':'')
     +'</div>';
   }
@@ -7000,6 +7011,8 @@ function comptaListBody(c){
   if(isBank){
     all=g.operations.filter(function(o){return opYear(o)===S.year;});
     rows=all.filter(function(o){return comptaOpMatch(o,fl);});
+    var _bp=S.banquePrev||{};
+    if(_bp.path && _bp.filterList!==false){ rows=rows.filter(function(o){return o.path===_bp.path;}); }
     rows.sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
   }else{
     all=g.pieces.filter(function(p){return (p.type||"achat")===type && pieceYear(p)===S.year;});
@@ -9632,7 +9645,7 @@ async function comptaUploadReleve(files){
       var x=ops[j]||{};
       var op={id:"OP"+Date.now()+"_"+i+"_"+j,date:x.date||"",libelle:x.libelle||"",reference:x.reference||"",
         debit:x.debit!=null?x.debit:"",credit:x.credit!=null?x.credit:"",solde:x.solde!=null?x.solde:"",
-        path:path,banque:meta.banque,compte:meta.compte,status:"nouveau",contrepartie:""};
+        path:path,banque:meta.banque,compte:meta.compte,periode:meta.periode,status:"nouveau",contrepartie:""};
       // 1) auto-catégorisation par nature (salaire, CNSS, loyer, impôts, télécom, espèces…)
       var det=detectBankOp(op);
       if(det){ op.contrepartie=det.compte; op.contrepartieAuto=true; op.contrepartieReason=det.reason; op.contrepartieConf=det.conf; }
@@ -9653,6 +9666,8 @@ async function comptaUploadReleve(files){
   if(st)st.textContent=totalOp+" opération(s) importée(s)."+(dupSkip?" "+dupSkip+" doublon(s) ignoré(s).":"");
   if(totalOp)showOk(totalOp+" opération(s) bancaire(s) importée(s).");
   autopilotToast(_ap);
+  // affiche directement le relevé qui vient d'être scanné (ce mois), pas tous les mois de l'année mélangés
+  if(path)S.banquePrev={open:true,path:path,filterList:true};
   S.comptaList.type="banque";S.comptaView="list";renderView();
 }
 // ===== Tiers pertinent selon le sens =====
@@ -13007,6 +13022,7 @@ document.addEventListener("click",e=>{
   else if(a==="banque_validateall"){banqueValidateAll();}
   else if(a==="banque_autocat_all"){banqueAutoCatAll();}
   else if(a==="banque_prev_toggle"){banquePrevToggle();}
+  else if(a==="banque_prev_filter"){ if(!S.banquePrev)S.banquePrev={open:true,path:"",filterList:true}; S.banquePrev.filterList=(S.banquePrev.filterList===false); renderView(); }
   else if(a==="banque_prev_open"){banquePrevOpen();}
   else if(a==="banque_del_releve"){banqueDelReleve();}
   else if(a==="banque_add"){banqueAddOp();}
@@ -13154,7 +13170,7 @@ document.addEventListener("change",e=>{
   if(t.dataset.opf!=null){comptaOpInput(t);return;}
   if(t.dataset.opcomm!=null){comptaOpComm(t.dataset.opcomm);return;}
   if(t.dataset.autopilot!=null){ cabinetSet("autopilot",t.checked); if(t.checked&&S.curClient!=null){ var _apr=autopilotProcess(String(S.curClient)); comptaAutoPost(comptaGet(S.curClient)); save("compta"); autopilotToast(_apr); } renderView(); return; }
-  if(t.dataset.banqueprev!=null){ if(!S.banquePrev)S.banquePrev={open:true,path:""}; S.banquePrev.path=t.value; banquePrevRender(); return; }
+  if(t.dataset.banqueprev!=null){ if(!S.banquePrev)S.banquePrev={open:true,path:"",filterList:true}; S.banquePrev.path=t.value; renderView(); return; }
   if(t.dataset.asstfile!=null){ var _f=t.files&&t.files[0]; if(_f){ blobToB64(_f).then(function(b64){ if(!S.assistant)S.assistant={msgs:[]}; S.assistant.pendingFile={name:_f.name,base64:b64,mediaType:_f.type||"application/pdf"}; renderModal(); }).catch(function(){ showErr("Lecture du fichier impossible."); }); } return; }
   if(t.dataset.relcode!=null){releveSetCode(t.dataset.relcode,t.value);return;}
   if(t.id==="tsclient"){S.curClient=t.value===""?null:+t.value;renderView();return;}
