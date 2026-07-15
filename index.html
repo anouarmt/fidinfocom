@@ -9575,31 +9575,36 @@ function bankOpAutoOK(o){
   return false;
 }
 function autopilotProcess(cid){
-  if(!autopilotOn()) return {v:0,skip:0,ops:0,on:false};
-  var g=comptaGet(cid); if(!g) return {v:0,skip:0,ops:0,on:true};
+  var on=autopilotOn(), g=comptaGet(cid);
   var v=0,skip=0,opsV=0;
-  (g.pieces||[]).forEach(function(p){
-    if(pieceYear(p)!==S.year || p.status!=="avalider" || p._auto) return;  // arbitré une seule fois
-    p._auto=true;
-    var r=pieceAutoOK(p);
-    if(r.ok){ p.status="valide"; delete p.autoWhy; v++; }
-    else { p.autoWhy=r.why; skip++; }                                      // reste « à valider », raison mémorisée
-  });
-  (g.operations||[]).forEach(function(o){
-    if(opYear(o)!==S.year || (o.status||"nouveau")!=="nouveau" || o._auto || isReportLine(o)) return;
-    o._auto=true;
-    if(bankOpAutoOK(o)){
-      var eid="EB"+Date.now()+"_ap"+opsV, ec=ecritureBanque(o,g);
-      g.ecritures.push({id:eid,opId:o.id,date:o.date||(S.year+"-01-01"),journal:"BQ",piece:o.reference||o.libelle||"Banque",lignes:ec.lignes});
-      o.status="valide"; o.ecritureId=eid; opsV++;
-    }
-  });
-  var rap=rapprochementAuto(cid);
-  return {v:v,skip:skip,ops:opsV,rap:(rap&&rap.n)||0,on:true};
+  if(on && g){
+    (g.pieces||[]).forEach(function(p){
+      if(pieceYear(p)!==S.year || p.status!=="avalider" || p._auto) return;  // arbitré une seule fois
+      p._auto=true;
+      var r=pieceAutoOK(p);
+      if(r.ok){ p.status="valide"; delete p.autoWhy; v++; }
+      else { p.autoWhy=r.why; skip++; }                                      // reste « à valider », raison mémorisée
+    });
+    (g.operations||[]).forEach(function(o){
+      if(opYear(o)!==S.year || (o.status||"nouveau")!=="nouveau" || o._auto || isReportLine(o)) return;
+      o._auto=true;
+      if(bankOpAutoOK(o)){
+        var eid="EB"+Date.now()+"_ap"+opsV, ec=ecritureBanque(o,g);
+        g.ecritures.push({id:eid,opId:o.id,date:o.date||(S.year+"-01-01"),journal:"BQ",piece:o.reference||o.libelle||"Banque",lignes:ec.lignes});
+        o.status="valide"; o.ecritureId=eid; opsV++;
+      }
+    });
+  }
+  // Rapprochement banque <-> factures : TOUJOURS automatique, que le Pilote auto soit activé ou non.
+  // Dès qu'un paiement figure sur le relevé bancaire avec le bon montant et le bon tiers/n° (facture déjà
+  // validée), il est relié à sa facture sans aucun clic. Le Pilote auto ne conditionne que la validation
+  // automatique des pièces et la comptabilisation des lignes bancaires — jamais ce rapprochement.
+  var rap=g?rapprochementAuto(cid):null;
+  return {v:v,skip:skip,ops:opsV,rap:(rap&&rap.n)||0,on:on};
 }
 function autopilotToast(res){
-  if(!res || res.on===false) return;
-  if(res.v||res.ops){
+  if(!res)return;
+  if(res.on && (res.v||res.ops)){
     var parts=[];
     if(res.v)parts.push(res.v+" pièce(s) validée(s)");
     if(res.ops)parts.push(res.ops+" opération(s) bancaire(s) comptabilisée(s)");
@@ -9607,7 +9612,7 @@ function autopilotToast(res){
     showOk("🤖 Pilote auto : "+parts.join(" · ")+(res.skip?(" · "+res.skip+" à vérifier"):"")+". Déclarations à jour.");
   } else if(res.rap){
     showOk("🔗 "+res.rap+" paiement(s) rapproché(s) automatiquement à leur facture.");
-  } else if(res.skip){
+  } else if(res.on && res.skip){
     showErr("🤖 Pilote auto : "+res.skip+" pièce(s) à vérifier avant validation (raison indiquée sur chaque pièce dans « À valider »).");
   }
 }
@@ -9740,14 +9745,21 @@ async function comptaUpload(type,files){
         }catch(e3){ /* repli silencieux sur le fichier complet */ }
       }
       var _det=detectCompte({type:type,libelle:(x.designation||x.libelle||x.description||x.objet||x.nature||""),fournisseur:x.fournisseur||"",categorie:x.categorie||"",soc:soc});
+      var _modeReg=(["Espèces","Chèque","Virement","Carte bancaire","Effet"].indexOf(x.mode_paiement)>=0)?x.mode_paiement:((c&&c.cashDefault)?"Espèces":"");
+      // Réglé automatiquement UNIQUEMENT en espèces (paiement immédiat, sans étape bancaire à vérifier).
+      // Chèque / Virement / Carte bancaire / Effet transitent par la banque : on ne les marque
+      // « réglé » qu'après rapprochement avec le VRAI relevé bancaire (bouton « Rapprocher les
+      // paiements ») ou validation manuelle — jamais sur la seule mention lue sur la facture par l'OCR,
+      // sinon on comptabilise et on déclare la TVA sur un encaissement qui n'est pas encore confirmé.
+      var _isEspeces=(_modeReg==="Espèces");
       var piece={id:Date.now()+"_"+i+"_"+j,type:type,name:f.name+(multi?" — facture "+(j+1)+"/"+facts.length:""),path:piecePath,status:"avalider",
         date:x.date||"",fournisseur:ocrTiers(type,x)||"",ice:ocrTiersIce(type,x)||"",if_:ocrTiersIf(type,x)||"",numero:x.numero||"",
         ht:x.montant_ht!=null?x.montant_ht:"",tva:x.montant_tva!=null?x.montant_tva:"",ttc:x.montant_ttc!=null?x.montant_ttc:"",
         compte:_det.compte,compteAuto:true,compteReason:_det.reason,compteConf:_det.confidence,extracted:x,
         pages:(piecePath!==path)?"":(x.pages||""),
-        modeReg:(["Espèces","Chèque","Virement","Carte bancaire","Effet"].indexOf(x.mode_paiement)>=0)?x.mode_paiement:((c&&c.cashDefault)?"Espèces":""),
-        regle:!!((x.paye && x.mode_paiement) || (c&&c.cashDefault)),   // réglé si acquitté (OCR) OU client « espèces par défaut »
-        dateReg:x.date||""};                    // règlement à la date de facture par défaut
+        modeReg:_modeReg,
+        regle:!!(_isEspeces && ((x.paye && x.mode_paiement) || (c&&c.cashDefault))),
+        dateReg:_isEspeces?(x.date||""):""};
       if(err)piece.ocrError=err;
       // anti-doublon NON destructif : on n'écarte JAMAIS une facture en silence.
       // Un doublon n'est signalé que s'il porte un VRAI n° de facture déjà présent
