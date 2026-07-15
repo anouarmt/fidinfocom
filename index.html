@@ -5864,7 +5864,9 @@ function comptaCounts(cid,type){
   var g=comptaGet(cid);
   if(type==="banque"){
     var ops=g.operations.filter(function(o){return opYear(o)===S.year;});
+    var _paths={}; ops.forEach(function(o){ if(o.path)_paths[o.path]=true; });
     return {enCours:ops.filter(function(o){return !o.status||o.status==="nouveau";}).length,
+            releves:Object.keys(_paths).length,
             aValider:ops.filter(function(o){return o.status==="rapproche";}).length,
             aExporter:ops.filter(function(o){return o.status==="valide";}).length,
             exporte:ops.filter(function(o){return o.status==="exporte";}).length};
@@ -5877,14 +5879,14 @@ function comptaCounts(cid,type){
 }
 function opYear(o){ return (o.date&&/^\d{4}/.test(o.date))?+o.date.slice(0,4):S.year; }
 function comptaCard(type,titre,coul,btn){
-  var cid=S.curClient,n=cid?comptaCounts(cid,type):{enCours:0,aValider:0,aExporter:0,exporte:0};
+  var cid=S.curClient,n=cid?comptaCounts(cid,type):{enCours:0,releves:0,aValider:0,aExporter:0,exporte:0};
   function l(lbl,v,strong){return '<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:1px 0'+(strong?";font-weight:700":"")+'"><span style="opacity:.92">'+lbl+'</span><span class="mono">'+v+'</span></div>';}
   return '<div data-act="comptaopenlist" data-type="'+type+'" style="border-radius:16px;padding:18px;color:#fff;background:'+coul+';box-shadow:0 6px 18px rgba(0,0,0,.10);cursor:pointer;transition:transform .1s" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'\'">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-family:Fraunces,serif;font-size:21px;font-weight:600">'+titre+'</div>'
     +(btn?'<div style="display:flex;gap:6px;align-items:center"><button onclick="comptaImportClick(event,\''+type+'\')" style="background:rgba(255,255,255,.92);color:#14201C;border:0;border-radius:9px;padding:7px 12px;font-weight:600;font-size:12.5px;cursor:pointer">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Importer</button>'
       +((type==="achat"||type==="vente")?'<button onclick="comptaImportClickMulti(event,\''+type+'\')" title="Un seul PDF contenant plusieurs factures : le logiciel détecte les frontières et regroupe les pages de la même facture (facture sur plusieurs pages = une seule pièce)." style="background:rgba(255,255,255,.78);color:#14201C;border:0;border-radius:9px;padding:7px 10px;font-weight:600;font-size:12px;cursor:pointer">✂ PDF groupé</button>':'')
       +'</div>':'')+'</div>'
-    +l("Factures en cours",n.enCours)+l("À valider",n.aValider,n.aValider>0)+l("À exporter",n.aExporter)+l("Exporté",n.exporte)
+    +(type==="banque"?l("Relevés importés",n.releves):l("Factures en cours",n.enCours))+l("À valider",n.aValider,n.aValider>0)+l("À exporter",n.aExporter)+l("Exporté",n.exporte)
     +'<div style="margin-top:10px;font-size:11.5px;opacity:.85;display:flex;align-items:center;gap:4px">Cliquer pour consulter '+ic("chev","width:12px;height:12px;vertical-align:-2px")+'</div></div>';
 }
 function comptaImportClick(ev,type){
