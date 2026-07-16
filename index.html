@@ -5764,9 +5764,13 @@ function tiersResolve(g,type,info){
 }
 // Compte tiers à utiliser pour une pièce (auxiliaire si résolu, sinon collectif)
 function pieceTiersCompte(p){ return (p&&p.tiersCompte)?p.tiersCompte:((p&&p.type==="vente")?"3421":"4411"); }
-// (Re)résout le compte auxiliaire de chaque pièce — idempotent, appelé avant la génération des écritures
+// (Re)résout le compte auxiliaire de chaque pièce — idempotent, appelé avant la génération des écritures.
+// Fusionne AUSSI automatiquement les doublons de tiers déjà présents avant de résoudre : cette
+// fonction est appelée par comptaAutoPost (donc après CHAQUE ajout / modif / suppression de pièce)
+// et par les vues Tiers / Balance âgée, ce qui fait tourner la fusion en continu, sans bouton.
 function comptaResolveTiers(g){
   if(!g||!g.pieces)return;
+  var nMerged=_tiersAutoMerge(g);
   g.pieces.forEach(function(p){
     if(p.rejected)return;
     var isV=p.type==="vente";
@@ -5774,12 +5778,14 @@ function comptaResolveTiers(g){
     var compte=tiersResolve(g,p.type,{nom:p.fournisseur||"",ice:p.ice||"",if_:iff,adresse:p.adresse||"",telephone:p.telephone||"",rc:p.rc||"",patente:p.patente||""});
     if(compte){ p.tiersCompte=compte; }
   });
+  if(nMerged>0) save("compta");   // persiste silencieusement les fusions automatiques
 }
-// Fusionne les tiers en doublon d'un dossier (même ICE, même IF, ou même nom-noyau sans
-// conflit d'ICE/IF). Réaffecte les pièces et les écritures sur le tiers conservé, puis
-// supprime les doublons. Idempotent et sûr.
-function comptaMergeTiers(cid){
-  var g=comptaGet(cid); if(!g.tiers||!g.tiers.length)return 0;
+// Cœur de la fusion des tiers en doublon (même ICE, même IF, ou même nom-noyau sans conflit
+// d'ICE/IF). Réaffecte les pièces et les écritures sur le tiers conservé, puis supprime les
+// doublons. Idempotent et sûr. Ne sauvegarde pas elle-même : appelée automatiquement par
+// comptaResolveTiers, et par comptaMergeTiers pour le nettoyage manuel à la demande.
+function _tiersAutoMerge(g){
+  if(!g||!g.tiers||!g.tiers.length)return 0;
   var merged=0, keepAll=[];
   ["fournisseur","client"].forEach(function(fam){
     var list=(g.tiers||[]).filter(function(t){return t.type===fam;}).sort(function(a,b){return (+a.seq||0)-(+b.seq||0);});
@@ -5812,6 +5818,14 @@ function comptaMergeTiers(cid){
     keepAll=keepAll.concat(keep);
   });
   g.tiers=keepAll;
+  return merged;
+}
+// Bouton manuel « Fusionner les doublons » : conservé pour un nettoyage immédiat à la demande
+// (régénère aussi les écritures et sauvegarde tout de suite), même si la fusion tourne désormais
+// aussi automatiquement en arrière-plan via comptaResolveTiers.
+function comptaMergeTiers(cid){
+  var g=comptaGet(cid); if(!g.tiers||!g.tiers.length)return 0;
+  var merged=_tiersAutoMerge(g);
   comptaResolveTiers(g); comptaAutoPost(g); save("compta");
   return merged;
 }
