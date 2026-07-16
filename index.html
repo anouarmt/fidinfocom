@@ -5706,6 +5706,12 @@ var _TFORMS={ste:1,societe:1,ets:1,ets2:1,sarl:1,sarlau:1,au:1,sa:1,sas:1,scs:1,
 function _tcore(s){ return _tnorm(s).split(" ").filter(function(w){return w&&!_TFORMS[w];}).join(" "); }
 // Ne garde que les chiffres (pour comparer ICE / IF)
 function _tdig(s){ return String(s==null?"":s).replace(/\D/g,""); }
+// Un ICE marocain valide fait EXACTEMENT 15 chiffres ; un IF fait entre 5 et 9 chiffres.
+// En dessous/au-dessus, c'est presque toujours une erreur de lecture OCR (ou un autre numéro
+// confondu avec l'ICE/IF) : on ne doit alors JAMAIS s'en servir pour distinguer deux tiers,
+// sous peine de créer un doublon à chaque nouvelle facture du même fournisseur.
+function _iceOk(s){ return _tdig(s).length===15; }
+function _ifOk(s){ var d=_tdig(s); return d.length>=5 && d.length<=9; }
 // Compte auxiliaire à partir d'un type + numéro de séquence
 function tiersCodeFor(type,seq){ var base=(type==="vente"||type==="client")?"3421":"4411"; return comptaCanon(base+("000000"+seq).slice(-6)); }
 // Prochaine séquence libre pour ce type
@@ -5714,17 +5720,20 @@ function tiersNextSeq(g,type){ var fam=(type==="vente"||type==="client")?"client
 function tiersFind(g,type,info){
   var fam=(type==="vente"||type==="client")?"client":"fournisseur";
   var ice=_tdig(info.ice), iff=_tdig(info.if_), nom=_tnorm(info.nom);
+  var iceValid=_iceOk(ice), ifValid=_ifOk(iff);
   var list=(g.tiers||[]).filter(function(t){return t.type===fam;});
-  var byIce=ice?list.find(function(t){return _tdig(t.ice)===ice;}):null; if(byIce)return byIce;
-  var byIf =iff?list.find(function(t){return _tdig(t.if_)===iff;}):null; if(byIf)return byIf;
-  // match par nom — exact OU « noyau » (sans forme juridique) — refusé si ICE/IF présents diffèrent
+  var byIce=iceValid?list.find(function(t){return _iceOk(t.ice)&&_tdig(t.ice)===ice;}):null; if(byIce)return byIce;
+  var byIf =ifValid?list.find(function(t){return _ifOk(t.if_)&&_tdig(t.if_)===iff;}):null; if(byIf)return byIf;
+  // match par nom — exact OU « noyau » (sans forme juridique) — refusé seulement si les DEUX
+  // ICE (ou les DEUX IF) sont au bon format ET diffèrent réellement (jamais bloqué par un
+  // numéro mal lu par l'OCR, trop court/trop long pour être un vrai ICE/IF).
   var core=_tcore(info.nom);
   if(nom){
     var byNom=list.find(function(t){
       var same=(_tnorm(t.nom)===nom) || (core && _tcore(t.nom)===core);
       if(!same)return false;
-      if(ice && _tdig(t.ice) && _tdig(t.ice)!==ice)return false;
-      if(iff && _tdig(t.if_) && _tdig(t.if_)!==iff)return false;
+      if(iceValid && _iceOk(t.ice) && _tdig(t.ice)!==ice)return false;
+      if(ifValid && _ifOk(t.if_) && _tdig(t.if_)!==iff)return false;
       return true;
     });
     if(byNom)return byNom;
@@ -5777,11 +5786,11 @@ function comptaMergeTiers(cid){
     list.forEach(function(t){
       var target=keep.find(function(k){
         var ki=_tdig(k.ice),ti=_tdig(t.ice),kf=_tdig(k.if_),tf=_tdig(t.if_);
-        if(ki&&ti&&ki===ti)return true;                 // même ICE
-        if(kf&&tf&&kf===tf)return true;                 // même IF
-        if(_tcore(k.nom)&&_tcore(k.nom)===_tcore(t.nom)){ // même nom-noyau, sans conflit d'identifiant
-          if(ki&&ti&&ki!==ti)return false;
-          if(kf&&tf&&kf!==tf)return false;
+        if(_iceOk(ki)&&_iceOk(ti)&&ki===ti)return true;                 // même ICE (au bon format)
+        if(_ifOk(kf)&&_ifOk(tf)&&kf===tf)return true;                   // même IF (au bon format)
+        if(_tcore(k.nom)&&_tcore(k.nom)===_tcore(t.nom)){ // même nom-noyau, sans conflit d'identifiant VALIDE
+          if(_iceOk(ki)&&_iceOk(ti)&&ki!==ti)return false;
+          if(_ifOk(kf)&&_ifOk(tf)&&kf!==tf)return false;
           return true;
         }
         return false;
