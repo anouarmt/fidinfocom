@@ -5703,7 +5703,19 @@ function _tnorm(s){ return _norm(s).replace(/[^a-z0-9]+/g," ").replace(/\s+/g," 
 // Nom « noyau » : on retire les formes juridiques et préfixes (ste, sarl, sa, au…) pour
 // rapprocher « ALPHA », « STE ALPHA SARL », « ALPHA S.A.R.L AU » -> même tiers.
 var _TFORMS={ste:1,societe:1,ets:1,ets2:1,sarl:1,sarlau:1,au:1,sa:1,sas:1,scs:1,snc:1,scp:1,sci:1,eurl:1,gie:1,scm:1};
-function _tcore(s){ return _tnorm(s).split(" ").filter(function(w){return w&&!_TFORMS[w];}).join(" "); }
+function _tcore(s){
+  var toks=_tnorm(s).split(" ");
+  // Recolle les sigles écrits avec points/espaces (« S.A.R.L », « S. A »…) qui, après normalisation,
+  // se retrouvent découpés en lettres isolées ("s","a","r","l") — sans ça ils ne sont jamais reconnus
+  // comme forme juridique et deux factures du même tiers ne se rapprochent plus (« SARL » vs « S.A.R.L »).
+  var merged=[],buf="";
+  toks.forEach(function(w){
+    if(w&&w.length===1){ buf+=w; }
+    else{ if(buf){merged.push(buf);buf="";} if(w)merged.push(w); }
+  });
+  if(buf)merged.push(buf);
+  return merged.filter(function(w){return w&&!_TFORMS[w];}).join(" ");
+}
 // Ne garde que les chiffres (pour comparer ICE / IF)
 function _tdig(s){ return String(s==null?"":s).replace(/\D/g,""); }
 // Un ICE marocain valide fait EXACTEMENT 15 chiffres ; un IF fait entre 5 et 9 chiffres.
@@ -5712,6 +5724,19 @@ function _tdig(s){ return String(s==null?"":s).replace(/\D/g,""); }
 // sous peine de créer un doublon à chaque nouvelle facture du même fournisseur.
 function _iceOk(s){ return _tdig(s).length===15; }
 function _ifOk(s){ var d=_tdig(s); return d.length>=5 && d.length<=9; }
+// Un ICE au bon format (15 chiffres) n'est pas forcément le BON ICE : l'OCR peut, faute de mieux,
+// « halluciner » un nombre à 15 chiffres plausible plutôt que d'avouer qu'il n'est pas sûr — cas réel
+// observé (même fournisseur, 10 factures, 10 ICE à 15 chiffres tous différents). Un tel ICE ne doit
+// donc JAMAIS, à lui seul, empêcher un rapprochement par nom. Il ne devient fiable — et donc capable
+// de bloquer un rapprochement — que s'il a été lu À L'IDENTIQUE sur au moins 2 pièces séparées :
+// deux erreurs de lecture indépendantes tombant sur EXACTEMENT le même faux nombre à 15 chiffres,
+// c'est en pratique impossible ; une répétition est donc un signe fort que c'est le vrai ICE.
+function _iceConfirmCount(g,t){
+  if(!t)return 0; var ti=_tdig(t.ice); if(!_iceOk(ti))return 0;
+  var cc=comptaCanon(t.compte), n=0;
+  (g&&g.pieces||[]).forEach(function(p){ if(p.tiersCompte && comptaCanon(p.tiersCompte)===cc && _tdig(p.ice)===ti) n++; });
+  return n;
+}
 // Compte auxiliaire à partir d'un type + numéro de séquence
 function tiersCodeFor(type,seq){ var base=(type==="vente"||type==="client")?"3421":"4411"; return comptaCanon(base+("000000"+seq).slice(-6)); }
 // Prochaine séquence libre pour ce type
@@ -5725,16 +5750,17 @@ function tiersFind(g,type,info){
   var byIce=iceValid?list.find(function(t){return _iceOk(t.ice)&&_tdig(t.ice)===ice;}):null; if(byIce)return byIce;
   var byIf =ifValid?list.find(function(t){return _ifOk(t.if_)&&_tdig(t.if_)===iff;}):null; if(byIf)return byIf;
   // match par nom — exact OU « noyau » (sans forme juridique) — refusé seulement si les DEUX
-  // ICE sont au bon format (15 chiffres) ET diffèrent réellement. L'IF n'est PAS utilisé comme
-  // bloqueur : son format est trop variable pour distinguer une vraie différence d'une simple
-  // erreur de lecture OCR (contrairement à l'ICE, toujours 15 chiffres). Il ne sert qu'à confirmer
-  // une correspondance quand il est identique, jamais à en écarter une par nom.
+  // ICE sont au bon format (15 chiffres), diffèrent réellement, ET que l'ICE déjà en fiche est
+  // CONFIRMÉ (relu à l'identique sur ≥2 pièces) — sinon un simple aléa OCR créerait un doublon à
+  // chaque nouvelle facture. L'IF n'est PAS utilisé comme bloqueur : son format est trop variable
+  // pour distinguer une vraie différence d'une simple erreur de lecture OCR (contrairement à
+  // l'ICE, toujours 15 chiffres). Il ne sert qu'à confirmer une correspondance, jamais à en écarter une.
   var core=_tcore(info.nom);
   if(nom){
     var byNom=list.find(function(t){
       var same=(_tnorm(t.nom)===nom) || (core && _tcore(t.nom)===core);
       if(!same)return false;
-      if(iceValid && _iceOk(t.ice) && _tdig(t.ice)!==ice)return false;
+      if(iceValid && _iceOk(t.ice) && _tdig(t.ice)!==ice && _iceConfirmCount(g,t)>=2)return false;
       return true;
     });
     if(byNom)return byNom;
@@ -5795,8 +5821,11 @@ function _tiersAutoMerge(g){
         var ki=_tdig(k.ice),ti=_tdig(t.ice),kf=_tdig(k.if_),tf=_tdig(t.if_);
         if(_iceOk(ki)&&_iceOk(ti)&&ki===ti)return true;                 // même ICE (au bon format)
         if(_ifOk(kf)&&_ifOk(tf)&&kf===tf)return true;                   // même IF (au bon format) -> confirme, jamais ne bloque
-        if(_tcore(k.nom)&&_tcore(k.nom)===_tcore(t.nom)){ // même nom-noyau, sans conflit d'ICE valide
-          if(_iceOk(ki)&&_iceOk(ti)&&ki!==ti)return false;
+        if(_tcore(k.nom)&&_tcore(k.nom)===_tcore(t.nom)){ // même nom-noyau, sans conflit d'ICE CONFIRMÉ
+          // Un ICE au bon format mais vu une seule fois (aléa OCR) ne bloque jamais la fusion par
+          // nom ; il faut qu'il ait été relu à l'identique sur ≥2 pièces des DEUX côtés pour qu'on
+          // en tienne compte comme preuve de deux tiers réellement différents.
+          if(_iceOk(ki)&&_iceOk(ti)&&ki!==ti && _iceConfirmCount(g,k)>=2 && _iceConfirmCount(g,t)>=2)return false;
           return true;
         }
         return false;
@@ -9821,14 +9850,14 @@ function ocrTiers(type,x){
 }
 function ocrTiersIce(type,x){
   x=x||{};
-  var v = (type==="vente") ? (x.ice_client||x.client_ice||x.iceClient||"") : (x.ice_fournisseur||x.ice||x.fournisseur_ice||"");
+  var v = (type==="vente") ? (x.client_ice||x.ice_client||x.iceClient||"") : (x.fournisseur_ice||x.ice_fournisseur||x.ice||"");
   v=(""+(v||"")).trim();
   if(!v) v=_scanIdField(x,_isIceKey);   // repli : tout champe dont la clé contient « ice »
   return v||"";
 }
 function ocrTiersIf(type,x){
   x=x||{};
-  var v = (type==="vente") ? (x.if_client||x.client_if||x.identifiant_fiscal_client||x.ifClient||"") : (x.if_fournisseur||x.fournisseur_if||x.identifiant_fiscal||x.identifiant_fiscal_fournisseur||x.if_||x.if||"");
+  var v = (type==="vente") ? (x.client_if||x.if_client||x.identifiant_fiscal_client||x.ifClient||"") : (x.fournisseur_if||x.if_fournisseur||x.identifiant_fiscal||x.identifiant_fiscal_fournisseur||x.if_||x.if||"");
   v=(""+(v||"")).trim();
   if(!v) v=_scanIdField(x,_isIfKey);    // repli : champ « if » / « identifiant fiscal »
   return v||"";
