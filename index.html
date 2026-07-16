@@ -432,7 +432,7 @@ function ensureYears(){if(!S.years.length)S.years=[YEAR-1,YEAR,YEAR+1];S.years=S
 function syncBadge(){
   const map={local:["⚪","Mode local"],login:["🔒","Non connecté"],synced:["🟢","Synchronisé"],saving:["🟡","Enregistrement…"],error:["🔴","Erreur cloud"],offline:["🟠","Hors ligne"]};
   const m=map[syncState]||map.local;
-  return '<div id="sync" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:rgba(167,206,190,.7)"><span>'+m[0]+'</span>'+m[1]+(CLOUD&&session?' · <button data-act="logout" style="color:rgba(167,206,190,.9);text-decoration:underline;font-size:11px">déconnexion</button>':'')+'</div>';
+  return '<div id="sync" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:rgba(167,206,190,.7);flex-wrap:wrap"><span>'+m[0]+'</span>'+m[1]+(CLOUD&&session?' · <button data-act="open_pwd" style="color:rgba(167,206,190,.9);text-decoration:underline;font-size:11px;background:none;border:none;cursor:pointer">mot de passe</button> · <button data-act="logout" style="color:rgba(167,206,190,.9);text-decoration:underline;font-size:11px;background:none;border:none;cursor:pointer">déconnexion</button>':'')+'</div>';
 }
 function setSync(st){syncState=st;const el=document.getElementById("sync");if(el)el.outerHTML=syncBadge();}
 function loadSDK(){return new Promise((res,rej)=>{if(window.supabase)return res();const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";s.onload=function(){res();};s.onerror=function(){rej(new Error("SDK"));};document.head.appendChild(s);});}
@@ -465,8 +465,10 @@ async function boot(){
     try{
       await loadSDK();
       sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+      var isRecovery=/type=recovery/.test(location.hash||"");
+      sb.auth.onAuthStateChange(function(_e,s){session=s; if(_e==="PASSWORD_RECOVERY"){renderSetPassword();}});
       const g=await sb.auth.getSession();session=g.data.session;
-      sb.auth.onAuthStateChange(function(_e,s){session=s;});
+      if(session&&isRecovery){renderSetPassword();return;}
       if(!session){renderLogin();return;}
       await pullAll();
     }catch(e){console.warn("Cloud indisponible — mode local",e);syncState="offline";}
@@ -491,6 +493,54 @@ async function doAuth(mode){
 }
 async function logout(){try{await sb.auth.signOut();}catch(e){}session=null;if(_sub){try{sb.removeChannel(_sub);}catch(e){}_sub=null;}renderLogin();}
 
+/* ---------- Mot de passe oublié / réinitialisation ---------- */
+async function forgotPassword(){
+  const email=(document.getElementById("lg_email")||{}).value;
+  const err=document.getElementById("lg_err");
+  if(!email||!email.trim()){err.style.color="#B42318";err.textContent="Saisissez d'abord votre e-mail ci-dessus.";return;}
+  err.style.color="#5C6B66";err.textContent="Envoi du lien…";
+  try{
+    const redirectTo=location.href.split("#")[0].split("?")[0];
+    const r=await sb.auth.resetPasswordForEmail(email.trim(),{redirectTo:redirectTo});
+    if(r.error){err.style.color="#B42318";err.textContent=r.error.message;return;}
+    err.style.color="#0E7A5F";err.textContent="Lien envoyé. Consultez votre boîte mail (et les spams).";
+  }catch(e){err.style.color="#B42318";err.textContent="Erreur : "+e.message;}
+}
+async function savePasswordRecovery(){
+  const p=(document.getElementById("np_pass")||{}).value||"";
+  const err=document.getElementById("np_err");
+  if(p.length<6){err.textContent="6 caractères minimum.";return;}
+  err.style.color="#5C6B66";err.textContent="Enregistrement…";
+  try{
+    const r=await sb.auth.updateUser({password:p});
+    if(r.error){err.style.color="#B42318";err.textContent=r.error.message;return;}
+    try{history.replaceState(null,"",location.pathname);}catch(e){}
+    session=r.data.session||session;
+    document.querySelector(".app").style.display="";
+    document.getElementById("overlay").innerHTML="";
+    await pullAll();render();
+  }catch(e){err.style.color="#B42318";err.textContent="Erreur : "+e.message;}
+}
+function modalPwd(){
+  return '<div class="ov"><div class="modal" data-stop style="max-width:380px"><div class="mh"><h3 class="ff">Changer mon mot de passe</h3><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+   +'<div class="mb" style="padding:22px">'
+   +'<div class="flbl">Nouveau mot de passe (6 caractères minimum)</div><input class="ipt" id="pwd_new" type="password" autocomplete="new-password">'
+   +'<div id="pwd_err" style="font-size:12px;color:#B42318;min-height:18px;margin-top:10px"></div>'
+   +'<button class="btn-primary" data-act="pwd_save" style="width:100%;justify-content:center;margin-top:6px">Enregistrer</button>'
+   +'</div></div></div>';
+}
+async function savePasswordManual(){
+  const p=(document.getElementById("pwd_new")||{}).value||"";
+  const err=document.getElementById("pwd_err");
+  if(p.length<6){err.textContent="6 caractères minimum.";return;}
+  err.style.color="#5C6B66";err.textContent="Enregistrement…";
+  try{
+    const r=await sb.auth.updateUser({password:p});
+    if(r.error){err.style.color="#B42318";err.textContent=r.error.message;return;}
+    S.modal=null;renderModal();showOk("Mot de passe mis à jour.");
+  }catch(e){err.style.color="#B42318";err.textContent="Erreur : "+e.message;}
+}
+
 /* ---------- CREATION DE COMPTE DIRECTE DANS LE CLOUD (sans e-mail) ---------- */
 // Génère un mot de passe simple à transmettre (sans caractères ambigus).
 function genPass(n){n=n||10;var cs="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";var s="";for(var i=0;i<n;i++)s+=cs.charAt(Math.floor(Math.random()*cs.length));return s;}
@@ -514,7 +564,7 @@ async function cloudCreateAccount(payload){
       else throw new Error(msg);
     }else{
       if(r.data&&r.data.error) throw new Error(r.data.error);
-      return {uid:(r.data&&r.data.user_id)||"", needsConfirm:false};
+      return {uid:(r.data&&r.data.user_id)||"", needsConfirm:false, emailSent:!!(r.data&&r.data.emailSent), emailWarning:(r.data&&r.data.emailWarning)||"", linkWarning:(r.data&&r.data.linkWarning)||""};
     }
   }catch(e){
     var en=((e&&((e.name||"")+" "+(e.message||"")))||"")+"";
@@ -560,6 +610,19 @@ function renderLogin(){
    +'<div id="lg_err" style="font-size:12px;color:#B42318;min-height:18px;margin-top:10px"></div>'
    +'<button class="btn-primary" data-act="login">Se connecter</button>'
    +'<button data-act="signup" style="width:100%;justify-content:center;margin-top:8px;background:#fff;color:#14201C;border:1px solid var(--line);padding:11px;border-radius:12px;font-weight:600;font-size:14px">Créer un compte</button>'
+   +'<div style="text-align:center;margin-top:14px"><button data-act="forgot_pwd" style="background:none;border:none;color:var(--muted);text-decoration:underline;font-size:12.5px;cursor:pointer">Mot de passe oublié ?</button></div>'
+   +'</div></div></div>';
+}
+function renderSetPassword(){
+  syncState="login";
+  document.querySelector(".app").style.display="none";
+  document.getElementById("overlay").innerHTML=
+   '<div class="ov" style="background:#14201C"><div class="modal" data-stop style="max-width:400px"><div class="mb" style="padding:34px">'
+   +'<div class="ff" style="font-size:22px;font-weight:700;color:#14201C">Nouveau mot de passe</div>'
+   +'<div style="font-size:12px;color:var(--muted);margin:4px 0 22px">Vous êtes connecté(e). Choisissez un mot de passe pour vos prochaines connexions.</div>'
+   +'<div class="flbl">Nouveau mot de passe (6 caractères minimum)</div><input class="ipt" id="np_pass" type="password" autocomplete="new-password">'
+   +'<div id="np_err" style="font-size:12px;color:#B42318;min-height:18px;margin-top:10px"></div>'
+   +'<button class="btn-primary" data-act="pwd_recovery_save">Enregistrer et continuer</button>'
    +'</div></div></div>';
 }
 function modalCloud(){
@@ -4834,12 +4897,14 @@ async function portalCreateAccount(cid){
   setSync&&setSync("saving");
   try{
     var res=await cloudCreateAccount({email:email,password:pass,type:"client",client_id:cid,client_name:c.dossier});
-    // Liaison automatique dossier <-> compte (peut être bloquée par RLS ; sinon, liaison manuelle via l'UID affiché)
-    if(res.uid){ try{ await sb.from("portal_clients").insert({user_id:res.uid,client_id:cid,client_name:c.dossier}); }catch(_e){} }
+    // La liaison dossier <-> compte est faite par la fonction Edge « creer-compte » elle-même ;
+    // filet de sécurité si jamais elle a échoué côté fonction (RLS, table absente...).
+    if(res.uid && res.linkWarning){ try{ await sb.from("portal_clients").insert({user_id:res.uid,client_id:cid,client_name:c.dossier}); }catch(_e){} }
     S.flags[cid]=Object.assign({},S.flags[cid]); S.flags[cid].societe=Object.assign({},S.flags[cid].societe);
     S.flags[cid].societe.portalInvited=new Date().toISOString(); S.flags[cid].societe.email=email; save("flags");
     setSync&&setSync("synced"); render();
-    showCreds("Compte client créé","ce client",email,pass,res.uid,res.needsConfirm);
+    if(res.emailSent){ showOk("Compte créé : un e-mail avec le lien et le mot de passe provisoire a été envoyé automatiquement à "+email+"."); }
+    else{ if(res.emailWarning)showErr("Compte créé, mais l'e-mail n'a pas pu être envoyé ("+res.emailWarning+"). Transmettez les identifiants ci-dessous."); showCreds("Compte client créé","ce client",email,pass,res.uid,res.needsConfirm); }
   }catch(e){
     setSync&&setSync("synced");
     var m=(e.message||String(e));
@@ -5113,7 +5178,8 @@ async function teamCreateAccount(id){
     await teamPushCloud(s);
     s.invited=new Date().toISOString(); save("team");
     setSync&&setSync("synced"); renderView();
-    showCreds("Compte collaborateur créé",(s.name||"ce collaborateur"),email,pass,res.uid,res.needsConfirm);
+    if(res.emailSent){ showOk("Compte créé : un e-mail avec le lien et le mot de passe provisoire a été envoyé automatiquement à "+email+"."); }
+    else{ if(res.emailWarning)showErr("Compte créé, mais l'e-mail n'a pas pu être envoyé ("+res.emailWarning+"). Transmettez les identifiants ci-dessous."); showCreds("Compte collaborateur créé",(s.name||"ce collaborateur"),email,pass,res.uid,res.needsConfirm); }
   }catch(e){
     setSync&&setSync("synced");
     var m=(e.message||String(e));
@@ -12710,6 +12776,7 @@ function renderModal(){
   if(S.modal.type==="assistant"){o.innerHTML=modalAssistant();setTimeout(function(){var i=document.getElementById("asstInput");if(i){i.focus();i.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();assistantSend();}};}var sc=document.getElementById("asstScroll");if(sc)sc.scrollTop=sc.scrollHeight;},30);return;}
   if(S.modal.type==="lettrage"){o.innerHTML=modalLettrage(S.modal.cid,S.modal.compte);setTimeout(lettrageModalSetup,20);return;}
   if(S.modal.type==="creds"){o.innerHTML=modalCreds();return;}
+  if(S.modal.type==="pwd"){o.innerHTML=modalPwd();return;}
   if(S.modal.type==="notif"){o.innerHTML=modalNotif(S.modal.key);return;}
   if(S.modal.type==="notifgroup"){o.innerHTML=modalNotifGroup();return;}
   const c=S.modal.id==null?null:clients().find(x=>x.id===S.modal.id);
@@ -13116,6 +13183,10 @@ document.addEventListener("click",e=>{
   else if(a==="login"){doAuth("signin");}
   else if(a==="signup"){doAuth("signup");}
   else if(a==="logout"){logout();}
+  else if(a==="forgot_pwd"){forgotPassword();}
+  else if(a==="pwd_recovery_save"){savePasswordRecovery();}
+  else if(a==="open_pwd"){S.modal={type:"pwd"};renderModal();}
+  else if(a==="pwd_save"){savePasswordManual();}
   else if(a==="fac_new"){S.facDraft=facNew();renderView();}
   else if(a==="fac_edit"){facEdit(t.dataset.id);}
   else if(a==="fac_cancel"){S.facDraft=null;renderView();}
