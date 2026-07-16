@@ -5740,12 +5740,16 @@ function tiersResolve(g,type,info){
   if(ex){
     if(!ex.ice && info.ice)ex.ice=info.ice;
     if(!ex.if_ && info.if_)ex.if_=info.if_;
+    if(!ex.adresse && info.adresse)ex.adresse=info.adresse;
+    if(!ex.telephone && info.telephone)ex.telephone=info.telephone;
+    if(!ex.rc && info.rc)ex.rc=info.rc;
+    if(!ex.patente && info.patente)ex.patente=info.patente;
     if((!ex.nom||ex.nom.length<2) && nom)ex.nom=nom;
     if(!ex.compte)ex.compte=tiersCodeFor(fam,ex.seq);
     return ex.compte;
   }
   var seq=tiersNextSeq(g,fam), compte=tiersCodeFor(fam,seq);
-  g.tiers.push({id:"T"+Date.now()+"_"+Math.floor(Math.random()*1e4),type:fam,seq:seq,compte:compte,nom:nom||("Tiers "+seq),ice:info.ice||"",if_:info.if_||""});
+  g.tiers.push({id:"T"+Date.now()+"_"+Math.floor(Math.random()*1e4),type:fam,seq:seq,compte:compte,nom:nom||("Tiers "+seq),ice:info.ice||"",if_:info.if_||"",adresse:info.adresse||"",telephone:info.telephone||"",rc:info.rc||"",patente:info.patente||""});
   return compte;
 }
 // Compte tiers à utiliser pour une pièce (auxiliaire si résolu, sinon collectif)
@@ -5757,7 +5761,7 @@ function comptaResolveTiers(g){
     if(p.rejected)return;
     var isV=p.type==="vente";
     var iff=isV?(p.if_client||p.if_||""):(p.if_fournisseur||p.if_||"");
-    var compte=tiersResolve(g,p.type,{nom:p.fournisseur||"",ice:p.ice||"",if_:iff});
+    var compte=tiersResolve(g,p.type,{nom:p.fournisseur||"",ice:p.ice||"",if_:iff,adresse:p.adresse||"",telephone:p.telephone||"",rc:p.rc||"",patente:p.patente||""});
     if(compte){ p.tiersCompte=compte; }
   });
 }
@@ -5785,6 +5789,10 @@ function comptaMergeTiers(cid){
       if(target){
         if(!_tdig(target.ice)&&t.ice)target.ice=t.ice;       // enrichir le conservé
         if(!_tdig(target.if_)&&t.if_)target.if_=t.if_;
+        if(!target.adresse&&t.adresse)target.adresse=t.adresse;
+        if(!target.telephone&&t.telephone)target.telephone=t.telephone;
+        if(!target.rc&&t.rc)target.rc=t.rc;
+        if(!target.patente&&t.patente)target.patente=t.patente;
         if((!target.nom||target.nom.length<2)&&t.nom)target.nom=t.nom;
         var from=comptaCanon(t.compte),to=target.compte;
         (g.pieces||[]).forEach(function(p){ if(comptaCanon(p.tiersCompte)===from)p.tiersCompte=to; });
@@ -8820,14 +8828,18 @@ function comptaTiersBody(c){
         +'<td style="padding:6px 8px"><input class="ipt" data-tiers="'+esc(t.id)+':nom" value="'+esc(t.nom||"")+'" style="min-width:150px"></td>'
         +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':ice" value="'+esc(t.ice||"")+'" placeholder="ICE" style="min-width:120px"></td>'
         +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':if_" value="'+esc(t.if_||"")+'" placeholder="IF" style="min-width:110px"></td>'
+        +'<td style="padding:6px 8px"><input class="ipt" data-tiers="'+esc(t.id)+':adresse" value="'+esc(t.adresse||"")+'" placeholder="Adresse" style="min-width:170px"></td>'
+        +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':telephone" value="'+esc(t.telephone||"")+'" placeholder="Téléphone" style="min-width:110px"></td>'
+        +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':rc" value="'+esc(t.rc||"")+'" placeholder="RC" style="min-width:90px"></td>'
+        +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':patente" value="'+esc(t.patente||"")+'" placeholder="Patente" style="min-width:100px"></td>'
         +'<td style="padding:6px 8px;text-align:center">'+n+'</td>'
         +'<td style="padding:6px 8px;text-align:right">'+sTxt+'</td>'
         +'<td style="padding:6px 8px;text-align:right">'+nlTxt+'</td>'
         +'<td style="padding:6px 8px;text-align:right"><button class="chip" data-act="lettrage_open" data-id="'+c.id+'" data-compte="'+esc(comptaCanon(t.compte))+'" style="font-size:11.5px">'+ic("link","width:12px;height:12px;vertical-align:-2px")+' Lettrer</button></td></tr>';
     }).join("");
     return '<div class="card" style="padding:18px;overflow-x:auto"><div class="sectit mb2" style="color:'+coul+'">'+titre+' ('+list.length+')</div>'
-      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:720px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px;text-align:center">Factures</th><th style="padding:4px 8px;text-align:right">Solde</th><th style="padding:4px 8px;text-align:right">Non lettré</th><th style="padding:4px 8px;text-align:right">Lettrage</th></tr>'+rows+'</table>'
-      +'<div class="note" style="font-size:11px;margin-top:8px">Modifier le nom, l\'ICE ou l\'IF met à jour toutes les écritures du tiers. « Lettrer » ouvre le rapprochement facture ↔ règlement (solde non lettré = reste dû).</div></div>';
+      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1080px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px">Adresse</th><th style="padding:4px 8px">Téléphone</th><th style="padding:4px 8px">RC</th><th style="padding:4px 8px">Patente</th><th style="padding:4px 8px;text-align:center">Factures</th><th style="padding:4px 8px;text-align:right">Solde</th><th style="padding:4px 8px;text-align:right">Non lettré</th><th style="padding:4px 8px;text-align:right">Lettrage</th></tr>'+rows+'</table>'
+      +'<div class="note" style="font-size:11px;margin-top:8px">Adresse, téléphone, RC et patente se remplissent automatiquement dès qu\'une facture les mentionne. Modifier un champ ici met à jour la fiche du tiers pour toutes ses écritures.</div></div>';
   }
   return '<div class="note mt4" style="font-size:12px;background:#F2F8F5;border-radius:10px;padding:10px 14px;color:#0a5f4a;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
     +'<div>'+ic("building","width:14px;height:14px;vertical-align:-2px")+' <b>Un seul compte par tiers.</b> Chaque fournisseur reçoit un compte <b class="mono">4411xxxxxx</b> et chaque client un compte <b class="mono">3421xxxxxx</b>, créés automatiquement à partir des factures importées (identification par ICE / IF / nom). Les écritures d\'achat, de vente et de règlement sont imputées sur ces comptes auxiliaires.</div>'
@@ -9798,6 +9810,26 @@ function ocrTiersIf(type,x){
   if(!v) v=_scanIdField(x,_isIfKey);    // repli : champ « if » / « identifiant fiscal »
   return v||"";
 }
+function ocrTiersAdresse(type,x){
+  x=x||{};
+  var v=(type==="vente")?(x.client_adresse||x.adresse_client||""):(x.fournisseur_adresse||x.adresse_fournisseur||x.adresse||"");
+  return (""+(v||"")).trim();
+}
+function ocrTiersTel(type,x){
+  x=x||{};
+  var v=(type==="vente")?(x.client_telephone||x.telephone_client||x.client_tel||""):(x.fournisseur_telephone||x.telephone_fournisseur||x.telephone||x.tel||"");
+  return (""+(v||"")).trim();
+}
+function ocrTiersRc(type,x){
+  x=x||{};
+  var v=(type==="vente")?(x.client_rc||x.rc_client||""):(x.fournisseur_rc||x.rc_fournisseur||x.rc||"");
+  return (""+(v||"")).trim();
+}
+function ocrTiersPatente(type,x){
+  x=x||{};
+  var v=(type==="vente")?(x.client_patente||x.patente_client||""):(x.fournisseur_patente||x.patente_fournisseur||x.patente||"");
+  return (""+(v||"")).trim();
+}
 async function comptaUpload(type,files){
   if(!sb||!session){showErr("Connectez-vous (cloud) pour importer.");return;}
   files=Array.prototype.slice.call(files||[]);if(!files.length)return;
@@ -9852,6 +9884,7 @@ async function comptaUpload(type,files){
       var _isEspeces=(_modeReg==="Espèces");
       var piece={id:Date.now()+"_"+i+"_"+j,type:type,name:f.name+(multi?" — facture "+(j+1)+"/"+facts.length:""),path:piecePath,status:"avalider",
         date:x.date||"",fournisseur:ocrTiers(type,x)||"",ice:ocrTiersIce(type,x)||"",if_:ocrTiersIf(type,x)||"",numero:x.numero||"",
+        adresse:ocrTiersAdresse(type,x)||"",telephone:ocrTiersTel(type,x)||"",rc:ocrTiersRc(type,x)||"",patente:ocrTiersPatente(type,x)||"",
         ht:x.montant_ht!=null?x.montant_ht:"",tva:x.montant_tva!=null?x.montant_tva:"",ttc:x.montant_ttc!=null?x.montant_ttc:"",
         compte:_det.compte,compteAuto:true,compteReason:_det.reason,compteConf:_det.confidence,extracted:x,
         pages:(piecePath!==path)?"":(x.pages||""),
@@ -10012,6 +10045,7 @@ async function comptaUploadGrouped(type,files){
         name:f.name+" — facture "+(gi+1)+"/"+groups.length+" ("+pageLbl+")",
         path:piecePath,status:"avalider",
         date:gx.date||"",fournisseur:ocrTiers(type,gx)||"",ice:ocrTiersIce(type,gx)||"",if_:ocrTiersIf(type,gx)||"",numero:gx.numero||"",
+        adresse:ocrTiersAdresse(type,gx)||"",telephone:ocrTiersTel(type,gx)||"",rc:ocrTiersRc(type,gx)||"",patente:ocrTiersPatente(type,gx)||"",
         ht:gx.montant_ht!=null?gx.montant_ht:"",tva:gx.montant_tva!=null?gx.montant_tva:"",ttc:gx.montant_ttc!=null?gx.montant_ttc:"",
         compte:_det.compte,compteAuto:true,compteReason:_det.reason,compteConf:_det.confidence,extracted:gx,pages:""};
       if(grp.err)piece.ocrError=grp.err;
