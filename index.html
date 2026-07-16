@@ -5725,15 +5725,16 @@ function tiersFind(g,type,info){
   var byIce=iceValid?list.find(function(t){return _iceOk(t.ice)&&_tdig(t.ice)===ice;}):null; if(byIce)return byIce;
   var byIf =ifValid?list.find(function(t){return _ifOk(t.if_)&&_tdig(t.if_)===iff;}):null; if(byIf)return byIf;
   // match par nom — exact OU « noyau » (sans forme juridique) — refusé seulement si les DEUX
-  // ICE (ou les DEUX IF) sont au bon format ET diffèrent réellement (jamais bloqué par un
-  // numéro mal lu par l'OCR, trop court/trop long pour être un vrai ICE/IF).
+  // ICE sont au bon format (15 chiffres) ET diffèrent réellement. L'IF n'est PAS utilisé comme
+  // bloqueur : son format est trop variable pour distinguer une vraie différence d'une simple
+  // erreur de lecture OCR (contrairement à l'ICE, toujours 15 chiffres). Il ne sert qu'à confirmer
+  // une correspondance quand il est identique, jamais à en écarter une par nom.
   var core=_tcore(info.nom);
   if(nom){
     var byNom=list.find(function(t){
       var same=(_tnorm(t.nom)===nom) || (core && _tcore(t.nom)===core);
       if(!same)return false;
       if(iceValid && _iceOk(t.ice) && _tdig(t.ice)!==ice)return false;
-      if(ifValid && _ifOk(t.if_) && _tdig(t.if_)!==iff)return false;
       return true;
     });
     if(byNom)return byNom;
@@ -5787,10 +5788,9 @@ function comptaMergeTiers(cid){
       var target=keep.find(function(k){
         var ki=_tdig(k.ice),ti=_tdig(t.ice),kf=_tdig(k.if_),tf=_tdig(t.if_);
         if(_iceOk(ki)&&_iceOk(ti)&&ki===ti)return true;                 // même ICE (au bon format)
-        if(_ifOk(kf)&&_ifOk(tf)&&kf===tf)return true;                   // même IF (au bon format)
-        if(_tcore(k.nom)&&_tcore(k.nom)===_tcore(t.nom)){ // même nom-noyau, sans conflit d'identifiant VALIDE
+        if(_ifOk(kf)&&_ifOk(tf)&&kf===tf)return true;                   // même IF (au bon format) -> confirme, jamais ne bloque
+        if(_tcore(k.nom)&&_tcore(k.nom)===_tcore(t.nom)){ // même nom-noyau, sans conflit d'ICE valide
           if(_iceOk(ki)&&_iceOk(ti)&&ki!==ti)return false;
-          if(_ifOk(kf)&&_ifOk(tf)&&kf!==tf)return false;
           return true;
         }
         return false;
