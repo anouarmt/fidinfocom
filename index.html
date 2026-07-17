@@ -8895,17 +8895,11 @@ function comptaTiersBody(c){
   if(!c)return '<div class="note mt5">Aucune société.</div>';
   var g=comptaGet(c.id);
   comptaResolveTiers(g);                 // garantit que chaque pièce a son compte auxiliaire
-  // recompte d'usage : nombre de pièces rattachées à chaque tiers
-  var usage={}; (g.pieces||[]).forEach(function(p){ if(p.tiersCompte){ var k=comptaCanon(p.tiersCompte); usage[k]=(usage[k]||0)+1; } });
   var frs=(g.tiers||[]).filter(function(t){return t.type==="fournisseur";}).sort(function(a,b){return a.seq-b.seq;});
   var cli=(g.tiers||[]).filter(function(t){return t.type==="client";}).sort(function(a,b){return a.seq-b.seq;});
   function tbl(list,titre,coul){
     if(!list.length)return '<div class="card" style="padding:18px"><div class="sectit mb2">'+titre+'</div><div class="note" style="font-size:12px">Aucun tiers détecté pour l\'instant. Importez des factures dans « Saisie / Import » : chaque fournisseur / client reçoit automatiquement un compte auxiliaire unique (détecté par ICE, IF puis nom).</div></div>';
     var rows=list.map(function(t){
-      var solde=tiersSolde(c,t.compte), n=usage[comptaCanon(t.compte)]||0;
-      var sTxt=Math.abs(solde)<0.01?'<span style="color:var(--faint)">soldé</span>':(solde>0?'<span class="mono" style="color:#14201C">'+fmtDH2(solde)+' D</span>':'<span class="mono" style="color:#0a5f4a">'+fmtDH2(-solde)+' C</span>');
-      var nonLet=tiersSoldeNonLettre(c,t.compte);
-      var nlTxt=Math.abs(nonLet)<0.01?'<span style="color:#0E7A5F;font-size:11px">✓ lettré</span>':'<span class="mono" style="color:#B5530A;font-size:11.5px">'+fmtDH2(Math.abs(nonLet))+(nonLet>0?" D":" C")+'</span>';
       return '<tr style="border-top:1px solid var(--line)">'
         +'<td style="padding:6px 8px" class="mono"><b>'+esc(comptaCanon(t.compte))+'</b></td>'
         +'<td style="padding:6px 8px"><input class="ipt" data-tiers="'+esc(t.id)+':nom" value="'+esc(t.nom||"")+'" style="min-width:150px"></td>'
@@ -8915,14 +8909,10 @@ function comptaTiersBody(c){
         +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':telephone" value="'+esc(t.telephone||"")+'" placeholder="Téléphone" style="min-width:110px"></td>'
         +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':rc" value="'+esc(t.rc||"")+'" placeholder="RC" style="min-width:90px"></td>'
         +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':patente" value="'+esc(t.patente||"")+'" placeholder="Patente" style="min-width:100px"></td>'
-        +'<td style="padding:6px 8px;text-align:center">'+n+'</td>'
-        +'<td style="padding:6px 8px;text-align:right">'+sTxt+'</td>'
-        +'<td style="padding:6px 8px;text-align:right">'+nlTxt+'</td>'
-        +'<td style="padding:6px 8px;text-align:right"><button class="chip" data-act="lettrage_open" data-id="'+c.id+'" data-compte="'+esc(comptaCanon(t.compte))+'" style="font-size:11.5px">'+ic("link","width:12px;height:12px;vertical-align:-2px")+' Lettrer</button></td>'
         +'<td style="padding:6px 8px;text-align:right"><button class="chip" data-act="tiers_fiche" data-id="'+c.id+'" data-tid="'+esc(t.id)+'" style="font-size:11.5px">'+ic("pencil","width:12px;height:12px;vertical-align:-2px")+' Fiche</button></td></tr>';
     }).join("");
     return '<div class="card" style="padding:18px;overflow-x:auto"><div class="sectit mb2" style="color:'+coul+'">'+titre+' ('+list.length+')</div>'
-      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1180px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px">Adresse</th><th style="padding:4px 8px">Téléphone</th><th style="padding:4px 8px">RC</th><th style="padding:4px 8px">Patente</th><th style="padding:4px 8px;text-align:center">Factures</th><th style="padding:4px 8px;text-align:right">Solde</th><th style="padding:4px 8px;text-align:right">Non lettré</th><th style="padding:4px 8px;text-align:right">Lettrage</th><th style="padding:4px 8px;text-align:right">Fiche</th></tr>'+rows+'</table>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px">Adresse</th><th style="padding:4px 8px">Téléphone</th><th style="padding:4px 8px">RC</th><th style="padding:4px 8px">Patente</th><th style="padding:4px 8px;text-align:right">Fiche</th></tr>'+rows+'</table>'
       +'<div class="note" style="font-size:11px;margin-top:8px">Adresse, téléphone, RC et patente se remplissent automatiquement dès qu\'une facture les mentionne. Modifier un champ ici met à jour la fiche du tiers pour toutes ses écritures.</div></div>';
   }
   return '<div class="note mt4" style="font-size:12px;background:#F2F8F5;border-radius:10px;padding:10px 14px;color:#0a5f4a;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
