@@ -1901,6 +1901,67 @@ async function ventesDetailExportExcel(){
     setSync("synced");showOk("Journal des ventes exporté ("+rows.length+" lignes).");
   }catch(e){ setSync("synced");showErr("Export impossible : "+(e.message||e)); }
 }
+// ===== Détail des frais et commissions bancaires : détection de la nature précise =====
+// Remplace le libellé générique "Commission bancaire" par une désignation détaillée
+// (agios, tenue de compte, virement, change, carte...) déduite du libellé réel du relevé
+// bancaire. Utilisé dans le relevé des déductions, l'export Excel et l'EDI Simpl-TVA
+// (balise <des>), ce qui rend la désignation officielle plus fidèle à la pièce justificative.
+var FRAIS_NATURES=[
+  {rx:/agios?|interet.*debiteur|decouvert/, lib:"Agios / intérêts débiteurs"},
+  {rx:/change|devise/, lib:"Commission de change"},
+  {rx:/virement/, lib:"Frais de virement"},
+  {rx:/prelevement/, lib:"Frais de prélèvement"},
+  {rx:/cheque|effet|lcn|impaye/, lib:"Frais sur chèques / effets"},
+  {rx:/carte/, lib:"Cotisation carte bancaire"},
+  {rx:/telecompensation/, lib:"Frais de télécompensation"},
+  {rx:/tenue de compte|abonnement|frais de gestion/, lib:"Frais de tenue de compte"},
+  {rx:/sms banking|e-?banking|net ?banking|interrogation|releve de compte/, lib:"Frais de consultation / e-banking"},
+  {rx:/cotisation/, lib:"Cotisation bancaire"},
+  {rx:/commission/, lib:"Commission bancaire (autre)"}
+];
+function fraisNature(libelle){
+  var s=_bankNorm(libelle||"");
+  for(var i=0;i<FRAIS_NATURES.length;i++){ if(FRAIS_NATURES[i].rx.test(s))return FRAIS_NATURES[i].lib; }
+  return "Frais bancaires divers";
+}
+// Comptes CGNC 6147x (frais et commissions bancaires facturés normalement, hors auto-détection banque)
+var FRAIS_CPT_LIB={"61470":"Services bancaires","61471":"Frais d'achat et de vente des titres","61472":"Frais sur effets de commerce","61473":"Frais et commissions sur services bancaires","61475":"Frais et commissions bancaires"};
+function isFraisCompte(cpt){ return /^6147/.test(String(cpt||"")); }
+function fraisCompteLib(cpt){ var s=String(cpt||""); var c5=s.slice(0,5),c4=s.slice(0,4); return FRAIS_CPT_LIB[c5]||FRAIS_CPT_LIB[c4+"0"]||"Frais et commissions bancaires"; }
+// Regroupe les lignes du relevé marquées comme frais/commission (r.natureFrais) par nature, avec sous-totaux
+function fraisCommissionsGroup(rows){
+  var g={},order=[];
+  (rows||[]).forEach(function(r){
+    if(!r.natureFrais)return;
+    if(!g[r.natureFrais]){g[r.natureFrais]={n:0,ht:0,tva:0,ttc:0};order.push(r.natureFrais);}
+    var x=g[r.natureFrais]; x.n++; x.ht+=r.ht; x.tva+=r.tva; x.ttc+=r.ttc;
+  });
+  return order.map(function(k){return {nature:k,n:g[k].n,ht:g[k].ht,tva:g[k].tva,ttc:g[k].ttc};});
+}
+// Carte HTML : détail des frais et commissions bancaires par nature (annexe au relevé des déductions)
+function fraisCommissionsRecapHtml(rows){
+  var groups=fraisCommissionsGroup(rows);
+  if(!groups.length)return "";
+  var tHt=0,tTva=0,tTtc=0,tN=0;
+  var body=groups.map(function(g){tHt+=g.ht;tTva+=g.tva;tTtc+=g.ttc;tN+=g.n;
+    return '<tr style="border-bottom:1px solid #F0EDE3;font-size:12px">'
+      +'<td style="padding:5px 8px">'+esc(g.nature)+'</td>'
+      +'<td style="padding:5px 8px;text-align:center" class="mono">'+g.n+'</td>'
+      +'<td style="padding:5px 8px;text-align:right" class="mono">'+fmtDH2(g.ht)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right" class="mono">'+fmtDH2(g.tva)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right" class="mono">'+fmtDH2(g.ttc)+'</td></tr>';
+  }).join("");
+  return '<div class="card" style="padding:20px;margin-top:16px">'
+    +'<div class="sectit" style="margin-bottom:8px">'+ic("bank")+' Frais et commissions bancaires — détail par nature</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:520px">'
+    +'<tr style="background:#14201C;color:#fff;font-size:11px;text-align:left"><th style="padding:5px 8px">Nature</th><th style="padding:5px 8px;text-align:center">Nb</th><th style="padding:5px 8px;text-align:right">HT</th><th style="padding:5px 8px;text-align:right">TVA</th><th style="padding:5px 8px;text-align:right">TTC</th></tr>'
+    +body
+    +'<tr style="border-top:2px solid #14201C;font-weight:700;background:#F7F4EC"><td style="padding:6px 8px">TOTAL ('+tN+')</td><td></td>'
+    +'<td style="padding:6px 8px;text-align:right" class="mono">'+fmtDH2(tHt)+'</td>'
+    +'<td style="padding:6px 8px;text-align:right" class="mono">'+fmtDH2(tTva)+'</td>'
+    +'<td style="padding:6px 8px;text-align:right" class="mono">'+fmtDH2(tTtc)+'</td></tr>'
+    +'</table></div></div>';
+}
 function releveDeductionsRows(cid,period){
   var g=comptaGet(cid),rows=[];
   var c=clients().find(function(x){return x.id===cid;})||{};
@@ -1914,9 +1975,9 @@ function releveDeductionsRows(cid,period){
         var mt=+a.montant||0; if(mt<=0)return;
         var taux=pieceTaux(p); if(taux<0)taux=20;
         var ttc=mt, tva=taux>0?(mt*taux/(100+taux)):0, ht=ttc-tva;
-        var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
+        var cpt=p.compte||"6111",isImmo=/^2/.test(cpt),isFrais=!isImmo&&isFraisCompte(cpt);
         rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-          if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":"Achat/charge")+" (réglé)",
+          if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":isFrais?fraisCompteLib(cpt):"Achat/charge")+" (réglé)",natureFrais:isFrais?fraisCompteLib(cpt):null,
           ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDetect(p)),tva:tva,prorata:100,recup:tva,
           regDate:o.date||"",regMode:o.isCommission?"Banque":"Virement/Chèque",cr:o.reference||"",compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
       });
@@ -1926,9 +1987,9 @@ function releveDeductionsRows(cid,period){
     g.pieces.filter(function(p){return (p.type==="achat"||!p.type)&&p.regle&&p.modeReg&&!p.tvaNonRecup&&pieceRegDirect(p)>0&&regYearOf(p)===S.year&&regInPeriod(p,period);}).forEach(function(p){
       var mt=pieceRegDirect(p),taux=pieceTaux(p); if(taux<=0)return;
       var tva=mt*taux/(100+taux), ht=mt-tva;
-      var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
+      var cpt=p.compte||"6111",isImmo=/^2/.test(cpt),isFrais=!isImmo&&isFraisCompte(cpt);
       rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-        if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":"Achat/charge")+" (réglé)",
+        if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":isFrais?fraisCompteLib(cpt):"Achat/charge")+" (réglé)",natureFrais:isFrais?fraisCompteLib(cpt):null,
         ttc:mt,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDetect(p)),tva:tva,prorata:100,recup:tva,
         regDate:regDateOf(p),regMode:p.modeReg||"",cr:p.refReg||"",compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
     });
@@ -1936,20 +1997,22 @@ function releveDeductionsRows(cid,period){
     // Régime des débits : déductions à la date de facture
     g.pieces.filter(function(p){return (p.type==="achat"||!p.type)&&pieceYear(p)===S.year&&pieceInPeriod(p,period)&&(+p.tva>0)&&!p.tvaNonRecup;}).forEach(function(p){
       var ht=+p.ht||0,tva=+p.tva||0,ttc=+p.ttc||(ht+tva),taux=ht>0?Math.round(tva/ht*100):20;
-      var cpt=p.compte||"6111",isImmo=/^2/.test(cpt);
+      var cpt=p.compte||"6111",isImmo=/^2/.test(cpt),isFrais=!isImmo&&isFraisCompte(cpt);
       var regDate="",regMode="",cr="";
       var op=(g.operations||[]).find(function(o){return (o.affectations||[]).some(function(a){return String(a.pieceId)===String(p.id);});});
       if(op){regDate=op.date||"";regMode="Virement/Chèque";cr=op.reference||"";}
       rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-        if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:isImmo?"Immobilisation":"Achat/charge",
+        if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:isImmo?"Immobilisation":isFrais?fraisCompteLib(cpt):"Achat/charge",natureFrais:isFrais?fraisCompteLib(cpt):null,
         ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDetect(p)),tva:tva,prorata:100,recup:tva,
         regDate:regDate,regMode:regMode,cr:cr,compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
     });
   }
-  // Commissions bancaires COMPTABILISÉES (statut « valide ») -> TVA déductible
+  // Frais et commissions bancaires COMPTABILISÉS (statut « valide ») -> TVA déductible
+  // Désignation détaillée par nature (agios, tenue de compte, virement, change, carte...)
+  // au lieu du libellé générique "Commission bancaire", déduite du libellé réel du relevé.
   (g.operations||[]).filter(function(o){return opYear(o)===S.year&&pieceInPeriod(o,period)&&o.tvaComm>0&&o.status==="valide";}).forEach(function(o){
-    var ht=+o.htComm||0,tva=+o.tvaComm||0,ttc=ht+tva;
-    rows.push({journal:"BQ",num:o.reference||"",date:o.date||"",tiers:o.libelle||"Banque",if_:"",ice:"",design:"Commission bancaire",ttc:ttc,ht:ht,taux:o.tauxComm||10,code:(o.codeTva||"142"),tva:tva,prorata:100,recup:tva,regDate:o.date||"",regMode:"Banque",cr:o.reference||"",compteTva:"34552000",src:"op",srcId:o.id});
+    var ht=+o.htComm||0,tva=+o.tvaComm||0,ttc=ht+tva,nat=fraisNature(o.libelle);
+    rows.push({journal:"BQ",num:o.reference||"",date:o.date||"",tiers:o.libelle||"Banque",if_:"",ice:"",design:nat,natureFrais:nat,ttc:ttc,ht:ht,taux:o.tauxComm||10,code:(o.codeTva||"142"),tva:tva,prorata:100,recup:tva,regDate:o.date||"",regMode:"Banque",cr:o.reference||"",compteTva:"34552000",src:"op",srcId:o.id});
   });
   // Intérêts d'emprunts RÉGLÉS PAR BANQUE -> TVA 10% déductible à la date du paiement bancaire
   (empList(c.id)||[]).forEach(function(emp){
@@ -1991,7 +2054,8 @@ function releveDeductionsHtml(c){
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px"><div class="sectit">'+ic("book")+' Relevé des déductions — '+esc(c.dossier)+(soc.if?' · IF '+esc(soc.if):'')+' · '+esc(S.tvaSel.period||"")+'</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="releve_excel">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' Excel</button><button class="chip" data-act="releve_xml">'+ic("down","width:13px;height:13px;vertical-align:-2px")+' EDI Simpl-TVA (.zip)</button></div></div>'
     +(rows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1100px">'+head+body+foot+'</table></div>':'<div class="note">Aucune déduction pour cette période. Validez des factures d\'achat et sélectionnez une période.</div>')
-    +'</div>';
+    +'</div>'
+    +fraisCommissionsRecapHtml(rows);
 }
 async function releveExportExcel(){
   var c=clients().find(function(x){return x.id===S.tvaSel.id;})||clients().find(function(x){return x.id===S.curClient;});if(!c){showErr("Sélectionnez un dossier.");return;}
@@ -2005,8 +2069,17 @@ async function releveExportExcel(){
     var tTTC=rows.reduce(function(a,r){return a+r.ttc;},0),tHT=rows.reduce(function(a,r){return a+r.ht;},0),tTVA=rows.reduce(function(a,r){return a+r.tva;},0),tRec=rows.reduce(function(a,r){return a+r.recup;},0);
     aoa.push(["","","","","","","","TOTAUX",tTTC,tHT,"","",tTVA,"",tRec,"","","",""]);
     var ws=window.XLSX.utils.aoa_to_sheet(aoa);var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,"Releve deductions");
+    var fg=fraisCommissionsGroup(rows),fMsg="";
+    if(fg.length){
+      var aoaF=[["Nature","Nb lignes","Montant HT","Montant TVA","Montant TTC"]],fHt=0,fTva=0,fTtc=0,fN=0;
+      fg.forEach(function(x){ aoaF.push([x.nature,x.n,x.ht,x.tva,x.ttc]); fHt+=x.ht;fTva+=x.tva;fTtc+=x.ttc;fN+=x.n; });
+      aoaF.push(["TOTAL",fN,fHt,fTva,fTtc]);
+      var wsF=window.XLSX.utils.aoa_to_sheet(aoaF);
+      window.XLSX.utils.book_append_sheet(wb,wsF,"Frais et commissions");
+      fMsg=" · "+fN+" ligne(s) de frais/commissions détaillée(s) sur un 2e onglet.";
+    }
     window.XLSX.writeFile(wb,"Releve_deductions_"+c.dossier.replace(/[^a-zA-Z0-9]/g,"_")+"_"+(S.tvaSel.period||"")+".xlsx");
-    setSync("synced");showOk("Relevé des déductions exporté ("+rows.length+" lignes).");
+    setSync("synced");showOk("Relevé des déductions exporté ("+rows.length+" lignes)."+fMsg);
   }catch(e){ setSync("synced");showErr("Export impossible : "+(e.message||e)); }
 }
 // Charge JSZip à la demande (compression .zip exigée par la DGI)
