@@ -5737,6 +5737,26 @@ function _iceConfirmCount(g,t){
   (g&&g.pieces||[]).forEach(function(p){ if(p.tiersCompte && comptaCanon(p.tiersCompte)===cc && _tdig(p.ice)===ti) n++; });
   return n;
 }
+// Alimente le champ ICE/IF d'un tiers avec une valeur entrante, sans jamais afficher un chiffre
+// non fiable comme s'il était sûr :
+//  - un champ verrouillé manuellement (Verified, posé par comptaTiersInput) n'est plus jamais touché ;
+//  - un champ encore vide adopte la première valeur reçue ;
+//  - en cas de conflit avec une valeur déjà CONFIRMÉE (ICE relu à l'identique sur ≥2 pièces), l'outlier
+//    isolé est simplement ignoré ;
+//  - sinon, en cas de conflit entre deux valeurs non confirmées, on EFFACE le champ et on le marque
+//    « en conflit » — pour ne plus jamais deviner au hasard tant qu'une correction manuelle n'a pas
+//    eu lieu (évite d'osciller entre deux valeurs fausses selon l'ordre de traitement des pièces).
+function _tiersAdoptId(g,target,kind,incoming){
+  var isIce=(kind==="ice"), field=isIce?"ice":"if_";
+  var verifiedKey=isIce?"iceVerified":"ifVerified", conflictKey=isIce?"iceConflict":"ifConflict";
+  if(!target||target[verifiedKey])return;
+  var inD=_tdig(incoming); if(!inD)return;
+  var curD=_tdig(target[field]);
+  if(!curD){ if(!target[conflictKey]) target[field]=incoming; return; }
+  if(curD===inD)return;                                             // déjà la même valeur
+  if(isIce && _iceOk(curD) && _iceConfirmCount(g,target)>=2)return;  // valeur en place déjà solide -> on ignore l'outlier
+  target[field]=""; target[conflictKey]=true;
+}
 // Compte auxiliaire à partir d'un type + numéro de séquence
 function tiersCodeFor(type,seq){ var base=(type==="vente"||type==="client")?"3421":"4411"; return comptaCanon(base+("000000"+seq).slice(-6)); }
 // Prochaine séquence libre pour ce type
@@ -5774,8 +5794,8 @@ function tiersResolve(g,type,info){
   var fam=(type==="vente"||type==="client")?"client":"fournisseur";
   var ex=tiersFind(g,type,info);
   if(ex){
-    if(!ex.ice && info.ice)ex.ice=info.ice;
-    if(!ex.if_ && info.if_)ex.if_=info.if_;
+    _tiersAdoptId(g,ex,"ice",info.ice);
+    _tiersAdoptId(g,ex,"if",info.if_);
     if(!ex.adresse && info.adresse)ex.adresse=info.adresse;
     if(!ex.telephone && info.telephone)ex.telephone=info.telephone;
     if(!ex.rc && info.rc)ex.rc=info.rc;
@@ -5797,12 +5817,21 @@ function pieceTiersCompte(p){ return (p&&p.tiersCompte)?p.tiersCompte:((p&&p.typ
 function comptaResolveTiers(g){
   if(!g||!g.pieces)return;
   var nMerged=_tiersAutoMerge(g);
+  var byCompte={}; (g.tiers||[]).forEach(function(x){ byCompte[comptaCanon(x.compte)]=x; });
   g.pieces.forEach(function(p){
     if(p.rejected)return;
     var isV=p.type==="vente";
     var iff=isV?(p.if_client||p.if_||""):(p.if_fournisseur||p.if_||"");
     var compte=tiersResolve(g,p.type,{nom:p.fournisseur||"",ice:p.ice||"",if_:iff,adresse:p.adresse||"",telephone:p.telephone||"",rc:p.rc||"",patente:p.patente||""});
     if(compte){ p.tiersCompte=compte; }
+    // Compte de charge / produit fixé sur la fiche du tiers (onglet Comptes Tiers) : prioritaire
+    // sur la détection automatique par mots-clés, pour TOUTES les pièces de ce tiers — sauf si
+    // l'utilisateur a lui-même fixé un compte différent à la main sur cette pièce précise.
+    if(compte && !p.compteManual){
+      var ti=byCompte[comptaCanon(compte)];
+      var ov=ti&&((isV?ti.compteProduit:ti.compteCharge)||"").trim();
+      if(ov && p.compte!==ov){ p.compte=ov; p.compteAuto=true; p.compteReason="compte fixé sur la fiche du tiers"; p.compteConf="haute"; }
+    }
   });
   if(nMerged>0) save("compta");   // persiste silencieusement les fusions automatiques
 }
@@ -5831,8 +5860,10 @@ function _tiersAutoMerge(g){
         return false;
       });
       if(target){
-        if(!_tdig(target.ice)&&t.ice)target.ice=t.ice;       // enrichir le conservé
-        if(!_tdig(target.if_)&&t.if_)target.if_=t.if_;
+        // ICE / IF : ne JAMAIS garder une valeur non fiable comme si elle était sûre — voir
+        // _tiersAdoptId (verrouillage manuel respecté, conflit non confirmé => champ effacé).
+        _tiersAdoptId(g,target,"ice",t.ice);
+        _tiersAdoptId(g,target,"if",t.if_);
         if(!target.adresse&&t.adresse)target.adresse=t.adresse;
         if(!target.telephone&&t.telephone)target.telephone=t.telephone;
         if(!target.rc&&t.rc)target.rc=t.rc;
@@ -8887,16 +8918,122 @@ function comptaTiersBody(c){
         +'<td style="padding:6px 8px;text-align:center">'+n+'</td>'
         +'<td style="padding:6px 8px;text-align:right">'+sTxt+'</td>'
         +'<td style="padding:6px 8px;text-align:right">'+nlTxt+'</td>'
-        +'<td style="padding:6px 8px;text-align:right"><button class="chip" data-act="lettrage_open" data-id="'+c.id+'" data-compte="'+esc(comptaCanon(t.compte))+'" style="font-size:11.5px">'+ic("link","width:12px;height:12px;vertical-align:-2px")+' Lettrer</button></td></tr>';
+        +'<td style="padding:6px 8px;text-align:right"><button class="chip" data-act="lettrage_open" data-id="'+c.id+'" data-compte="'+esc(comptaCanon(t.compte))+'" style="font-size:11.5px">'+ic("link","width:12px;height:12px;vertical-align:-2px")+' Lettrer</button></td>'
+        +'<td style="padding:6px 8px;text-align:right"><button class="chip" data-act="tiers_fiche" data-id="'+c.id+'" data-tid="'+esc(t.id)+'" style="font-size:11.5px">'+ic("pencil","width:12px;height:12px;vertical-align:-2px")+' Fiche</button></td></tr>';
     }).join("");
     return '<div class="card" style="padding:18px;overflow-x:auto"><div class="sectit mb2" style="color:'+coul+'">'+titre+' ('+list.length+')</div>'
-      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1080px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px">Adresse</th><th style="padding:4px 8px">Téléphone</th><th style="padding:4px 8px">RC</th><th style="padding:4px 8px">Patente</th><th style="padding:4px 8px;text-align:center">Factures</th><th style="padding:4px 8px;text-align:right">Solde</th><th style="padding:4px 8px;text-align:right">Non lettré</th><th style="padding:4px 8px;text-align:right">Lettrage</th></tr>'+rows+'</table>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1180px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px">Adresse</th><th style="padding:4px 8px">Téléphone</th><th style="padding:4px 8px">RC</th><th style="padding:4px 8px">Patente</th><th style="padding:4px 8px;text-align:center">Factures</th><th style="padding:4px 8px;text-align:right">Solde</th><th style="padding:4px 8px;text-align:right">Non lettré</th><th style="padding:4px 8px;text-align:right">Lettrage</th><th style="padding:4px 8px;text-align:right">Fiche</th></tr>'+rows+'</table>'
       +'<div class="note" style="font-size:11px;margin-top:8px">Adresse, téléphone, RC et patente se remplissent automatiquement dès qu\'une facture les mentionne. Modifier un champ ici met à jour la fiche du tiers pour toutes ses écritures.</div></div>';
   }
   return '<div class="note mt4" style="font-size:12px;background:#F2F8F5;border-radius:10px;padding:10px 14px;color:#0a5f4a;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
     +'<div>'+ic("building","width:14px;height:14px;vertical-align:-2px")+' <b>Un seul compte par tiers.</b> Chaque fournisseur reçoit un compte <b class="mono">4411xxxxxx</b> et chaque client un compte <b class="mono">3421xxxxxx</b>, créés automatiquement à partir des factures importées (identification par ICE / IF / nom). Les écritures d\'achat, de vente et de règlement sont imputées sur ces comptes auxiliaires.</div>'
     +'<button class="chip" data-act="tiers_merge" data-id="'+c.id+'" title="Fusionner les fournisseurs/clients en double (même ICE, IF ou nom)">'+ic("link","width:13px;height:13px;vertical-align:-2px")+' Fusionner les doublons</button></div>'
     +'<div class="grid mt4" style="grid-template-columns:1fr;gap:14px">'+tbl(frs,"Fournisseurs — comptes 4411","#2563EB")+tbl(cli,"Clients — comptes 3421","#0E7A5F")+'</div>';
+}
+/* ============================================================
+   FICHE TIERS DÉTAILLÉE (clic « Fiche » sur une ligne fournisseur/client) :
+   type de tiers, activité, identifiants complets (ICE/IF/RC/TP/CNSS),
+   adresse & contact, compte de charge/produit par défaut (prioritaire sur
+   la détection auto — voir comptaResolveTiers), comptes de remplacement,
+   attestation de régularité fiscale, conventions réglementées.
+   Le compte auxiliaire (4411xxxxxx / 3421xxxxxx) N'EST PAS modifiable ici :
+   il est généré et fusionné automatiquement (ICE/IF/nom) — le rendre éditable
+   casserait ce rapprochement.
+   ============================================================ */
+var TYPES_PERSONNE=[["morale","Personne morale"],["physique","Personne physique"],["cpu","CPU"],["auto","Auto-entrepreneur"],["autres","Autres"]];
+function tiersAttestStatut(t){
+  var exp=t.attestExpiration; if(!exp)return {label:"Non renseignée",coul:"#8A8F99"};
+  var today=new Date().toISOString().slice(0,10);
+  if(exp<today)return {label:"Expirée",coul:"#B5530A"};
+  var d30=new Date(); d30.setDate(d30.getDate()+30);
+  if(exp<=d30.toISOString().slice(0,10))return {label:"Expire bientôt",coul:"#9A6A12"};
+  return {label:"Valide",coul:"#0E7A5F"};
+}
+function tiersAuxTable(cid,t){
+  var rows=(t.comptesAux||[]);
+  if(!rows.length)return '<div class="note" style="font-size:12px;color:var(--faint)">Aucune ligne. Utile si certaines écritures de ce tiers doivent être imputées sur un autre compte que le compte par défaut ci-dessus.</div>';
+  var head='<tr style="color:var(--faint);text-align:left"><th style="padding:4px 6px">Compte Général</th><th style="padding:4px 6px">Intitulé Auxiliaire</th><th style="padding:4px 6px">Compte Auxiliaire</th><th style="padding:4px 6px">Remplacement</th><th></th></tr>';
+  var body=rows.map(function(r,i){
+    function rf(field,ph){ return '<input class="ipt mono" style="font-size:12px" data-tiersrow="'+esc(t.id)+':comptesAux:'+i+':'+field+'" value="'+esc(r[field]||"")+'" placeholder="'+esc(ph||"")+'">'; }
+    return '<tr style="border-top:1px solid var(--line)"><td style="padding:4px 6px">'+rf("compteGeneral","612000")+'</td><td style="padding:4px 6px">'+rf("intitule")+'</td><td style="padding:4px 6px">'+rf("compteAux")+'</td><td style="padding:4px 6px">'+rf("remplacement")+'</td>'
+      +'<td style="padding:4px 6px"><button class="xbtn" data-act="tiers_row_del" data-id="'+cid+'" data-tid="'+esc(t.id)+'" data-list="comptesAux" data-i="'+i+'">'+ic("x","width:13px;height:13px")+'</button></td></tr>';
+  }).join("");
+  return '<table style="width:100%;border-collapse:collapse;font-size:12.5px">'+head+body+'</table>';
+}
+function tiersConvTable(cid,t){
+  var rows=(t.conventions||[]);
+  if(!rows.length)return '<div class="note" style="font-size:12px;color:var(--faint)">Aucune convention enregistrée.</div>';
+  var head='<tr style="color:var(--faint);text-align:left"><th style="padding:4px 6px">Objet</th><th style="padding:4px 6px">Date</th><th style="padding:4px 6px">Montant (DH)</th><th style="padding:4px 6px">Partie liée</th><th style="padding:4px 6px">Statut</th><th></th></tr>';
+  var body=rows.map(function(r,i){
+    function rf(field,type,ph){ return '<input class="ipt'+(type==="number"?" mono":"")+'" style="font-size:12px" type="'+(type||"text")+'" data-tiersrow="'+esc(t.id)+':conventions:'+i+':'+field+'" value="'+esc(r[field]||"")+'" placeholder="'+esc(ph||"")+'">'; }
+    return '<tr style="border-top:1px solid var(--line)"><td style="padding:4px 6px">'+rf("objet")+'</td><td style="padding:4px 6px">'+rf("date","date")+'</td><td style="padding:4px 6px">'+rf("montant","number")+'</td><td style="padding:4px 6px">'+rf("parties")+'</td><td style="padding:4px 6px">'+rf("statut",null,"Ex. En cours")+'</td>'
+      +'<td style="padding:4px 6px"><button class="xbtn" data-act="tiers_row_del" data-id="'+cid+'" data-tid="'+esc(t.id)+'" data-list="conventions" data-i="'+i+'">'+ic("x","width:13px;height:13px")+'</button></td></tr>';
+  }).join("");
+  return '<table style="width:100%;border-collapse:collapse;font-size:12.5px">'+head+body+'</table>';
+}
+function modalTiersFiche(cid,tid){
+  var c=clients().find(function(x){return x.id===+cid;});
+  if(!c)return '<div class="ov"><div class="modal" data-stop style="max-width:420px"><div class="mb" style="padding:24px">Société introuvable.<div style="margin-top:14px"><button class="chip" data-act="close">Fermer</button></div></div></div></div>';
+  var g=comptaGet(c.id);
+  var t=(g.tiers||[]).find(function(x){return String(x.id)===String(tid);});
+  if(!t)return '<div class="ov"><div class="modal" data-stop style="max-width:420px"><div class="mb" style="padding:24px">Tiers introuvable (a-t-il été fusionné avec un autre ?).<div style="margin-top:14px"><button class="chip" data-act="close">Fermer</button></div></div></div></div>';
+  var isFrs=t.type==="fournisseur";
+  var tab=(S.modal&&S.modal.tab)||"comptes";
+  function txt(field,label,ph){ return '<div><div class="flbl">'+esc(label)+'</div><input class="ipt" data-tiers="'+esc(t.id)+':'+field+'" value="'+esc(t[field]||"")+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+'></div>'; }
+  function mono(field,label,ph){ return '<div><div class="flbl">'+esc(label)+'</div><input class="ipt mono" data-tiers="'+esc(t.id)+':'+field+'" value="'+esc(t[field]||"")+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+'></div>'; }
+  function chk(field,label){ return '<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer"><input type="checkbox" data-tiers="'+esc(t.id)+':'+field+'" '+(t[field]?"checked":"")+'>'+esc(label)+'</label>'; }
+  var typeRadios=TYPES_PERSONNE.map(function(o){
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-right:16px">'
+      +'<input type="radio" name="tp_'+esc(t.id)+'" data-tiers="'+esc(t.id)+':typePersonne" value="'+o[0]+'" '+((t.typePersonne||"morale")===o[0]?"checked":"")+'>'+o[1]+'</label>';
+  }).join("");
+  var secteurOpts='<option value="">— choisir —</option>'+SECTEURS.map(function(s){return '<option value="'+s[0]+'"'+((t.secteur||"")===s[0]?" selected":"")+'>'+esc(s[1])+'</option>';}).join("");
+  var compteAux=comptaCanon(t.compte);
+  var comptesTab='<div style="display:flex;align-items:center;gap:10px;margin:4px 0 14px"><label style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--faint)"><input type="checkbox" checked disabled>'+(isFrs?"Est un fournisseur":"Est un client")+'</label></div>'
+    +'<div class="grid g2">'
+    +'<div><div class="flbl">Compte Tiers '+(isFrs?"Fournisseur":"Client")+' (auto — non modifiable)</div><input class="ipt mono" value="'+esc(compteAux)+'" disabled style="background:#F5F5F4"></div>'
+    +txt(isFrs?"compteCharge":"compteProduit", isFrs?"Compte charge par défaut":"Compte produit par défaut", "Ex. "+(isFrs?"612000":"711000"))
+    +'</div>'
+    +'<div class="note" style="font-size:11px;margin-top:6px">Le compte auxiliaire ('+esc(compteAux)+') est généré et fusionné automatiquement (ICE/IF/nom) — non modifiable ici pour ne pas casser le rapprochement. Le compte '+(isFrs?"charge":"produit")+' ci-dessus, une fois renseigné, est utilisé en priorité sur la détection automatique pour toutes les factures de ce tiers (sauf pièce déjà fixée manuellement).</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px" class="mb2"><div class="sectit" style="color:var(--muted)">COMPTES DE REMPLACEMENT</div><button class="chip" data-act="tiers_row_add" data-id="'+c.id+'" data-tid="'+esc(t.id)+'" data-list="comptesAux">'+ic("plus")+'Ajouter</button></div>'
+    +tiersAuxTable(c.id,t);
+  var attest=tiersAttestStatut(t);
+  var attestTab='<div class="grid g3">'
+    +txt("attestNumero","N° d'attestation")
+    +'<div><div class="flbl">Date de délivrance</div><input class="ipt" type="date" data-tiers="'+esc(t.id)+':attestDelivrance" value="'+esc(t.attestDelivrance||"")+'"></div>'
+    +'<div><div class="flbl">Date d\'expiration</div><input class="ipt" type="date" data-tiers="'+esc(t.id)+':attestExpiration" value="'+esc(t.attestExpiration||"")+'"></div>'
+    +'</div>'
+    +'<div style="margin-top:10px"><span style="font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:20px;background:'+attest.coul+'18;color:'+attest.coul+'">'+attest.label+'</span></div>'
+    +'<div style="margin-top:14px"><div class="flbl">Notes</div><textarea class="ipt" rows="2" style="resize:vertical" data-tiers="'+esc(t.id)+':attestNotes">'+esc(t.attestNotes||"")+'</textarea></div>';
+  var convTab='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div class="note" style="font-size:11px">Conventions réglementées / opérations avec parties liées.</div><button class="chip" data-act="tiers_row_add" data-id="'+c.id+'" data-tid="'+esc(t.id)+'" data-list="conventions">'+ic("plus")+'Ajouter</button></div>'
+    +tiersConvTable(c.id,t);
+  var tabBtn=function(key,label){ return '<button class="chip" data-act="tiersfiche_tab" data-tab="'+key+'" data-id="'+c.id+'" data-tid="'+esc(t.id)+'" style="'+(tab===key?'background:#14201C;color:#fff;border-color:#14201C':'')+'">'+esc(label)+'</button>'; };
+  return '<div class="ov"><div class="modal" data-stop style="max-width:820px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden">'
+   +'<div class="mh"><div><h3 class="ff">'+esc(t.nom||compteAux)+'</h3><div class="meta"><span class="mono">'+esc(compteAux)+'</span> · '+(isFrs?"Fournisseur":"Client")+'</div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+   +'<div class="mb" style="overflow-y:auto">'
+   +'<div class="sectit mb2" style="color:var(--muted)">TYPE DE TIERS</div>'
+   +'<div style="display:flex;flex-wrap:wrap;margin-bottom:14px">'+typeRadios+'</div>'
+   +txt("nom","Nom / Raison sociale")
+   +'<div class="sectit mb2 mt4" style="color:var(--muted)">ACTIVITÉ</div>'
+   +'<div class="grid g2"><div><div class="flbl">Secteur d\'activité</div><select class="ipt" data-tiers="'+esc(t.id)+':secteur">'+secteurOpts+'</select></div>'+txt("activite","Type d'activité précis")+'</div>'
+   +'<div class="grid g2 mt3">'+txt("typeClient","Type de client","Ex. Entreprise de droit privé")+txt("rasTva","Méthode de calcul de la RAS TVA")+'</div>'
+   +'<div class="sectit mb2 mt4" style="color:var(--muted)">IDENTIFIANTS</div>'
+   +'<div class="grid g3">'+mono("ice","ICE")+mono("if_","IF")+mono("rc","RC")+'</div>'
+   +'<div class="grid g3 mt3">'+mono("patente","TP (Patente)")+mono("cnss","CNSS")+'<div style="display:flex;align-items:flex-end">'+chk("ignorerVerifIceIf","Ignorer la vérification ICE/IF")+'</div></div>'
+   +'<div class="sectit mb2 mt4" style="color:var(--muted)">ADRESSE ET CONTACT</div>'
+   +'<div class="grid g2">'+txt("adresse","Adresse")+txt("ville","Ville")+'</div>'
+   +'<div class="grid g2 mt3">'+txt("pays","Pays")+mono("telephone","Téléphone / Mobile")+'</div>'
+   +'<div class="grid g2 mt3">'+txt("email","Email")+'<div></div></div>'
+   +'<div style="display:flex;gap:8px;margin-top:26px;border-bottom:1px solid var(--line);padding-bottom:10px">'+tabBtn("comptes","Comptes Tiers")+tabBtn("attest","Attestation de régularité")+tabBtn("conv","Conventions")+'</div>'
+   +'<div style="margin-top:14px">'+(tab==="comptes"?comptesTab:(tab==="attest"?attestTab:convTab))+'</div>'
+   +'<p style="font-size:11px;color:var(--faint);margin-top:16px">Les modifications sont enregistrées automatiquement en quittant chaque champ.</p>'
+   +'</div></div></div>';
+}
+function comptaTiersRowInput(t){
+  var f=t.dataset.tiersrow.split(":"),tid=f[0],list=f[1],i=+f[2],field=f[3],cid=String(S.curClient),g=comptaGet(cid);
+  var ti=(g.tiers||[]).find(function(x){return String(x.id)===String(tid);}); if(!ti)return;
+  ti[list]=ti[list]||[]; if(!ti[list][i])ti[list][i]={};
+  ti[list][i][field]=t.value;
+  save("compta");
 }
 /* ============================================================
    BALANCE ÂGÉE (créances clients 3421 / dettes fournisseurs 4411)
@@ -10132,7 +10269,12 @@ function pieceSig(p){
 function comptaTiersInput(t){
   var f=t.dataset.tiers.split(":"),tid=f[0],field=f[1],cid=String(S.curClient),g=comptaGet(cid);
   var ti=(g.tiers||[]).find(function(x){return String(x.id)===String(tid);}); if(!ti)return;
-  ti[field]=t.value;
+  var val=(t.type==="checkbox")?!!t.checked:t.value;
+  ti[field]=val;
+  // Une correction manuelle de l'ICE/IF est définitive : elle ne doit plus jamais être écrasée
+  // ou effacée par une fusion automatique ultérieure, même si un doublon apporte une autre valeur.
+  if(field==="ice") ti.iceVerified=!!(val&&(""+val).trim());
+  if(field==="if_") ti.ifVerified=!!(val&&(""+val).trim());
   // propage le nouveau nom aux pièces rattachées (libellés des écritures)
   if(field==="nom"){
     var cc=comptaCanon(ti.compte);
@@ -12856,6 +12998,7 @@ function renderModal(){
   if(S.modal.type==="receipt"){o.innerHTML=modalReceipt(S.modal.id,S.modal.prefill);return;}
   if(S.modal.type==="suivi"){o.innerHTML=modalSuivi(S.modal.cid,S.modal.eid);return;}
   if(S.modal.type==="balgl"){o.innerHTML=modalBalGL(S.modal.cid,S.modal.compte,S.modal.sugg);return;}
+  if(S.modal.type==="tiersfiche"){o.innerHTML=modalTiersFiche(S.modal.cid,S.modal.tid);return;}
   if(S.modal.type==="banqueop"){o.innerHTML=modalBanqueOp(S.modal.oid);setTimeout(function(){comptaOpPrev(S.modal.oid);},30);return;}
   if(S.modal.type==="justifier"){o.innerHTML=modalJustifier();return;}
   if(S.modal.type==="justifenvoi"){o.innerHTML=modalJustifEnvoi();return;}
@@ -13243,6 +13386,20 @@ document.addEventListener("click",e=>{
   else if(a==="op_redetect"){comptaOpRedetect(t.dataset.id);}
   else if(a==="lettrage_open"){S._letOpen=true;S.modal={type:"lettrage",cid:+t.dataset.id,compte:t.dataset.compte};renderModal();}
   else if(a==="tiers_merge"){ var nMrg=comptaMergeTiers(+t.dataset.id); renderView(); showOk(nMrg>0?(nMrg+" doublon(s) de tiers fusionné(s).") :"Aucun doublon détecté."); }
+  else if(a==="tiers_fiche"){ S.modal={type:"tiersfiche",cid:+t.dataset.id,tid:t.dataset.tid,tab:"comptes"}; renderModal(); }
+  else if(a==="tiersfiche_tab"){ S.modal={type:"tiersfiche",cid:+t.dataset.id,tid:t.dataset.tid,tab:t.dataset.tab}; renderModal(); }
+  else if(a==="tiers_row_add"){
+    var _cid=+t.dataset.id,_tid=t.dataset.tid,_list=t.dataset.list,_g=comptaGet(_cid);
+    var _ti=(_g.tiers||[]).find(function(x){return String(x.id)===String(_tid);});
+    if(_ti){ _ti[_list]=(_ti[_list]||[]).concat([{}]); save("compta"); }
+    S.modal={type:"tiersfiche",cid:_cid,tid:_tid,tab:(S.modal&&S.modal.tab)||"comptes"}; renderModal();
+  }
+  else if(a==="tiers_row_del"){
+    var _cid2=+t.dataset.id,_tid2=t.dataset.tid,_list2=t.dataset.list,_i2=+t.dataset.i,_g2=comptaGet(_cid2);
+    var _ti2=(_g2.tiers||[]).find(function(x){return String(x.id)===String(_tid2);});
+    if(_ti2){ _ti2[_list2]=(_ti2[_list2]||[]).filter(function(_,k){return k!==_i2;}); save("compta"); }
+    S.modal={type:"tiersfiche",cid:_cid2,tid:_tid2,tab:(S.modal&&S.modal.tab)||"comptes"}; renderModal();
+  }
   else if(a==="let_apply"){
     var keys=Array.prototype.slice.call(document.querySelectorAll(".let-chk")).filter(function(ch){return ch.checked;}).map(function(ch){return ch.dataset.key;});
     if(keys.length<2){showErr("Sélectionnez au moins 2 lignes équilibrées.");return;}
@@ -13315,6 +13472,7 @@ document.addEventListener("input",e=>{
   if(t.dataset.tbl!=null){tblInput(t);return;}
   if(t.dataset.cp!=null){comptaInput(t);return;}
   if(t.dataset.tiers!=null){comptaTiersInput(t);return;}
+  if(t.dataset.tiersrow!=null){comptaTiersRowInput(t);return;}
   if(t.dataset.opf!=null){comptaOpInput(t);return;}
   if(t.dataset.anmap!=null){comptaANSetMap(t.dataset.anmap,t.value);return;}
   if(t.dataset.anpaid!=null){anItemToggle(t.dataset.anpaid);return;}
