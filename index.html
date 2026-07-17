@@ -5788,6 +5788,18 @@ function tiersFind(g,type,info){
   return null;
 }
 // Trouve OU crée le tiers ; enrichit les infos manquantes ; renvoie son compte auxiliaire
+// Déduit "morale" quand la forme juridique (SARL, SA, Ets, Coopérative...) apparaît dans le nom —
+// seul signal fiable extractible d'une facture pour ce champ ; sinon laissé vide (à préciser à la main).
+var MORALE_HINTS={sarl:1,sarlau:1,sa:1,sas:1,scs:1,snc:1,scp:1,sci:1,eurl:1,gie:1,scm:1,societe:1,ste:1,ets:1,cooperative:1,fondation:1,association:1};
+function tiersInferTypePersonne(nom){
+  var toks=_tnorm(nom).split(" ");
+  // Recolle les sigles à points ("S.A.R.L" -> "s a r l" après normalisation), même logique que _tcore.
+  var merged=[],buf="";
+  toks.forEach(function(w){ if(w&&w.length===1){buf+=w;}else{if(buf){merged.push(buf);buf="";}if(w)merged.push(w);} });
+  if(buf)merged.push(buf);
+  for(var i=0;i<merged.length;i++){ if(MORALE_HINTS[merged[i]])return "morale"; }
+  return "";
+}
 function tiersResolve(g,type,info){
   info=info||{}; var nom=(info.nom||"").trim();
   if(!nom && !_tdig(info.ice) && !_tdig(info.if_)) return null;   // rien d'identifiable
@@ -5800,12 +5812,17 @@ function tiersResolve(g,type,info){
     if(!ex.telephone && info.telephone)ex.telephone=info.telephone;
     if(!ex.rc && info.rc)ex.rc=info.rc;
     if(!ex.patente && info.patente)ex.patente=info.patente;
+    if(!ex.email && info.email)ex.email=info.email;
+    if(!ex.ville && info.ville)ex.ville=info.ville;
+    if(!ex.cnss && info.cnss)ex.cnss=info.cnss;
+    if(!ex.pays)ex.pays="Maroc";
     if((!ex.nom||ex.nom.length<2) && nom)ex.nom=nom;
+    if(!ex.typePersonne){ var tp=tiersInferTypePersonne(ex.nom||nom); if(tp)ex.typePersonne=tp; }
     if(!ex.compte)ex.compte=tiersCodeFor(fam,ex.seq);
     return ex.compte;
   }
   var seq=tiersNextSeq(g,fam), compte=tiersCodeFor(fam,seq);
-  g.tiers.push({id:"T"+Date.now()+"_"+Math.floor(Math.random()*1e4),type:fam,seq:seq,compte:compte,nom:nom||("Tiers "+seq),ice:info.ice||"",if_:info.if_||"",adresse:info.adresse||"",telephone:info.telephone||"",rc:info.rc||"",patente:info.patente||""});
+  g.tiers.push({id:"T"+Date.now()+"_"+Math.floor(Math.random()*1e4),type:fam,seq:seq,compte:compte,nom:nom||("Tiers "+seq),ice:info.ice||"",if_:info.if_||"",adresse:info.adresse||"",telephone:info.telephone||"",rc:info.rc||"",patente:info.patente||"",email:info.email||"",ville:info.ville||"",cnss:info.cnss||"",pays:"Maroc",typePersonne:tiersInferTypePersonne(nom)});
   return compte;
 }
 // Compte tiers à utiliser pour une pièce (auxiliaire si résolu, sinon collectif)
@@ -5822,7 +5839,7 @@ function comptaResolveTiers(g){
     if(p.rejected)return;
     var isV=p.type==="vente";
     var iff=isV?(p.if_client||p.if_||""):(p.if_fournisseur||p.if_||"");
-    var compte=tiersResolve(g,p.type,{nom:p.fournisseur||"",ice:p.ice||"",if_:iff,adresse:p.adresse||"",telephone:p.telephone||"",rc:p.rc||"",patente:p.patente||""});
+    var compte=tiersResolve(g,p.type,{nom:p.fournisseur||"",ice:p.ice||"",if_:iff,adresse:p.adresse||"",telephone:p.telephone||"",rc:p.rc||"",patente:p.patente||"",email:p.email||"",ville:p.ville||"",cnss:p.cnss||""});
     if(compte){ p.tiersCompte=compte; }
     // Compte de charge / produit fixé sur la fiche du tiers (onglet Comptes Tiers) : prioritaire
     // sur la détection automatique par mots-clés, pour TOUTES les pièces de ce tiers — sauf si
@@ -5868,6 +5885,11 @@ function _tiersAutoMerge(g){
         if(!target.telephone&&t.telephone)target.telephone=t.telephone;
         if(!target.rc&&t.rc)target.rc=t.rc;
         if(!target.patente&&t.patente)target.patente=t.patente;
+        if(!target.email&&t.email)target.email=t.email;
+        if(!target.ville&&t.ville)target.ville=t.ville;
+        if(!target.cnss&&t.cnss)target.cnss=t.cnss;
+        if(!target.pays)target.pays=t.pays||"Maroc";
+        if(!target.typePersonne&&t.typePersonne)target.typePersonne=t.typePersonne;
         if((!target.nom||target.nom.length<2)&&t.nom)target.nom=t.nom;
         var from=comptaCanon(t.compte),to=target.compte;
         (g.pieces||[]).forEach(function(p){ if(comptaCanon(p.tiersCompte)===from)p.tiersCompte=to; });
@@ -8913,7 +8935,7 @@ function comptaTiersBody(c){
     }).join("");
     return '<div class="card" style="padding:18px;overflow-x:auto"><div class="sectit mb2" style="color:'+coul+'">'+titre+' ('+list.length+')</div>'
       +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px"><tr style="color:var(--faint);text-align:left"><th style="padding:4px 8px">Compte aux.</th><th style="padding:4px 8px">Nom</th><th style="padding:4px 8px">ICE</th><th style="padding:4px 8px">IF</th><th style="padding:4px 8px">Adresse</th><th style="padding:4px 8px">Téléphone</th><th style="padding:4px 8px">RC</th><th style="padding:4px 8px">Patente</th><th style="padding:4px 8px;text-align:right">Fiche</th></tr>'+rows+'</table>'
-      +'<div class="note" style="font-size:11px;margin-top:8px">Adresse, téléphone, RC et patente se remplissent automatiquement dès qu\'une facture les mentionne. Modifier un champ ici met à jour la fiche du tiers pour toutes ses écritures.</div></div>';
+      +'<div class="note" style="font-size:11px;margin-top:8px">Adresse, téléphone, RC, patente, email, ville et CNSS se remplissent automatiquement dès qu\'une facture les mentionne (voir aussi la Fiche complète). Modifier un champ ici met à jour la fiche du tiers pour toutes ses écritures.</div></div>';
   }
   return '<div class="note mt4" style="font-size:12px;background:#F2F8F5;border-radius:10px;padding:10px 14px;color:#0a5f4a;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
     +'<div>'+ic("building","width:14px;height:14px;vertical-align:-2px")+' <b>Un seul compte par tiers.</b> Chaque fournisseur reçoit un compte <b class="mono">4411xxxxxx</b> et chaque client un compte <b class="mono">3421xxxxxx</b>, créés automatiquement à partir des factures importées (identification par ICE / IF / nom). Les écritures d\'achat, de vente et de règlement sont imputées sur ces comptes auxiliaires.</div>'
@@ -10009,6 +10031,21 @@ function ocrTiersPatente(type,x){
   var v=(type==="vente")?(x.client_patente||x.patente_client||""):(x.fournisseur_patente||x.patente_fournisseur||x.patente||"");
   return (""+(v||"")).trim();
 }
+function ocrTiersEmail(type,x){
+  x=x||{};
+  var v=(type==="vente")?(x.client_email||x.email_client||""):(x.fournisseur_email||x.email_fournisseur||x.email||"");
+  return (""+(v||"")).trim();
+}
+function ocrTiersVille(type,x){
+  x=x||{};
+  var v=(type==="vente")?(x.client_ville||x.ville_client||""):(x.fournisseur_ville||x.ville_fournisseur||x.ville||"");
+  return (""+(v||"")).trim();
+}
+function ocrTiersCnss(type,x){
+  x=x||{};
+  var v=(type==="vente")?(x.client_cnss||x.cnss_client||""):(x.fournisseur_cnss||x.cnss_fournisseur||x.cnss||"");
+  return (""+(v||"")).trim();
+}
 async function comptaUpload(type,files){
   if(!sb||!session){showErr("Connectez-vous (cloud) pour importer.");return;}
   files=Array.prototype.slice.call(files||[]);if(!files.length)return;
@@ -10064,6 +10101,7 @@ async function comptaUpload(type,files){
       var piece={id:Date.now()+"_"+i+"_"+j,type:type,name:f.name+(multi?" — facture "+(j+1)+"/"+facts.length:""),path:piecePath,status:"avalider",
         date:x.date||"",fournisseur:ocrTiers(type,x)||"",ice:ocrTiersIce(type,x)||"",if_:ocrTiersIf(type,x)||"",numero:x.numero||"",
         adresse:ocrTiersAdresse(type,x)||"",telephone:ocrTiersTel(type,x)||"",rc:ocrTiersRc(type,x)||"",patente:ocrTiersPatente(type,x)||"",
+        email:ocrTiersEmail(type,x)||"",ville:ocrTiersVille(type,x)||"",cnss:ocrTiersCnss(type,x)||"",
         ht:x.montant_ht!=null?x.montant_ht:"",tva:x.montant_tva!=null?x.montant_tva:"",ttc:x.montant_ttc!=null?x.montant_ttc:"",
         compte:_det.compte,compteAuto:true,compteReason:_det.reason,compteConf:_det.confidence,extracted:x,
         pages:(piecePath!==path)?"":(x.pages||""),
@@ -10225,6 +10263,7 @@ async function comptaUploadGrouped(type,files){
         path:piecePath,status:"avalider",
         date:gx.date||"",fournisseur:ocrTiers(type,gx)||"",ice:ocrTiersIce(type,gx)||"",if_:ocrTiersIf(type,gx)||"",numero:gx.numero||"",
         adresse:ocrTiersAdresse(type,gx)||"",telephone:ocrTiersTel(type,gx)||"",rc:ocrTiersRc(type,gx)||"",patente:ocrTiersPatente(type,gx)||"",
+        email:ocrTiersEmail(type,gx)||"",ville:ocrTiersVille(type,gx)||"",cnss:ocrTiersCnss(type,gx)||"",
         ht:gx.montant_ht!=null?gx.montant_ht:"",tva:gx.montant_tva!=null?gx.montant_tva:"",ttc:gx.montant_ttc!=null?gx.montant_ttc:"",
         compte:_det.compte,compteAuto:true,compteReason:_det.reason,compteConf:_det.confidence,extracted:gx,pages:""};
       if(grp.err)piece.ocrError=grp.err;
