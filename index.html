@@ -11671,6 +11671,7 @@ function modalInfos(id){
    +'<div class="grid g3 mt3">'+fld("tp","Taxe Prof. (TP)")+fld("cnss","N° CNSS")+fld("capital","Capital (DH)")+'</div>'
    +'<div class="grid g2 mt3">'+fld("dateConst","Date de constitution")+fld("adresse","Siège social")+'</div>'
    +'<div class="grid g2 mt3">'+fld("ville","Ville (pour « Fait à … » de tous les documents)")+'<div></div></div>'
+   +'<div style="margin-top:22px"><div class="flbl">Emails autorisés pour l\'import automatique (factures/relevés reçus par email — un par ligne ou séparés par des virgules)</div><textarea class="ipt" data-soc="emailsImport" rows="2" style="resize:vertical" placeholder="comptable@'+esc((c.dossier||"societe").toLowerCase().replace(/[^a-z0-9]/g,""))+'.ma">'+esc(soc.emailsImport||"")+'</textarea><p style="font-size:11px;color:var(--faint);margin-top:4px">Un document reçu par email depuis une de ces adresses est rattaché directement à ce dossier, même si le nom du fichier ou l\'objet du mail ne mentionne pas la société.</p></div>'
    +'<div class="grid g2 mt3"><div><div class="flbl">Secteur d\'activité (sert à la détection automatique des comptes)</div><select class="ipt" data-soc="secteur">'
      +'<option value="">— choisir le secteur —</option>'
      +SECTEURS.map(function(s){return '<option value="'+s[0]+'"'+((soc.secteur||"")===s[0]?" selected":"")+'>'+esc(s[1])+'</option>';}).join("")
