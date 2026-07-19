@@ -1751,6 +1751,7 @@ function tvaFormLines(d){
 // ===== Journal des ventes (TVA collectée / exigible) — détaillé =====
 function ventesDetailRows(cid,period){
   var g=comptaGet(cid),rows=[];
+  comptaResolveTiers(g);   // garantit p.tiersCompte à jour, pour que l'ICE/IF hérite de la fiche tiers si absent sur la pièce
   var c=clients().find(function(x){return x.id===cid;})||{};
   var regime=regTvaOf(c);
   if(regime==="encaissement"){
@@ -1763,7 +1764,7 @@ function ventesDetailRows(cid,period){
         var taux=pieceTaux(p);
         var tva=taux>0?(mt*taux/(100+taux)):0, ht=mt-tva;
         rows.push({journal:"VE",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-          if_:p.if_client||p.if_||"",ice:p.ice||"",design:"Vente / prestation (encaissée)",
+          if_:pieceIfResolved(g,p),ice:pieceIceResolved(g,p),design:"Vente / prestation (encaissée)",
           ttc:mt,ht:ht,taux:taux,code:(p.codeTva||tvaCodeForRate(taux)),tva:tva,
           regDate:o.date||"",regMode:o.isCommission?"Banque":"Virement/Chèque",cr:o.reference||"",compteTva:"44552000",src:"piece",srcId:p.id});
       });
@@ -1773,7 +1774,7 @@ function ventesDetailRows(cid,period){
       var mt=pieceRegDirect(p),taux=pieceTaux(p);
       var tva=taux>0?(mt*taux/(100+taux)):0, ht=mt-tva;
       rows.push({journal:"VE",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-        if_:p.if_client||p.if_||"",ice:p.ice||"",design:"Vente / prestation (encaissée)",
+        if_:pieceIfResolved(g,p),ice:pieceIceResolved(g,p),design:"Vente / prestation (encaissée)",
         ttc:mt,ht:ht,taux:taux,code:(p.codeTva||tvaCodeForRate(taux)),tva:tva,
         regDate:regDateOf(p),regMode:p.modeReg,cr:p.refReg||"",compteTva:"44552000",src:"piece",srcId:p.id});
     });
@@ -1786,7 +1787,7 @@ function ventesDetailRows(cid,period){
       if(op){regDate=op.date||"";regMode="Virement/Chèque";cr=op.reference||"";}
       else if(p.regle&&p.modeReg){regDate=regDateOf(p);regMode=p.modeReg;cr=p.refReg||"";}
       rows.push({journal:"VE",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-        if_:p.if_client||p.if_||"",ice:p.ice||"",design:"Vente / prestation",
+        if_:pieceIfResolved(g,p),ice:pieceIceResolved(g,p),design:"Vente / prestation",
         ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeForRate(taux)),tva:tva,
         regDate:regDate,regMode:regMode,cr:cr,compteTva:"44552000",src:"piece",srcId:p.id});
     });
@@ -1964,6 +1965,7 @@ function fraisCommissionsRecapHtml(rows){
 }
 function releveDeductionsRows(cid,period){
   var g=comptaGet(cid),rows=[];
+  comptaResolveTiers(g);   // garantit p.tiersCompte à jour, pour que l'ICE/IF hérite de la fiche tiers si absent sur la pièce
   var c=clients().find(function(x){return x.id===cid;})||{};
   var regime=regTvaOf(c);
   if(regime==="encaissement"){
@@ -1977,7 +1979,7 @@ function releveDeductionsRows(cid,period){
         var ttc=mt, tva=taux>0?(mt*taux/(100+taux)):0, ht=ttc-tva;
         var cpt=p.compte||"6111",isImmo=/^2/.test(cpt),isFrais=!isImmo&&isFraisCompte(cpt);
         rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-          if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":isFrais?fraisCompteLib(cpt):"Achat/charge")+" (réglé)",natureFrais:isFrais?fraisCompteLib(cpt):null,
+          if_:pieceIfResolved(g,p),ice:pieceIceResolved(g,p),design:(isImmo?"Immobilisation":isFrais?fraisCompteLib(cpt):"Achat/charge")+" (réglé)",natureFrais:isFrais?fraisCompteLib(cpt):null,
           ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDetect(p)),tva:tva,prorata:100,recup:tva,
           regDate:o.date||"",regMode:o.isCommission?"Banque":"Virement/Chèque",cr:o.reference||"",compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
       });
@@ -1989,7 +1991,7 @@ function releveDeductionsRows(cid,period){
       var tva=mt*taux/(100+taux), ht=mt-tva;
       var cpt=p.compte||"6111",isImmo=/^2/.test(cpt),isFrais=!isImmo&&isFraisCompte(cpt);
       rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-        if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:(isImmo?"Immobilisation":isFrais?fraisCompteLib(cpt):"Achat/charge")+" (réglé)",natureFrais:isFrais?fraisCompteLib(cpt):null,
+        if_:pieceIfResolved(g,p),ice:pieceIceResolved(g,p),design:(isImmo?"Immobilisation":isFrais?fraisCompteLib(cpt):"Achat/charge")+" (réglé)",natureFrais:isFrais?fraisCompteLib(cpt):null,
         ttc:mt,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDetect(p)),tva:tva,prorata:100,recup:tva,
         regDate:regDateOf(p),regMode:p.modeReg||"",cr:p.refReg||"",compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
     });
@@ -2002,7 +2004,7 @@ function releveDeductionsRows(cid,period){
       var op=(g.operations||[]).find(function(o){return (o.affectations||[]).some(function(a){return String(a.pieceId)===String(p.id);});});
       if(op){regDate=op.date||"";regMode="Virement/Chèque";cr=op.reference||"";}
       rows.push({journal:isImmo?"AN":"AC",num:p.numero||"",date:p.date||"",tiers:p.fournisseur||"",
-        if_:p.if_fournisseur||p.if_||"",ice:p.ice||"",design:isImmo?"Immobilisation":isFrais?fraisCompteLib(cpt):"Achat/charge",natureFrais:isFrais?fraisCompteLib(cpt):null,
+        if_:pieceIfResolved(g,p),ice:pieceIceResolved(g,p),design:isImmo?"Immobilisation":isFrais?fraisCompteLib(cpt):"Achat/charge",natureFrais:isFrais?fraisCompteLib(cpt):null,
         ttc:ttc,ht:ht,taux:taux,code:(p.codeTva||tvaCodeDetect(p)),tva:tva,prorata:100,recup:tva,
         regDate:regDate,regMode:regMode,cr:cr,compteTva:isImmo?"34551000":"34552000",src:"piece",srcId:p.id});
     });
@@ -5860,6 +5862,18 @@ function tiersFind(g,type,info){
   }
   return null;
 }
+// Avant même l'écran de vérification : si ce fournisseur/client est déjà connu (par ICE, IF ou
+// nom), on ne fait plus JAMAIS deviner son ICE/IF par l'OCR — on reprend directement la valeur
+// déjà enregistrée (et si besoin verrouillée) sur sa fiche Tiers, qui a déjà passé le contrôle de
+// tiersFind (donc fiable). L'OCR ne reste seul maître de l'ICE/IF que pour un tiers réellement
+// nouveau (jamais vu) — une seule fois, puis cette valeur est elle-même verrouillable sur la fiche.
+function applyKnownTiersIdentity(g,type,piece){
+  var t=tiersFind(g,type,{ice:piece.ice,if_:piece.if_,nom:piece.fournisseur});
+  if(!t)return;
+  piece.tiersCompte=t.compte;
+  if(t.ice && _iceOk(t.ice)){ piece.ice=t.ice; piece._idFromTiers=true; }
+  if(t.if_ && _ifOk(t.if_)){ piece.if_=t.if_; piece._idFromTiers=true; }
+}
 // Trouve OU crée le tiers ; enrichit les infos manquantes ; renvoie son compte auxiliaire
 // Déduit "morale" quand la forme juridique (SARL, SA, Ets, Coopérative...) apparaît dans le nom —
 // seul signal fiable extractible d'une facture pour ce champ ; sinon laissé vide (à préciser à la main).
@@ -5900,6 +5914,23 @@ function tiersResolve(g,type,info){
 }
 // Compte tiers à utiliser pour une pièce (auxiliaire si résolu, sinon collectif)
 function pieceTiersCompte(p){ return (p&&p.tiersCompte)?p.tiersCompte:((p&&p.type==="vente")?"3421":"4411"); }
+// Fiche tiers consolidée correspondant à une pièce (via son compte auxiliaire résolu)
+function tiersOfPiece(g,p){
+  if(!p||!p.tiersCompte)return null;
+  var cc=comptaCanon(p.tiersCompte);
+  return (g&&g.tiers||[]).find(function(t){return comptaCanon(t.compte)===cc;})||null;
+}
+// ICE/IF fiables pour l'affichage (relevé de déductions, journal des ventes, EDI...) :
+// priorité à la fiche TIERS consolidée (dédupliquée, contrôlée par ICE/IF/nom — voir tiersResolve),
+// car elle porte la valeur retenue après arbitrage des conflits OCR ; à défaut, la valeur brute
+// saisie/lue sur la pièce elle-même. Ainsi une facture sans ICE/IF hérite automatiquement de celui
+// déjà connu du même tiers, au lieu de rester vide.
+function pieceIceResolved(g,p){ var t=tiersOfPiece(g,p); return (t&&t.ice)?t.ice:(p.ice||""); }
+function pieceIfResolved(g,p){
+  var raw=(p&&p.type==="vente")?(p.if_client||p.if_||""):(p.if_fournisseur||p.if_||"");
+  var t=tiersOfPiece(g,p);
+  return (t&&t.if_)?t.if_:raw;
+}
 // (Re)résout le compte auxiliaire de chaque pièce — idempotent, appelé avant la génération des écritures.
 // Fusionne AUSSI automatiquement les doublons de tiers déjà présents avant de résoudre : cette
 // fonction est appelée par comptaAutoPost (donc après CHAQUE ajout / modif / suppression de pièce)
@@ -6766,10 +6797,50 @@ function odEdit(id){
   renderView();
   var m=document.querySelector(".main"); if(m)m.scrollTo({top:0,behavior:"smooth"});
 }
+// ===== Synchronisation Saisie manuelle → pièces (pour que la TVA en tienne compte) =====
+// La déclaration TVA (tvaAuto), le relevé des déductions et l'export EDI lisent tous g.pieces,
+// jamais g.ecritures. Sans ce pont, une facture achat/vente booké via « Saisie manuelle »
+// (même avec l'Assistant facture) était comptabilisée dans le journal/bilan mais absente de la
+// déclaration TVA — silencieusement. On reconstruit ici une pièce structurée (HT/TVA/TTC/tiers)
+// à partir des lignes de l'écriture quand le schéma est reconnaissable (achat ou vente avec un
+// compte tiers 4411/3421), pour qu'elle suive exactement le même circuit qu'une pièce importée.
+function odExtractPieceFromLignes(journal,lignes){
+  if(journal!=="AC"&&journal!=="VE")return null; // seules les écritures Achats/Ventes sont concernées
+  var isAchat=journal==="AC";
+  // Achat : TVA déductible sur compte d'actif 34551 (immo) / 34552 (charges).
+  // Vente : TVA facturée sur compte de passif 4455 — un compte totalement différent, pas une variante du premier.
+  var tvaLine=lignes.find(function(l){return isAchat?/^3455[12]/.test(l.compte):/^4455/.test(l.compte);});
+  var tiersLine=lignes.find(function(l){return isAchat?/^4411/.test(l.compte):/^3421/.test(l.compte);});
+  if(!tiersLine)return null; // pas de compte tiers identifiable -> écriture OD générique, on ne touche pas aux pièces
+  var mainLines=lignes.filter(function(l){return l!==tvaLine&&l!==tiersLine;});
+  if(!mainLines.length)return null;
+  var ht=mainLines.reduce(function(a,l){return a+(+l.debit||+l.credit||0);},0);
+  var tva=tvaLine?(+tvaLine.debit||+tvaLine.credit||0):0;
+  var ttc=(+tiersLine.debit||+tiersLine.credit||0)||Math.round((ht+tva)*100)/100;
+  var isImmo=mainLines.some(function(l){return /^2/.test(l.compte);});
+  return {type:isAchat?"achat":"vente",ht:Math.round(ht*100)/100,tva:Math.round(tva*100)/100,ttc:Math.round(ttc*100)/100,
+    compte:mainLines[0].compte,tiers:(tiersLine.libelle||"").trim()||(isAchat?"Fournisseur":"Client"),isImmo:isImmo};
+}
+function odSyncPieceFromEcriture(g,ecId,d,lignes){
+  // On retire d'abord toute pièce déjà liée à cette écriture (cas modification : journal changé,
+  // montants modifiés, ou schéma qui n'est plus reconnaissable) avant de la recréer si besoin.
+  g.pieces=(g.pieces||[]).filter(function(p){return p.odEcritureId!==ecId;});
+  var ex=odExtractPieceFromLignes(d.journal,lignes);
+  if(!ex)return;
+  var piece={id:"ODPC_"+ecId,odEcritureId:ecId,manuel:true,
+    type:ex.type,date:d.date,numero:d.piece||("OD-"+d.date),
+    fournisseur:ex.tiers,ice:"",if_:"",
+    compte:ex.compte||(ex.type==="vente"?"7111":"6111"),compteAuto:false,
+    ht:ex.ht,tva:ex.tva,ttc:ex.ttc,
+    status:"valide",regle:false,modeReg:d.mode||"",dateReg:""};
+  applyKnownTiersIdentity(g,ex.type,piece);
+  g.pieces.push(piece);
+}
 function odDel(id){
   var c=clients().find(function(x){return x.id===S.curClient;}); if(!c)return;
   if(!window.confirm("Supprimer définitivement cette écriture manuelle ?"))return;
   var g=comptaGet(c.id); g.ecritures=g.ecritures.filter(function(x){return String(x.id)!==String(id);});
+  g.pieces=(g.pieces||[]).filter(function(p){return p.odEcritureId!==id;});
   if(S.comptaDraft&&String(S.comptaDraft.editId)===String(id))S.comptaDraft=odDraftDefault();
   save("compta"); renderView(); showOk("Écriture manuelle supprimée.");
 }
@@ -6789,11 +6860,14 @@ function odSave(){
   if(d.editId){
     var e=g.ecritures.find(function(x){return String(x.id)===String(d.editId);});
     if(e){ e.date=d.date; e.journal=d.journal||"OD"; e.piece=d.piece||""; e.mode=d.mode||""; e.lignes=lignes; e.manuel=true; }
-    else { g.ecritures.push({id:"MAN"+Date.now(),date:d.date,journal:d.journal||"OD",piece:d.piece||"",mode:d.mode||"",lignes:lignes,manuel:true}); }
+    else { e={id:"MAN"+Date.now(),date:d.date,journal:d.journal||"OD",piece:d.piece||"",mode:d.mode||"",lignes:lignes,manuel:true}; g.ecritures.push(e); }
+    odSyncPieceFromEcriture(g,e.id,d,lignes);
     save("compta"); S.comptaDraft=odDraftDefault(); renderView(); showOk("Écriture manuelle modifiée.");
   } else {
-    g.ecritures.push({id:"MAN"+Date.now(),date:d.date,journal:d.journal||"OD",piece:d.piece||"",mode:d.mode||"",lignes:lignes,manuel:true});
-    save("compta"); S.comptaDraft=odDraftDefault(); renderView(); showOk("Écriture enregistrée dans le journal "+(d.journal||"OD")+".");
+    var ne={id:"MAN"+Date.now(),date:d.date,journal:d.journal||"OD",piece:d.piece||"",mode:d.mode||"",lignes:lignes,manuel:true};
+    g.ecritures.push(ne);
+    odSyncPieceFromEcriture(g,ne.id,d,lignes);
+    save("compta"); S.comptaDraft=odDraftDefault(); renderView(); showOk("Écriture enregistrée dans le journal "+(d.journal||"OD")+(odExtractPieceFromLignes(d.journal,lignes)?" · TVA incluse dans la déclaration.":"."));
   }
 }
 // ===== Liste filtrable Achats / Ventes / Banque =====
@@ -7972,7 +8046,7 @@ function reviewFields(p,isV){
   var ifField=isV?"if_client":"if_fournisseur";
   var ifVal=isV?(p.if_client||p.if_||""):(p.if_fournisseur||p.if_||"");
   var tcpt=pieceTiersCompte(p), tlab=tiersLabelFor(tcpt);
-  var tiersBadge=(p.tiersCompte)?('<div style="margin-top:8px;font-size:11.5px;color:#0a5f4a;background:#E3F1EB;border-radius:8px;padding:6px 10px">'+ic("building","width:13px;height:13px;vertical-align:-2px")+' Compte tiers auxiliaire détecté : <b class="mono">'+esc(comptaCanon(tcpt))+'</b>'+(tlab?' — '+esc(tlab):"")+' <span style="color:#5a7a6e">(un seul compte par '+(isV?"client":"fournisseur")+', détecté par ICE / IF / nom)</span></div>'):'';
+  var tiersBadge=(p.tiersCompte)?('<div style="margin-top:8px;font-size:11.5px;color:#0a5f4a;background:#E3F1EB;border-radius:8px;padding:6px 10px">'+ic("building","width:13px;height:13px;vertical-align:-2px")+' Compte tiers auxiliaire détecté : <b class="mono">'+esc(comptaCanon(tcpt))+'</b>'+(tlab?' — '+esc(tlab):"")+' <span style="color:#5a7a6e">(un seul compte par '+(isV?"client":"fournisseur")+', détecté par ICE / IF / nom)</span>'+(p._idFromTiers?'<br>'+ic("check","width:13px;height:13px;vertical-align:-2px")+' ICE/IF repris de la fiche Tiers (pas de la lecture OCR de cette facture) — plus fiable.':'')+'</div>'):'';
   return '<div style="display:flex;gap:8px;flex-wrap:wrap">'+f("Date","date",p.date)+f(isV?"Client":"Fournisseur","fournisseur",p.fournisseur)+'</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("ICE","ice",p.ice)+f("IF (identifiant fiscal)",ifField,ifVal)+'</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+f("N° facture","numero",p.numero)+f("Page(s)","pages",p.pages)+'</div>'
@@ -8998,8 +9072,8 @@ function comptaTiersBody(c){
       return '<tr style="border-top:1px solid var(--line)">'
         +'<td style="padding:6px 8px" class="mono"><b>'+esc(comptaCanon(t.compte))+'</b></td>'
         +'<td style="padding:6px 8px"><input class="ipt" data-tiers="'+esc(t.id)+':nom" value="'+esc(t.nom||"")+'" style="min-width:150px"></td>'
-        +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':ice" value="'+esc(t.ice||"")+'" placeholder="ICE" style="min-width:120px"></td>'
-        +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':if_" value="'+esc(t.if_||"")+'" placeholder="IF" style="min-width:110px"></td>'
+        +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':ice" value="'+esc(t.ice||"")+'" placeholder="'+(t.iceConflict?"⚠️ ICE en conflit — à vérifier":"ICE")+'" style="min-width:120px'+(t.iceConflict?';border-color:#B5530A':'')+'"></td>'
+        +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':if_" value="'+esc(t.if_||"")+'" placeholder="'+(t.ifConflict?"⚠️ IF en conflit — à vérifier":"IF")+'" style="min-width:110px'+(t.ifConflict?';border-color:#B5530A':'')+'"></td>'
         +'<td style="padding:6px 8px"><input class="ipt" data-tiers="'+esc(t.id)+':adresse" value="'+esc(t.adresse||"")+'" placeholder="Adresse" style="min-width:170px"></td>'
         +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':telephone" value="'+esc(t.telephone||"")+'" placeholder="Téléphone" style="min-width:110px"></td>'
         +'<td style="padding:6px 8px"><input class="ipt mono" data-tiers="'+esc(t.id)+':rc" value="'+esc(t.rc||"")+'" placeholder="RC" style="min-width:90px"></td>'
@@ -10181,6 +10255,7 @@ async function comptaUpload(type,files){
         modeReg:_modeReg,
         regle:!!(_isEspeces && ((x.paye && x.mode_paiement) || (c&&c.cashDefault))),
         dateReg:_isEspeces?(x.date||""):""};
+      applyKnownTiersIdentity(g,type,piece);
       if(err)piece.ocrError=err;
       // anti-doublon NON destructif : on n'écarte JAMAIS une facture en silence.
       // Un doublon n'est signalé que s'il porte un VRAI n° de facture déjà présent
@@ -10339,6 +10414,7 @@ async function comptaUploadGrouped(type,files){
         email:ocrTiersEmail(type,gx)||"",ville:ocrTiersVille(type,gx)||"",cnss:ocrTiersCnss(type,gx)||"",
         ht:gx.montant_ht!=null?gx.montant_ht:"",tva:gx.montant_tva!=null?gx.montant_tva:"",ttc:gx.montant_ttc!=null?gx.montant_ttc:"",
         compte:_det.compte,compteAuto:true,compteReason:_det.reason,compteConf:_det.confidence,extracted:gx,pages:""};
+      applyKnownTiersIdentity(g,type,piece);
       if(grp.err)piece.ocrError=grp.err;
       var hasNum=!!(piece.numero && String(piece.numero).trim());
       var sig=pieceSig(piece);
@@ -10375,8 +10451,8 @@ function comptaTiersInput(t){
   ti[field]=val;
   // Une correction manuelle de l'ICE/IF est définitive : elle ne doit plus jamais être écrasée
   // ou effacée par une fusion automatique ultérieure, même si un doublon apporte une autre valeur.
-  if(field==="ice") ti.iceVerified=!!(val&&(""+val).trim());
-  if(field==="if_") ti.ifVerified=!!(val&&(""+val).trim());
+  if(field==="ice"){ ti.iceVerified=!!(val&&(""+val).trim()); if(ti.iceVerified)ti.iceConflict=false; }
+  if(field==="if_"){ ti.ifVerified=!!(val&&(""+val).trim()); if(ti.ifVerified)ti.ifConflict=false; }
   // propage le nouveau nom aux pièces rattachées (libellés des écritures)
   if(field==="nom"){
     var cc=comptaCanon(ti.compte);
