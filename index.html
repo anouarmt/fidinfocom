@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.09c · date de constitution · suivi dossiers + saisies équipe + tâches temps réel — v2026.06d · PRODUCTION EN LIGNE — donnees dans le cloud (aucune donnee dans le code)";
+const VERSION = "v2026.09d · dépôt direct collaborateur · date de constitution · suivi dossiers + saisies équipe + tâches temps réel — v2026.06d · PRODUCTION EN LIGNE — donnees dans le cloud (aucune donnee dans le code)";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -13882,7 +13882,7 @@ async function svLoad(){if(!svAdmin()||SV.loading)return;SV.loading=true;
   try{var r=await sb.from("staff_saisies").select("*").order("created_at",{ascending:false}).limit(1000);
     if(r.error)SV.err=r.error.message;else{SV.rows=r.data||[];SV.loaded=true;SV.err="";}}catch(e){SV.err=e.message||String(e);}
   SV.loading=false;
-  if(cabinetGet().svAuto){var pend=SV.rows.filter(function(x){return x.statut==="en_attente";}).slice().reverse(),n=0;
+  if(cabinetGet().svAuto!==false){var pend=SV.rows.filter(function(x){return x.statut==="en_attente";}).slice().reverse(),n=0;
     for(var i=0;i<pend.length;i++){if(await svValidate(pend[i].id,true))n++;}
     if(n)showOk(n+" saisie(s) de l'équipe intégrée(s) automatiquement.");}
   svRefreshUI();}
@@ -14021,11 +14021,11 @@ function svStatBadge(s){return s==="valide"?'<span class="svst" style="backgroun
 function svTypeBadge(t){return t==="paiement"?'<span class="svst" style="background:#E8F0FB;color:#1D6FB8">Paiement</span>':'<span class="svst" style="background:#EEF1EF;color:#14201C">Déclaration</span>';}
 function vSaisies(){var head=header("Saisies de l'équipe","Dépôts de déclarations et paiements d'honoraires enregistrés par vos collaborateurs");
   if(!(CLOUD&&sb&&session))return '<div class="wrap">'+head+'<div class="card mt5" style="padding:30px;text-align:center">Connectez-vous au cloud pour utiliser les saisies d\'équipe.</div></div>';
-  var auto=!!cabinetGet().svAuto,pend=SV.rows.filter(function(r){return r.statut==="en_attente";});
+  var auto=cabinetGet().svAuto!==false,pend=SV.rows.filter(function(r){return r.statut==="en_attente";});
   var staff=teamGet().staff,withAcc=staff.filter(function(s){return s.invited&&(s.saisie||"all")!=="none";});
   var staffH=staff.length?staff.map(function(s){var sc=s.saisie||"all";return '<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px"><span><b>'+esc(s.name||"")+'</b> <span style="color:var(--muted)">'+esc(s.email||"sans e-mail")+'</span></span><span style="color:'+(s.invited&&sc!=="none"?"#0E7A5F":"var(--faint)")+'">'+(!s.invited?"compte non créé":sc==="none"?"saisie désactivée":sc==="assigned"?"ses dossiers":"tous les dossiers")+'</span></div>';}).join(""):'<div class="note">Aucun collaborateur. Ajoutez-le dans Cabinet → Équipe, puis « Créer le compte ».</div>';
   var settings='<div class="grid g2 mt5"><div class="card" style="padding:18px 20px"><div class="sectit mb3">'+ic("settings")+' Validation</div>'
-    +'<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:13px"><input type="checkbox" id="sv_auto"'+(auto?" checked":"")+' style="margin-top:3px"><span><b>Validation automatique</b><br><span style="color:var(--muted);font-size:12px">Activée : chaque saisie du collaborateur est intégrée immédiatement (statut « Déposé », honoraires encaissés). Désactivée : vous validez une par une ci-dessous.</span></span></label></div>'
+    +'<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:13px"><input type="checkbox" id="sv_auto"'+(auto?" checked":"")+' style="margin-top:3px"><span><b>Intégration directe (recommandé)</b><br><span style="color:var(--muted);font-size:12px">Activée : ce que dépose le collaborateur passe directement en « Déposé » / « Encaissé » dans vos dossiers. Désactivée : vous validez une par une ci-dessous.</span></span></label></div>'
     +'<div class="card" style="padding:18px 20px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="sectit" style="margin:0">'+ic("users")+' Collaborateurs ('+withAcc.length+' avec accès)</div><button class="chip" data-act="sv_pushall" style="font-size:11.5px">'+ic("down","width:12px;height:12px")+' Mettre à jour leurs listes</button></div><div style="margin-top:8px">'+staffH+'</div></div></div>';
   var pendH=pend.length?pend.map(function(r){return '<tr><td class="mono" style="white-space:nowrap">'+svDT(r.created_at)+'</td><td>'+esc(r.author_name||r.email)+'</td><td>'+svTypeBadge(r.type)+'</td><td><div class="dossier" style="font-size:13px">'+esc(r.client_name||("#"+r.client_id))+'</div></td><td>'+svRowDetail(r)+'</td><td style="white-space:nowrap;text-align:right"><button class="btn-primary" data-act="sv_row_ok" data-id="'+r.id+'" style="padding:6px 12px;font-size:12px">'+ic("check","width:13px;height:13px")+' Valider</button> <button class="chip" data-act="sv_row_ko" data-id="'+r.id+'" style="color:#B42318;border-color:#B42318;padding:5px 10px;font-size:12px">Rejeter</button></td></tr>';}).join("")
     :'<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:24px">'+(SV.loading?"Chargement…":SV.err?("Erreur : "+esc(SV.err)):"Aucune saisie en attente. ✓")+'</td></tr>';
@@ -14054,37 +14054,36 @@ async function svStaffRefreshMe(manual){try{var s=await sb.from("staff_data").se
 function svStaffSub(){try{sb.channel("sv_mine").on("postgres_changes",{event:"*",schema:"public",table:"staff_saisies",filter:"email=eq."+svEmail()},function(p){
     clearTimeout(SV.loadT);SV.loadT=setTimeout(async function(){await svStaffLoad();
       if(p.eventType==="UPDATE"&&p.new){var n=p.new;setTimeout(svStaffRefreshMe,8000);
-        if(n.statut==="valide")showOk("Validée par le cabinet : "+(n.client_name||""));
-        else if(n.statut==="rejete")showErr("Saisie rejetée : "+(n.client_name||"")+(n.admin_note?" — "+n.admin_note:""));}},500);}).subscribe();}catch(e){}}
+        if(n.statut==="rejete")showErr("Saisie rejetée : "+(n.client_name||"")+(n.admin_note?" — "+n.admin_note:""));}},500);}).subscribe();}catch(e){}}
 function svSnap(){return ((SV.me&&SV.me.payload)||{}).suivi||null;}
 function svMineFor(key){return SV.mine.filter(function(r){return r.decl_key===key;});}
 function svStaffDeclRows(){var snap=svSnap();if(!snap)return [];var out=[],t=todayISO(),lim=svIso(new Date(Date.now()+45*86400000));
   snap.clients.forEach(function(c){c.d.forEach(function(d){var mine=svMineFor(d.key),pend=mine.find(function(r){return r.statut==="en_attente";}),
       val=mine.find(function(r){return r.statut==="valide";}),rej=mine.find(function(r){return r.statut==="rejete";});
-      var done=d.done||!!val,k=done?"done":pend?"pend":(d.dt<t?"retard":(d.dt<=svIso(new Date(Date.now()+10*86400000))?"urgent":"venir"));
+      var done=d.done||!!val||!!pend,k=done?"done":(d.dt<t?"retard":(d.dt<=svIso(new Date(Date.now()+10*86400000))?"urgent":"venir"));
       out.push({c:c,d:d,k:k,pend:pend,rej:(!done&&!pend)?rej:null,soon:d.dt<=lim});});});
   return out.sort(function(a,b){return a.d.dt.localeCompare(b.d.dt);});}
 function svStaffDeclList(){var rows=svStaffDeclRows();
   rows=rows.filter(function(x){if(!smartMatch(SV.sq,x.c.n))return false;var f=SV.sf;
-    if(f==="todo")return (x.k==="retard"||x.k==="urgent"||x.k==="venir")&&x.soon;if(f==="retard")return x.k==="retard";if(f==="pend")return x.k==="pend";if(f==="done")return x.k==="done";return true;});
+    if(f==="todo")return (x.k==="retard"||x.k==="urgent"||x.k==="venir")&&x.soon;if(f==="retard")return x.k==="retard";if(f==="done")return x.k==="done";return true;});
   if(!rows.length)return '<tr><td colspan="5" style="text-align:center;color:var(--faint);padding:26px">Rien à afficher pour ce filtre.</td></tr>';
   var more=rows.length>300?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:12px;font-size:12px">'+(rows.length-300)+' ligne(s) de plus — affinez la recherche.</td></tr>':'';
-  var ST={done:["✓ Déposée","#0E7A5F","#E3F1EB"],pend:["⏳ En attente de validation","#9A7610","#FFF7E0"],retard:["En retard","#B42318","#FBEAE8"],urgent:["Urgent","#B5530A","#FCEEE0"],venir:["À venir","#5C6B66","#EEF1EF"]};
+  var ST={done:["✓ Déposée","#0E7A5F","#E3F1EB"],retard:["En retard","#B42318","#FBEAE8"],urgent:["Urgent","#B5530A","#FCEEE0"],venir:["À venir","#5C6B66","#EEF1EF"]};
   return rows.slice(0,300).map(function(x){var s=ST[x.k];
     return '<tr><td><div class="dossier" style="font-size:13px">'+esc(x.c.n)+'</div></td><td>'+esc(x.d.l)+(x.rej?'<div class="sub" style="color:#B42318">↺ Rejetée'+(x.rej.admin_note?' : '+esc(x.rej.admin_note):'')+'</div>':'')+'</td><td class="mono" style="white-space:nowrap">'+svD(x.d.dt)+'</td>'
       +'<td><span class="svst" style="background:'+s[2]+';color:'+s[1]+'">'+s[0]+'</span></td>'
-      +'<td style="text-align:right;white-space:nowrap">'+((x.k==="done"||x.k==="pend")?'':'<button class="btn-primary" data-act="sv_s_decl" data-cid="'+x.c.id+'" data-key="'+esc(x.d.key)+'" style="padding:6px 12px;font-size:12px">'+ic("check","width:13px;height:13px")+' Déposée</button>')+'</td></tr>';}).join("")+more;}
+      +'<td style="text-align:right;white-space:nowrap">'+((x.k==="done"||x.k==="pend")?'':'<button class="btn-primary" data-act="sv_s_decl" data-cid="'+x.c.id+'" data-key="'+esc(x.d.key)+'" style="padding:6px 12px;font-size:12px">'+ic("check","width:13px;height:13px")+' Déposer</button>')+'</td></tr>';}).join("")+more;}
 function svStaffPayList(){var snap=svSnap();if(!snap)return '';var y=SV.py||snap.y;
   var rows=snap.clients.filter(function(c){return c.pay&&c.pay[y]&&smartMatch(SV.pq,c.n);});
   if(!rows.length)return '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:26px">Aucun dossier avec honoraires pour '+y+'.</td></tr>';
   return rows.map(function(c){var P=c.pay[y];
     var extra=SV.mine.filter(function(r){return r.type==="paiement"&&+r.client_id===+c.id&&+(r.data||{}).year===+y&&r.statut==="valide"&&r.traite_at&&r.traite_at>snap.gen;}).reduce(function(s,r){return s+(+r.data.montant||0);},0);
     var pend=SV.mine.filter(function(r){return r.type==="paiement"&&+r.client_id===+c.id&&+(r.data||{}).year===+y&&r.statut==="en_attente";}).reduce(function(s,r){return s+(+r.data.montant||0);},0);
-    var col=P.col+extra,reste=Math.max(0,P.exp-col);
-    return '<tr><td><div class="dossier" style="font-size:13px">'+esc(c.n)+'</div></td><td class="n">'+svMoney(P.exp)+'</td><td class="n" style="color:#0a5f4a;font-weight:600">'+svMoney(col)+'</td><td class="n" style="color:#9A7610">'+(pend?svMoney(pend):"—")+'</td><td class="n" style="font-weight:700;color:'+(reste>0.5?"#B5530A":"#0E7A5F")+'">'+svMoney(reste)+'</td>'
+    var col=P.col+extra+pend,reste=Math.max(0,P.exp-col);pend=0;
+    return '<tr><td><div class="dossier" style="font-size:13px">'+esc(c.n)+'</div></td><td class="n">'+svMoney(P.exp)+'</td><td class="n" style="color:#0a5f4a;font-weight:600">'+svMoney(col)+'</td><td class="n" style="font-weight:700;color:'+(reste>0.5?"#B5530A":"#0E7A5F")+'">'+svMoney(reste)+'</td>'
       +'<td style="text-align:right"><button class="btn-primary" data-act="sv_s_pay" data-cid="'+c.id+'" style="padding:6px 12px;font-size:12px">'+ic("plus","width:13px;height:13px")+' Paiement</button></td></tr>';}).join("");}
 function svStaffMineList(){if(!SV.mine.length)return '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:26px">Vous n\'avez encore rien saisi.</td></tr>';
-  return SV.mine.map(function(r){return '<tr><td class="mono" style="white-space:nowrap">'+svDT(r.created_at)+'</td><td>'+svTypeBadge(r.type)+'</td><td>'+esc(r.client_name||"")+'</td><td>'+svRowDetail(r)+(r.admin_note?'<div class="sub" style="color:#B42318">Motif : '+esc(r.admin_note)+'</div>':'')+'</td><td>'+svStatBadge(r.statut)+'</td>'
+  return SV.mine.map(function(r){return '<tr><td class="mono" style="white-space:nowrap">'+svDT(r.created_at)+'</td><td>'+svTypeBadge(r.type)+'</td><td>'+esc(r.client_name||"")+'</td><td>'+svRowDetail(r)+(r.admin_note?'<div class="sub" style="color:#B42318">Motif : '+esc(r.admin_note)+'</div>':'')+'</td><td>'+(r.statut==="rejete"?svStatBadge(r.statut):'<span class="svst" style="background:#E3F1EB;color:#0E7A5F">✓ Enregistrée</span>')+'</td>'
     +'<td style="text-align:right">'+(r.statut==="en_attente"?'<button class="iconbtn" data-act="sv_s_del" data-id="'+r.id+'" title="Annuler cette saisie" style="color:#C0392B">'+ic("trash","width:14px;height:14px")+'</button>':'')+'</td></tr>';}).join("");}
 function svStaffRender(keepFocus){var root=document.getElementById("svStaff");if(!root)return;
   var ae=document.activeElement;if(keepFocus&&(SV.modal||(ae&&ae.id&&/^svs_/.test(ae.id)))){svStaffLists();return;}
@@ -14095,37 +14094,37 @@ function svStaffRender(keepFocus){var root=document.getElementById("svStaff");if
   if(SV.tab==="tasks"){body=svStaffTasksHtml();}
   else if(!snap){body='<div class="card mt5" style="padding:30px;text-align:center;line-height:1.7">La liste des dossiers n\'est pas encore publiée par le cabinet.<br><span style="color:var(--muted);font-size:12.5px">Elle est mise à jour automatiquement dès que le gérant ouvre le logiciel. Cliquez ensuite sur « Actualiser ».</span></div>';}
   else if(SV.tab==="decl"){body='<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_q" placeholder="Rechercher un dossier…" value="'+esc(SV.sq)+'"></div>'
-      +seg([["todo","À déposer (45 j)"],["retard","En retard"],["pend","En attente"],["done","Déposées"],["all","Toutes"]],SV.sf,"sv_s_f")+'</div>'
+      +seg([["todo","À déposer (45 j)"],["retard","En retard"],["done","Déposées"],["all","Toutes"]],SV.sf,"sv_s_f")+'</div>'
       +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th>Déclaration</th><th>Échéance</th><th>Statut</th><th></th></tr></thead><tbody id="svs_list">'+svStaffDeclList()+'</tbody></table></div></div>';}
   else if(SV.tab==="pay"){var y=SV.py||snap.y;body='<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_pq" placeholder="Rechercher un dossier…" value="'+esc(SV.pq)+'"></div>'
       +seg([[snap.y-1,String(snap.y-1)],[snap.y,String(snap.y)]],y,"sv_s_py")+'</div>'
-      +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th style="text-align:right">Attendu '+y+'</th><th style="text-align:right">Encaissé</th><th style="text-align:right">En attente</th><th style="text-align:right">Reste</th><th></th></tr></thead><tbody id="svs_plist">'+svStaffPayList()+'</tbody></table></div></div>';}
+      +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th style="text-align:right">Attendu '+y+'</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Reste</th><th></th></tr></thead><tbody id="svs_plist">'+svStaffPayList()+'</tbody></table></div></div>';}
   else{body='<div class="card mt5" style="padding:0;overflow:hidden"><div class="svx"><table class="svt"><thead><tr><th>Saisie le</th><th>Type</th><th>Dossier</th><th>Détail</th><th>Statut</th><th></th></tr></thead><tbody>'+svStaffMineList()+'</tbody></table></div></div>';}
   root.innerHTML='<div class="svs-top"><div class="svs-brand">FID INFO COM<span>Espace collaborateur</span></div>'
     +'<div class="svs-user"><span>'+ic("user","width:15px;height:15px;vertical-align:-3px")+' <b>'+esc(me.name||svEmail())+'</b>'+(me.role?' · '+esc(me.role):'')+'</span><button data-act="sv_s_refresh">Actualiser</button><button data-act="open_pwd">Mot de passe</button><button data-act="sv_s_logout">Déconnexion</button></div></div>'
-    +'<div class="svs-wrap"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><div class="ff" style="font-size:26px;font-weight:700;color:#14201C">Bonjour '+esc((me.name||"").split(" ")[0])+'</div><div style="font-size:12.5px;color:var(--muted);margin-top:4px">Vos tâches, les déclarations déposées et les honoraires payés par les clients. Tout se met à jour automatiquement.'+(snap?' Liste publiée le '+svDT(snap.gen)+'.':'')+'</div></div><div class="svs-tabs">'+tabs+'</div></div>'+body+'</div><div id="svOv"></div>';
+    +'<div class="svs-wrap"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><div class="ff" style="font-size:26px;font-weight:700;color:#14201C">Bonjour '+esc((me.name||"").split(" ")[0])+'</div><div style="font-size:12.5px;color:var(--muted);margin-top:4px">Vos tâches, le dépôt des déclarations et les honoraires payés par les clients. Tout est enregistré directement.'+(snap?' Liste publiée le '+svDT(snap.gen)+'.':'')+'</div></div><div class="svs-tabs">'+tabs+'</div></div>'+body+'</div><div id="svOv"></div>';
   svStaffModal();}
 function svStaffLists(){var a=document.getElementById("svs_list");if(a)a.innerHTML=svStaffDeclList();var b=document.getElementById("svs_plist");if(b)b.innerHTML=svStaffPayList();}
 function svStaffModal(){var o=document.getElementById("svOv");if(!o)return;var m=SV.modal;if(!m){o.innerHTML="";return;}
   var snap=svSnap(),c=snap&&snap.clients.find(function(x){return +x.id===+m.cid;});if(!c){o.innerHTML="";return;}
   var body="",title="",sub="";
-  if(m.type==="decl"){var d=c.d.find(function(x){return x.key===m.key;});if(!d){o.innerHTML="";return;}title="Déclaration déposée";sub=c.n+" · "+d.l+" · échéance "+svD(d.dt);
+  if(m.type==="decl"){var d=c.d.find(function(x){return x.key===m.key;});if(!d){o.innerHTML="";return;}title="Déposer la déclaration";sub=c.n+" · "+d.l+" · échéance "+svD(d.dt);
     body='<div class="grid g2"><div><div class="flbl">Date de dépôt</div><input class="ipt" type="date" id="svm_date" value="'+todayISO()+'"></div><div><div class="flbl">N° de dépôt / récépissé</div><input class="ipt" id="svm_ref" placeholder="facultatif"></div></div>'
       +'<div class="grid g2 mt3"><div><div class="flbl">Montant payé (DH, facultatif)</div><input class="ipt mono" type="number" step="0.01" id="svm_mt" placeholder="0"></div><div><div class="flbl">Remarque</div><input class="ipt" id="svm_note" placeholder="facultatif"></div></div>'
-      +'<button class="btn-primary" data-act="sv_s_decl_save" style="margin-top:16px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Envoyer au cabinet</button>';}
+      +'<button class="btn-primary" data-act="sv_s_decl_save" style="margin-top:16px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Déposer</button>';}
   else{var y=SV.py||snap.y,P=(c.pay||{})[y];if(!P){o.innerHTML="";return;}title="Paiement d'honoraires";sub=c.n+" · exercice "+y;
     var first=null,opts=P.p.map(function(p){if(!p.paid&&first==null)first=p.k;return '<option value="'+esc(p.k)+'" data-l="'+esc(p.l)+'"'+(p.k===first?" selected":"")+'>'+esc(p.l)+(p.paid?" — déjà payé "+svMoney(p.paid):"")+'</option>';}).join("");
     body='<div class="grid g2"><div><div class="flbl">Période payée</div><select class="ipt" id="svm_k">'+opts+'</select></div><div><div class="flbl">Montant reçu (DH)</div><input class="ipt mono" type="number" step="0.01" id="svm_mt" placeholder="0"></div></div>'
       +'<div class="grid g2 mt3"><div><div class="flbl">Mode de paiement</div><select class="ipt" id="svm_mode">'+PAY_MODES.map(function(x){return '<option>'+esc(x)+'</option>';}).join("")+'</select></div><div><div class="flbl">Date</div><input class="ipt" type="date" id="svm_date" value="'+todayISO()+'"></div></div>'
       +'<div class="grid g2 mt3"><div><div class="flbl">Référence (n° chèque, virement…)</div><input class="ipt" id="svm_ref"></div><div><div class="flbl">Remarque</div><input class="ipt" id="svm_note"></div></div>'
-      +'<button class="btn-primary" data-act="sv_s_pay_save" style="margin-top:16px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Envoyer au cabinet</button>';}
+      +'<button class="btn-primary" data-act="sv_s_pay_save" style="margin-top:16px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Enregistrer le paiement</button>';}
   o.innerHTML='<div class="ov"><div class="modal" data-stop style="max-width:480px"><div class="mh"><div><h3 class="ff">'+esc(title)+'</h3><div class="meta"><span>'+esc(sub)+'</span></div></div><button class="xbtn" data-act="sv_s_close">'+ic("x")+'</button></div><div class="mb" style="padding:22px">'+body+'</div></div></div>';}
 async function svStaffInsert(row,btn){if(btn){btn.disabled=true;btn.style.opacity=".6";}
   row.email=svEmail();row.author_name=(SV.me&&SV.me.name)||svEmail();
   var r=await sb.from("staff_saisies").insert(row);
   if(btn){btn.disabled=false;btn.style.opacity="";}
   if(r.error){showErr("Envoi impossible : "+r.error.message);return false;}
-  SV.modal=null;showOk("Envoyé au cabinet — en attente de validation.");await svStaffLoad();svStaffRender();return true;}
+  SV.modal=null;showOk(row.type==="paiement"?"Paiement enregistré.":"Déclaration déposée.");await svStaffLoad();svStaffRender();return true;}
 async function svStaffDeclSave(btn){var m=SV.modal,snap=svSnap(),c=snap.clients.find(function(x){return +x.id===+m.cid;}),d=c&&c.d.find(function(x){return x.key===m.key;});if(!d)return;
   if(SV.mine.some(function(r){return r.decl_key===d.key&&r.statut==="en_attente";})){showErr("Une saisie est déjà en attente pour cette déclaration.");return;}
   var date=svVal("svm_date");if(!date){showErr("Indiquez la date de dépôt.");return;}
