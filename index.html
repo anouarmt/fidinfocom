@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10f · décharges · documents cabinet + collaborateur · relevés · équipe — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10g · décharges · documents · relevés · équipe — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -11212,9 +11212,9 @@ function vDash(){
   ];
   let kpis=kp.map(k=>'<div class="card kpi"'+(k.go?' data-act="echgo" data-v="'+k.go+'" style="cursor:pointer"':'')+'><div class="ico" style="background:'+k.bg+';color:'+k.c+'">'+ic(k.i)+'</div><div class="v'+(k.sm?' sm':'')+' ff" style="color:'+k.c+'">'+k.v+'</div><div class="l">'+k.l+'</div><div class="s">'+k.s+'</div></div>').join("");
   // pie
-  const pm={};cs.forEach(c=>{const k=c.statut||"—";pm[k]=(pm[k]||0)+1;});
+  const pm={};const REGL={mensuelle:"TVA mensuelle",trimestrielle:"TVA trimestrielle"};cs.forEach(c=>{const k=REGL[c.reg]||"Hors TVA";pm[k]=(pm[k]||0)+1;});
   const pie=Object.keys(pm).map(k=>({name:k,value:pm[k]}));
-  const pcol=pie.map(e=>STAT_COLORS[e.name]||"#B9C2BD");
+  const pcol=pie.map(e=>({"TVA mensuelle":"#1D6FB8","TVA trimestrielle":"#0E7A5F","Hors TVA":"#C8941A"})[e.name]||"#B9C2BD");
   const legend=pie.map((e,i)=>'<div class="row"><span><span class="sw" style="background:'+pcol[i]+'"></span>'+esc(e.name)+'</span><b class="mono">'+e.value+'</b></div>').join("");
   // bars
   const bm={};dls.filter(d=>d.u.key!=="depose"&&d.u.key!=="planif").forEach(d=>{const k=CAT_LABEL[d.cat];bm[k]=(bm[k]||0)+1;});
@@ -11501,7 +11501,7 @@ function cliCards(){
   const list=clients().filter(c=>smartMatch(S.cliq,c.dossier));
   return list.map(c=>{
     const m=(c.forme||"").toLowerCase().includes("morale");
-    return '<div class="card ccard" data-act="client" data-id="'+c.id+'"><div class="cav" style="background:'+(m?"#EEF1EF":"#F3EFE4")+';color:'+(m?"#44403c":"#92611a")+'">'+ic(m?"building":"user")+'</div><div style="min-width:0;flex:1"><div class="dossier" style="font-size:13.5px">'+esc(c.dossier)+'</div><div class="tel">'+ic("phone")+esc(c.tel||"—")+'</div></div>'+badge(STAT_COLORS[c.statut]||"#78716c","#F5F4EF",esc(c.statut||"—"))+'</div>';
+    return '<div class="card ccard" data-act="client" data-id="'+c.id+'"><div class="cav" style="background:'+(m?"#EEF1EF":"#F3EFE4")+';color:'+(m?"#44403c":"#92611a")+'">'+ic(m?"building":"user")+'</div><div style="min-width:0;flex:1"><div class="dossier" style="font-size:13.5px">'+esc(c.dossier)+'</div><div class="tel">'+ic("phone")+esc(c.tel||"—")+'</div></div></div>';
   }).join("");
 }
 function vCli(){
@@ -13133,7 +13133,7 @@ function gsearchResults(q){
   function row(attrs,main,sub){return '<button class="gsr" '+attrs+' style="display:flex;width:100%;text-align:left;align-items:center;gap:10px;padding:9px 10px;border:0;background:transparent;border-radius:10px;cursor:pointer"><div style="min-width:0;flex:1"><div class="dossier" style="font-size:13px">'+main+'</div><div style="font-size:11px;color:var(--muted)">'+sub+'</div></div>'+ic("chev","width:14px;height:14px;color:var(--faint)")+'</button>';}
   var H="";
   H+=sec("Dossiers","building","#14201C",doss.map(function(c){
-    return row('data-act="gsearch_go" data-kind="dossier" data-cid="'+c.id+'"',esc(c.dossier),esc(c.statut||"")+(c.tel?' · '+esc(c.tel):''));
+    return row('data-act="gsearch_go" data-kind="dossier" data-cid="'+c.id+'"',esc(c.dossier),esc(c.tel||""));
   }));
   H+=sec("Pièces (achats / ventes)","book","#0E7A5F",pcs.map(function(x){
     var t=(x.p.type==="vente"?"Vente":"Achat");
@@ -14249,7 +14249,7 @@ function svStaffCliModal(cid){var snap=svSnap(),c=snap&&snap.clients.find(functi
     +contact
     +sec("Contact")+kv([["Téléphone",i.tel],["E-mail",so.email],["Siège social",so.adresse],["Ville",so.ville]])
     +sec("Identifiants fiscaux")+kv([["ICE",so.ice,1],["Identifiant fiscal (IF)",so.idf,1],["Registre de commerce",so.rc,1],["Taxe professionnelle",so.tp,1],["N° CNSS",so.cnss,1],["Capital",so.capital?so.capital+" DH":""],["Date de constitution",so.dateConst]])
-    +sec("Fiscalité")+kv([["Régime TVA",reg],["Exigibilité",i.regTva==="encaissement"?"Encaissement":"Débits"],["Obligations",(i.obl||[]).join(", ")],["Statut",i.statut],["Commentaire",i.comment]])
+    +sec("Fiscalité")+kv([["Régime TVA",reg],["Exigibilité",i.regTva==="encaissement"?"Encaissement":"Débits"],["Obligations",(i.obl||[]).join(", ")],["Commentaire",i.comment]])
     +sec("Gérants")+ppl(i.gers,"qualite","")
     +sec("Associés")+ppl(i.asos,"parts","Parts :")+svStaffDocsSection(c)
     +'</div></div></div>';}
@@ -14283,7 +14283,7 @@ function svFicheBody(name,i){i=i||{};var so=i.soc||{};
   return '<div class="fiche"><div class="fh"><div><div class="nm">'+esc(name)+'</div><div class="sb">'+esc([i.forme,so.activite].filter(Boolean).join(" · "))+'</div></div><div class="cab">FID INFO COM<br><span>Fiche société</span></div></div>'
     +blk("Contact",row("Téléphone",i.tel)+row("E-mail",so.email)+row("Siège social",so.adresse)+row("Ville",so.ville))
     +blk("Identifiants fiscaux",row("ICE",so.ice)+row("Identifiant fiscal (IF)",so.idf)+row("Registre de commerce (RC)",so.rc)+row("Taxe professionnelle",so.tp)+row("N° CNSS",so.cnss)+row("Capital",so.capital?so.capital+" DH":"")+row("Date de constitution",so.dateConst))
-    +blk("Fiscalité",row("Régime TVA",svRegLabel(i.reg))+row("Exigibilité",i.regTva==="encaissement"?"Encaissement":"Débits")+row("Obligations",(i.obl||[]).join(", "))+row("Statut",i.statut)+row("Commentaire",i.comment))
+    +blk("Fiscalité",row("Régime TVA",svRegLabel(i.reg))+row("Exigibilité",i.regTva==="encaissement"?"Encaissement":"Débits")+row("Obligations",(i.obl||[]).join(", "))+row("Commentaire",i.comment))
     +ppl("Gérants",i.gers,"qualite","Qualité")+ppl("Associés",i.asos,"parts","Parts")
     +'</div>';}
 var SV_PRINT_CSS='body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:0;padding:18px;font-size:12px}'
