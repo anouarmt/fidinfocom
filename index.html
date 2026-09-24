@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10b · relevés · relances · activité équipe · caisse · demandes — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10c · relevés · relances · activité équipe · caisse · demandes — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -14582,6 +14582,39 @@ function svDeletePl(id){var p=(S.paylog||[]).find(function(x){return x.id===id;}
   if(!window.confirm("Supprimer l'encaissement de "+svMoney(p.montant)+" ("+(c?c.dossier:"")+", "+p.k+" "+p.y+") ?\n\nLe montant sera retiré des honoraires encaissés"+(p.rcNo?" et le reçu "+p.rcNo+" annulé":"")+"."))return;
   svUndoPay(p.cid,p.y,p.k,p.montant,p.rcNo,p.id);renderView();showOk("Encaissement supprimé.");}
 async function svDeleteDoc(id){if(!window.confirm("Supprimer définitivement cette demande de documents ?"))return;var r=await sb.from("staff_doc_requests").delete().eq("id",id);if(r.error){showErr(r.error.message);return;}SV.docs=SV.docs.filter(function(x){return x.id!==id;});renderView();showOk("Demande supprimée.");}
+
+
+/* ---------- BOUTON « PDF » : n'imprime que le contenu utile de l'écran (tableaux), pas la page ---------- */
+function svCleanClone(node){var c=node.cloneNode(true);
+  Array.prototype.forEach.call(c.querySelectorAll("button,a.chip"),function(b){var t=(b.textContent||"").replace(/\s+/g," ").trim();
+    if(!t||/^(Encaisser|Imprimer|Modifier|Supprimer|Valider|Rejeter|Relancer|Générer|Reçue|Déposer|Paiement|\+)/i.test(t)&&!b.classList.contains("svp")){b.parentNode&&b.parentNode.removeChild(b);return;}
+    var sp=document.createElement("span");sp.textContent=t;if(b.classList.contains("svp"))sp.className=b.className;b.parentNode&&b.parentNode.replaceChild(sp,b);sp.insertAdjacentText("afterend"," ");});
+  Array.prototype.forEach.call(c.querySelectorAll("th"),function(th){th.textContent=(th.textContent||"").replace(/\s*\((cliquez|clic)[^)]*\)/i,"");});
+  Array.prototype.forEach.call(c.querySelectorAll("svg,.svbar,.progress,input[type=checkbox],input[type=file]"),function(el){el.parentNode&&el.parentNode.removeChild(el);});
+  Array.prototype.forEach.call(c.querySelectorAll("input,select,textarea"),function(el){var v=el.tagName==="SELECT"?(((el.options&&el.options[el.selectedIndex])||{}).text||""):(el.value||"");var sp=document.createElement("span");sp.textContent=v;el.parentNode&&el.parentNode.replaceChild(sp,el);});
+  if(c.tagName==="TABLE"){var rows=c.querySelectorAll("tr"),n=rows.length?rows[0].children.length:0;
+    for(var j=n-1;j>=0;j--){var empty=true;Array.prototype.forEach.call(rows,function(r){var cell=r.children[j];if(cell&&(cell.textContent||"").trim())empty=false;});
+      if(empty)Array.prototype.forEach.call(rows,function(r){var cell=r.children[j];if(cell)cell.parentNode.removeChild(cell);});}}
+  return c;}
+printView=function(){try{var view=document.getElementById("view");if(!view){showErr("Rien à imprimer.");return;}
+  var title=((view.querySelector(".head h2")||{}).textContent||document.title||"").trim(),sub=((view.querySelector(".head p")||{}).textContent||"").trim();
+  var tables=Array.prototype.filter.call(view.querySelectorAll("table"),function(t){return t.offsetParent!==null&&t.querySelectorAll("tr").length>1;});
+  var body="";
+  if(tables.length){tables.forEach(function(t){var card=t.closest(".card"),st=card&&card.querySelector(".sectit");var cap=st&&!t.contains(st)?(st.textContent||"").trim():"";
+      body+=(cap?'<h3>'+esc(cap)+'</h3>':'')+svCleanClone(t).outerHTML;});}
+  else{var c=svCleanClone(view);Array.prototype.forEach.call(c.querySelectorAll(".head,.seg,.search,.psub"),function(el){el.parentNode&&el.parentNode.removeChild(el);});body=c.innerHTML;}
+  var cab=svCabHead();
+  svPrintFrame('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'
+    +'*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:0;padding:14px;font-size:11px}'
+    +'.bh{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #14201C;padding-bottom:8px;margin-bottom:12px}.bh .t{font-size:16px;font-weight:bold;color:#14201C}.bh .s{font-size:10.5px;color:#555;margin-top:2px}.bh .c{text-align:right;font-size:10.5px;color:#555}.bh .c b{color:#14201C;font-size:11.5px}'
+    +'h3{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#0E7A5F;margin:14px 0 4px}'
+    +'table{width:100%;border-collapse:collapse;margin:4px 0 10px}th{background:#14201C;color:#fff;text-align:left;padding:5px 6px;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em}td{padding:4px 6px;border-bottom:1px solid #e3e3e3;vertical-align:top}'
+    +'tr{page-break-inside:avoid}thead{display:table-header-group}.sub{font-size:9.5px;color:#777}.n,.mono{font-variant-numeric:tabular-nums}.n{text-align:right;white-space:nowrap}'
+    +'.svp,.svst,.badge{display:inline-block;border:1px solid #ccc;border-radius:4px;padding:0 4px;margin:1px;font-size:9.5px}.svgl{font-size:8.5px;color:#888;font-weight:bold;margin:0 3px 0 6px}.svp-ok{background:#E3F1EB;color:#0E7A5F;border-color:#9fd3bf}.svp-pend{background:#FFF7E0;color:#9A7610}.svp-retard{background:#FBEAE8;color:#B42318;border-color:#f0b9b2}.svp-urgent{background:#FCEEE0;color:#B5530A}.svp-venir{background:#FAF3DD;color:#9A7610}.svp-planif{color:#888}.dossier{font-weight:bold}td{font-size:10.5px}.card{border:1px solid #ddd;border-radius:6px;padding:8px;margin-bottom:8px}.grid{display:block}'
+    +'.ft{margin-top:10px;font-size:9px;color:#999;text-align:center}@page{margin:9mm}</style></head><body>'
+    +'<div class="bh"><div><div class="t">'+esc(title)+'</div><div class="s">'+esc(sub)+(S.year&&sub.indexOf(String(S.year))<0?' · Exercice '+S.year:'')+'</div></div><div class="c"><b>'+esc(cab.raison||"FID INFO COM")+'</b><br>'+esc([cab.adresse,cab.ville].filter(Boolean).join(", "))+'</div></div>'
+    +body+'<div class="ft">Imprimé le '+fmtDate(new Date())+'</div></body></html>');
+}catch(e){showErr("Impression impossible : "+(e.message||e));}};
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
