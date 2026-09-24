@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10g · décharges · documents · relevés · équipe — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10h · dossiers sortants · décharges · documents · équipe — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -423,8 +423,9 @@ function smartMatch(query,text){
   return false;
 }
 
+var SV_ALL=0; // >0 : inclure les dossiers sortants (liste clients, fiche, décharges, relevés)
 function clients(){
-  return SEED.concat(S.custom).filter(c=>!S.deleted[c.id]).map(c=>Object.assign({},c,S.flags[c.id]||{}));
+  return SEED.concat(S.custom).filter(c=>!S.deleted[c.id]&&(SV_ALL>0||!(S.flags[c.id]||{}).sortant)).map(c=>Object.assign({},c,S.flags[c.id]||{}));
 }
 
 /* ---------- CLOUD LAYER (Supabase) ---------- */
@@ -14772,6 +14773,48 @@ var _svAI6=svAdminInit;svAdminInit=function(){_svAI6();if(svAdmin()){svLoadDechs
 var _svSB5=svStaffBoot;svStaffBoot=async function(){await _svSB5();svStaffLoadDechs();};
 var _svRM3=renderModal;renderModal=function(){if(S.modal&&S.modal.type==="sv_dech"){document.getElementById("overlay").innerHTML=svModalDech();return;}_svRM3();};
 
+
+/* ---------- DOSSIERS SORTANTS : le cabinet ne travaille plus sur la société ----------
+   Un dossier sortant disparaît de tous les modules de travail (échéances, suivi, comptabilité, TVA, paie,
+   relances, espace collaborateur…). Il reste visible dans la liste Clients (en bas, grisé), dans sa fiche
+   (en lecture), pour les décharges, relevés de compte et encaissements du solde. */
+function svWithAll(name){var f=window[name];if(typeof f!=="function")return;window[name]=function(){SV_ALL++;try{return f.apply(this,arguments);}finally{SV_ALL--;}};}
+["renderModal","submitClient","svDechCtx","svReleveAdmin","svRegisterRec","svRecFromPl","svPaylogHtml","svDechSave"].forEach(svWithAll);
+SV.cf="actifs";
+function svSortants(){SV_ALL++;try{return clients().filter(function(c){return c.sortant;});}finally{SV_ALL--;}}
+var SV_SORT_MOTIFS=["Fin de mission","Changement de cabinet comptable","Cessation d'activité / radiation","Honoraires impayés","Autre"];
+function svSortBanner(c){var so=c.sortant||{};return '<div style="display:flex;gap:12px;align-items:flex-start;background:#FBEAE8;border:1px solid #F0C6C0;color:#8E1B12;border-radius:12px;padding:14px 16px;margin-bottom:16px"><span style="font-size:22px;line-height:1">⛔</span><div style="flex:1"><div style="font-weight:700;font-size:14px">DOSSIER SORTANT'+(so.date?' depuis le '+esc(svD(so.date)):'')+'</div><div style="font-size:12.5px;margin-top:3px">Le cabinet ne travaille plus sur cette société. Le dossier est bloqué : il n\'apparaît plus dans les échéances, la comptabilité, la TVA, la paie, les relances ni dans l\'espace collaborateur.</div>'+(so.motif?'<div style="font-size:12px;margin-top:4px"><b>Motif :</b> '+esc(so.motif)+(so.note?' — '+esc(so.note):'')+'</div>':'')+'</div></div>';}
+function svModalClientSortant(c){var m=(c.forme||"").toLowerCase().includes("morale");
+  return '<div class="ov"><div class="modal" data-stop><div class="mh"><div><h3 class="ff">'+esc(c.dossier)+'</h3><div class="meta"><span>'+ic(m?"building":"user")+esc(c.forme||"")+'</span><span>'+ic("phone")+esc(c.tel||"—")+'</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+   +'<div class="mb">'+svSortBanner(c)
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn-primary" data-act="sv_unsort" data-cid="'+c.id+'">'+ic("check","width:14px;height:14px")+' Réactiver le dossier</button><button class="chip" data-act="sv_dech_open" data-cid="'+c.id+'">'+ic("folder","width:13px;height:13px")+' Décharge</button><button class="chip" data-act="sv_releve" data-cid="'+c.id+'">'+ic("receipt","width:13px;height:13px")+' Relevé de compte</button><button class="chip" data-act="sv_fiche_print" data-cid="'+c.id+'">'+ic("printer","width:13px;height:13px")+' Imprimer la fiche</button></div>'
+   +(c.comment?'<div class="note" style="margin-top:16px"><b>Note : </b>'+esc(c.comment)+'</div>':'')+svDocsSection(c.id)+'</div></div></div>';}
+var _svMC=modalClient;modalClient=function(c){return c&&c.sortant?svModalClientSortant(c):_svMC(c);};
+function svSortForm(c){return '<div style="margin-top:22px;border:1px solid #F0C6C0;border-radius:12px;padding:16px;background:#FFF8F7"><div style="font-weight:700;color:#8E1B12;font-size:13px">Dossier sortant</div><div style="font-size:12px;color:#8E1B12;margin:4px 0 10px">Le cabinet ne travaille plus sur cette société : le dossier sera bloqué et retiré de tous les modules de travail. Réactivable à tout moment.</div>'
+  +'<div class="grid g2"><div><div class="flbl">Date de sortie</div><input class="ipt" type="date" id="so_date" value="'+todayISO()+'"></div><div><div class="flbl">Motif</div><select class="ipt" id="so_motif">'+SV_SORT_MOTIFS.map(function(m){return '<option>'+esc(m)+'</option>';}).join("")+'</select></div></div>'
+  +'<div class="mt3"><div class="flbl">Précision (facultatif)</div><input class="ipt" id="so_note"></div>'
+  +'<button class="chip" data-act="sv_sort" data-cid="'+c.id+'" style="margin-top:12px;color:#fff;background:#B42318;border-color:#B42318">⛔ Marquer comme sortant et bloquer</button></div>';}
+var _svMCE=modalCEdit;modalCEdit=function(id){var h=_svMCE(id);if(id==null)return h;var c=clients().find(function(x){return x.id===id;});if(!c)return h;
+  var add=c.sortant?svSortBanner(c):svSortForm(c);var i=h.lastIndexOf('</div></div></div>');return i>0?h.slice(0,i)+add+h.slice(i):h;};
+function svSetSortant(cid,on){var id=+cid;S.flags[id]=Object.assign({},S.flags[id]);
+  if(on){var c=null;SV_ALL++;try{c=clients().find(function(x){return x.id===id;});}finally{SV_ALL--;}
+    if(!window.confirm("Marquer « "+(c?c.dossier:"")+" » comme SORTANT ?\n\nLe dossier sera bloqué : il n'apparaîtra plus dans les échéances, la comptabilité, la TVA, la paie, les relances ni chez le collaborateur."))return;
+    S.flags[id].sortant={date:svVal("so_date")||todayISO(),motif:svVal("so_motif"),note:svVal("so_note").trim(),by:"Cabinet",at:new Date().toISOString()};showOk("Dossier marqué sortant et bloqué.");}
+  else{if(!window.confirm("Réactiver ce dossier ? Il réapparaîtra dans tous les modules."))return;delete S.flags[id].sortant;showOk("Dossier réactivé.");}
+  save("flags");S.modal={type:"client",id:id};render();}
+/* Liste des clients : filtre Actifs / Sortants / Tous */
+var _svCC=cliCards;
+cliCards=function(){var q=S.cliq;SV_ALL++;var all;try{all=clients().filter(function(c){return smartMatch(q,c.dossier);});}finally{SV_ALL--;}
+  var list=all.filter(function(c){return SV.cf==="tous"||(SV.cf==="sortants"?!!c.sortant:!c.sortant);}).sort(function(a,b){return (a.sortant?1:0)-(b.sortant?1:0);});
+  if(!list.length)return '<div style="grid-column:1/-1;text-align:center;color:var(--faint);padding:30px">'+(SV.cf==="sortants"?"Aucun dossier sortant.":"Aucun dossier.")+'</div>';
+  return list.map(function(c){var m=(c.forme||"").toLowerCase().includes("morale"),so=c.sortant;
+    return '<div class="card ccard" data-act="client" data-id="'+c.id+'"'+(so?' style="opacity:.62;background:#FBF8F7"':'')+'><div class="cav" style="background:'+(so?"#FBEAE8":(m?"#EEF1EF":"#F3EFE4"))+';color:'+(so?"#B42318":(m?"#44403c":"#92611a"))+'">'+ic(m?"building":"user")+'</div><div style="min-width:0;flex:1"><div class="dossier" style="font-size:13.5px'+(so?';text-decoration:line-through;text-decoration-color:#d9a5a0':'')+'">'+esc(c.dossier)+'</div><div class="tel">'+ic("phone")+esc(c.tel||"—")+'</div></div>'
+      +(so?'<span class="svst" style="background:#FBEAE8;color:#B42318">⛔ SORTANT'+(so.date?' · '+esc(svD(so.date)):'')+'</span>':'')+'</div>';}).join("");};
+var _svVC=vCli;
+vCli=function(){var h=_svVC(),ns=svSortants().length,na=clients().length;
+  var seg='<div class="seg">'+[["actifs","Actifs ("+na+")"],["sortants","Sortants ("+ns+")"],["tous","Tous"]].map(function(a){return '<button data-act="sv_cf" data-v="'+a[0]+'" style="'+(SV.cf===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
+  return h.replace('<button class="btn-add" data-act="cnew">',seg+'<button class="btn-add" data-act="cnew">').replace(na+" dossiers · cliquez pour le détail",na+" dossiers actifs"+(ns?" · "+ns+" sortant"+(ns>1?"s":""):"")+" · cliquez pour le détail");};
+
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
   if(SV.staff&&e.target.classList&&e.target.classList.contains("ov")&&e.target.closest("#svOv")){SV.modal=null;svStaffModal();return;}
@@ -14799,7 +14842,7 @@ document.addEventListener("click",function(e){
   else if(a==="sv_hreset"){SV.hq="";SV.ht="all";SV.hs="all";SV.hd1="";SV.hd2="";renderView();}
   else if(a==="sv_ff"){SV.ff=t.dataset.v;renderView();}
   else if(a==="sv_fiche"){S.modal={type:"sv_fiche",cid:+t.dataset.cid};renderModal();}
-  else if(a==="sv_fiche_print"){var cc=clients().find(function(x){return x.id===+t.dataset.cid;});if(cc)svPrintFiches([{n:cc.dossier,i:svClientInfo(cc)}]);}
+  else if(a==="sv_fiche_print"){var cc;SV_ALL++;try{cc=clients().find(function(x){return x.id===+t.dataset.cid;});}finally{SV_ALL--;}if(cc)svPrintFiches([{n:cc.dossier,i:svClientInfo(cc)}]);}
   else if(a==="sv_fiche_printall"){var it=svCabItems();if(it.length>20&&!window.confirm("Imprimer "+it.length+" fiches (une par page) ?"))return;svPrintFiches(it);}
   else if(a==="sv_fiche_printlist"){svPrintList(svCabItems(),"Liste des sociétés — FID INFO COM");}
   else if(a==="sv_s_printone"){var sn=svSnap(),sc=sn&&sn.clients.find(function(x){return +x.id===+t.dataset.cid;});if(sc)svPrintFiches([{n:sc.n,i:sc.i}]);}
@@ -14819,6 +14862,9 @@ document.addEventListener("click",function(e){
   else if(a==="sv_dech_del"){var dd=SV.dechs.find(function(x){return x.id===t.dataset.id;});if(!dd||!window.confirm("Supprimer la décharge "+dd.no+" ?"))return;sb.from("dossier_decharges").delete().eq("id",dd.id).then(function(r){if(r.error){showErr(r.error.message);return;}showOk("Décharge supprimée.");svLoadDechs();});}
   else if(a==="sv_s_dech_open"){SV.modal={type:"dech",cid:+t.dataset.cid};svStaffModal();}
   else if(a==="sv_s_dech_save"){svDechSave(+t.dataset.cid,t);}
+  else if(a==="sv_sort"){svSetSortant(t.dataset.cid,true);}
+  else if(a==="sv_unsort"){svSetSortant(t.dataset.cid,false);}
+  else if(a==="sv_cf"){SV.cf=t.dataset.v;renderView();}
   else if(a==="sv_row_del"){svDeleteRow(t.dataset.id);}
   else if(a==="sv_pl_del"){svDeletePl(t.dataset.id);}
   else if(a==="sv_doc_del"){svDeleteDoc(t.dataset.id);}
