@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.09g · suivi dossiers · équipe · fiches · reçus — PRODUCTION EN LIGNE";
+const VERSION = "v2026.09h · suivi dossiers · équipe · fiches · reçus — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -14350,7 +14350,7 @@ function svRecHtml(r){var cab=r.cab||svCabHead(),ids=[cab.ice?"ICE "+cab.ice:"",
     +'<tr><td>Mode de règlement</td><td>'+esc(r.mode||"")+(r.ref?' — réf. '+esc(r.ref):'')+'</td></tr>'
     +'<tr><td>Date du paiement</td><td>'+esc(svD(r.date))+'</td></tr>'
     +(r.by?'<tr><td>Encaissé par</td><td>'+esc(r.by)+'</td></tr>':'')+'</table>'
-    +'<div class="rcsig"><div>Signature du client</div><div>Cachet &amp; signature du cabinet</div></div></div>';};
+    +'<div class="rcsig"><div>Signature du client</div><div>Signature du cabinet</div></div></div>';};
   return one("Original — client")+'<div class="cut">✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -</div>'+one("Souche — cabinet");}
 var SV_RC_CSS='.rc{border:1.5px solid #14201C;border-radius:8px;padding:16px 20px;max-width:720px;margin:0 auto}.rch{display:flex;justify-content:space-between;gap:16px;border-bottom:2px solid #14201C;padding-bottom:10px}'
  +'.rcc{font-size:15px;font-weight:bold;color:#14201C;text-transform:uppercase}.rcs{font-size:10px;color:#555;margin-top:2px}.rcn{text-align:right;flex-shrink:0}.rcn .t{font-size:15px;font-weight:bold;letter-spacing:.5px;color:#14201C}.rcn .n{font-size:13px;font-weight:bold;color:#0E7A5F;margin-top:3px}.rcn .d{font-size:9.5px;color:#888;margin-top:2px;text-transform:uppercase;letter-spacing:.05em}'
@@ -14373,6 +14373,25 @@ doPrintReceipt=async function(id){var c=clients().find(function(x){return x.id==
   if(!Array.isArray(S.receipts))S.receipts=[];S.receipts.push({no:no,clientId:id,dossier:c.dossier,montant:montant,motif:motif,date:date,mode:mode});save("receipts");
   S.modal=null;renderModal();svPrintRec({no:no,client:c.dossier,ice:soc.ice||"",montant:montant,motif:motif,mode:mode,date:date,cab:svCabHead()},w6);};
 var _svAI2=svAdminInit;svAdminInit=function(){_svAI2();setTimeout(svSyncRecCounters,2500);};
+
+
+/* ---------- PROTECTION : un onglet reste lié au compte avec lequel il a été ouvert ----------
+   Si un autre compte (ex. le collaborateur) se connecte dans un autre onglet du même navigateur,
+   la session partagée change : on bloque toute écriture et on recharge, au lieu d'enregistrer
+   les données du cabinet dans le mauvais compte. */
+SV.ownerId=null;SV.locked=false;
+function svLockOut(){if(SV.locked)return;SV.locked=true;
+  try{document.getElementById("overlay").innerHTML='<div class="ov" style="background:rgba(20,32,28,.85)"><div class="modal" data-stop style="max-width:430px"><div class="mb" style="padding:28px;text-align:center;line-height:1.6"><div class="ff" style="font-size:20px;font-weight:700;color:#14201C">Autre compte connecté</div><div style="font-size:13px;color:var(--muted);margin:10px 0 18px">Un autre compte vient de se connecter dans ce navigateur. Pour protéger vos données, cette page va se recharger.<br><b>Conseil :</b> utilisez une fenêtre de navigation privée (ou un autre navigateur) pour le compte collaborateur.</div><button class="btn-primary" onclick="location.reload()" style="width:100%;justify-content:center">Recharger</button></div></div></div>';}catch(e){}
+  setTimeout(function(){location.reload();},6000);}
+function svWatchIdentity(){if(!sb||SV._watch)return;SV._watch=true;
+  sb.auth.onAuthStateChange(function(_e,s2){var uid=s2&&s2.user&&s2.user.id;if(SV.ownerId&&uid&&uid!==SV.ownerId)svLockOut();});
+  window.addEventListener("storage",function(){setTimeout(async function(){try{var g=await sb.auth.getSession();var uid=g.data.session&&g.data.session.user&&g.data.session.user.id;if(SV.ownerId&&uid&&uid!==SV.ownerId)svLockOut();}catch(e){}},300);});}
+// Déconnexion : on recharge pour vider de la mémoire les données du compte précédent.
+var _svLO=logout;logout=async function(){SV.ownerId=null;await _svLO();try{localStorage.removeItem("fid_ui");}catch(e){}location.reload();};
+var _svCU2=cloudUpsert;
+cloudUpsert=function(k,v){if(SV.locked)return;if(SV.ownerId&&session&&session.user&&session.user.id!==SV.ownerId){svLockOut();return;}return _svCU2(k,v);};
+var _svAI3=svAdminInit;svAdminInit=function(){if(session&&session.user)SV.ownerId=session.user.id;svWatchIdentity();_svAI3();};
+var _svSB2=svStaffBoot;svStaffBoot=async function(){if(session&&session.user)SV.ownerId=session.user.id;svWatchIdentity();await _svSB2();};
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
