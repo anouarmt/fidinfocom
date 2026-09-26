@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10r · commentaires horodatés (tâches & dossiers) · sélection clients — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10s · sauvegarde Drive simplifiée · commentaires horodatés — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -14934,7 +14934,11 @@ exportBackup=async function(){try{var p=await svBackupPayload(),blob=new Blob([J
 SV.gTok=null;SV.gTokExp=0;
 function svLoadGis(){return new Promise(function(res,rej){if(window.google&&google.accounts&&google.accounts.oauth2)return res();var s=document.createElement("script");s.src="https://accounts.google.com/gsi/client";s.onload=function(){res();};s.onerror=function(){rej(new Error("Chargement du service Google impossible"));};document.head.appendChild(s);});}
 async function svDriveToken(){if(SV.gTok&&Date.now()<SV.gTokExp)return SV.gTok;var cid=(cabinetGet().gClientId||"").trim();
-  if(!cid)throw new Error("Renseignez d'abord l'« ID client Google » dans le cadre Sauvegarde (voir la notice).");
+  if(!cid){var v=window.prompt("Réglage unique — collez ici votre ID client Google\n(Google Cloud → Google Auth Platform → Clients → « Client Web 1 » → icône copier).\nIl se termine par .apps.googleusercontent.com","");
+    v=(v||"").trim();if(!v)throw new Error("ID client Google non renseigné.");
+    if(!/\.apps\.googleusercontent\.com$/.test(v))throw new Error("ID client invalide : il doit se terminer par .apps.googleusercontent.com");
+    cabinetSet("gClientId",v);try{renderView();}catch(e){}svLoadGis().catch(function(){});
+    showOk("ID client Google enregistré. Cliquez à nouveau sur « Sauvegarder vers Drive » pour lancer la sauvegarde.");throw new Error("__silent__");}
   await svLoadGis();return new Promise(function(res,rej){try{var tc=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive.file",
     callback:function(r){if(r&&r.access_token){SV.gTok=r.access_token;SV.gTokExp=Date.now()+((+r.expires_in||3600)-120)*1000;res(r.access_token);}else rej(new Error((r&&r.error)||"Autorisation Google refusée"));},
     error_callback:function(e){rej(new Error((e&&e.message)||"Fenêtre Google fermée ou bloquée"));}});tc.requestAccessToken({prompt:""});}catch(e){rej(e);}});}
@@ -14959,8 +14963,8 @@ async function svDriveBackupData(){var b=null;try{var tok=await svDriveToken();b
   var p=await svBackupPayload(),blob=new Blob([JSON.stringify(p)],{type:"application/json"}),folder=await svDriveFolder(tok),d=new Date().toISOString().slice(0,16).replace("T","_").replace(":","h");
   await svDriveUpload(tok,folder,blob,"donnees-fidinfocom-"+d+".json","application/json",b.set);await svDrivePrune(tok,folder,"donnees-fidinfocom-",30);
   b.close();svMarkBackup("donnees","Google Drive");renderView();showOk("Données sauvegardées dans Google Drive (dossier « Sauvegardes FID INFO COM »).");}
-  catch(e){if(b)b.close();showErr("Sauvegarde Drive impossible : "+(e.message||e));}}
-async function svDriveBackupFull(){var tok;try{tok=await svDriveToken();}catch(e){showErr("Sauvegarde Drive impossible : "+(e.message||e));return;}
+  catch(e){if(b)b.close();if(String(e&&e.message)!=="__silent__")showErr("Sauvegarde Drive impossible : "+(e.message||e));}}
+async function svDriveBackupFull(){var tok;try{tok=await svDriveToken();}catch(e){if(String(e&&e.message)!=="__silent__")showErr("Sauvegarde Drive impossible : "+(e.message||e));return;}
   SV.zipHook=async function(blob,name,setP){var folder=await svDriveFolder(tok);await svDriveUpload(tok,folder,blob,name,"application/zip",setP);await svDrivePrune(tok,folder,"SAUVEGARDE-COMPLETE-",8);svMarkBackup("complete","Google Drive");};
   try{await exportFullBackup();}finally{SV.zipHook=null;renderView();}}
 /* Encadré de sauvegarde : Drive + réglages + dernière sauvegarde */
