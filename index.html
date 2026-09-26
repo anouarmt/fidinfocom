@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10m · CPU avec ou sans TVA · revenus fonciers · délais de paiement — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10n · sauvegarde Google Drive · CPU · délais de paiement — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -910,6 +910,7 @@ async function exportFullBackup(){
     /* 1) données structurées (mêmes rubriques que l'export .json) */
     var payload={app:"FID INFO COM",version:VERSION,exportedAt:new Date().toISOString(),data:{}};
     KEYS.forEach(function(k){payload.data[k]=S[k];});
+    try{setP("Lecture des tables de l'équipe…");payload.cloud=await svCloudDump();}catch(_e){}
     zip.file("donnees/sauvegarde-fidinfocom-"+new Date().toISOString().slice(0,10)+".json", JSON.stringify(payload));
     /* 2) noms de dossiers lisibles (id -> nom du client) */
     var byId={}; try{ clients().forEach(function(c){byId[String(c.id)]=(c.dossier||("dossier "+c.id));}); }catch(e){}
@@ -959,12 +960,14 @@ async function exportFullBackup(){
     }
     setP("Compression du fichier ZIP…");
     var blob=await zip.generateAsync({type:"blob",compression:"DEFLATE"},function(meta){ setP("Compression… "+Math.round(meta.percent)+"%"); });
-    var url=URL.createObjectURL(blob),a=document.createElement("a");
-    a.href=url; a.download="SAUVEGARDE-COMPLETE-fidinfocom-"+new Date().toISOString().slice(0,10)+".zip";
+    var zname="SAUVEGARDE-COMPLETE-fidinfocom-"+new Date().toISOString().slice(0,16).replace("T","_").replace(":","h")+".zip";
+    if(SV.zipHook){ await SV.zipHook(blob,zname,setP); }
+    else{ var url=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=url; a.download=zname;
     document.body.appendChild(a); a.click();
-    setTimeout(function(){ try{document.body.removeChild(a);}catch(e){} URL.revokeObjectURL(url); },2000);
+    setTimeout(function(){ try{document.body.removeChild(a);}catch(e){} URL.revokeObjectURL(url); },2000); svMarkBackup("complete","téléchargement"); }
     ov.remove();
-    showOk("Sauvegarde complète : "+totalOk+" fichier(s) + toutes les données"+(totalFail?(" ("+totalFail+" échec)"):"")+".");
+    showOk((SV.zipHook?"Sauvegarde complète envoyée dans Google Drive : ":"Sauvegarde complète : ")+totalOk+" fichier(s) + toutes les données"+(totalFail?(" ("+totalFail+" échec)"):"")+".");
     if(totalFail){ alert("Sauvegarde terminée.\n\n\u2705 Fichiers enregistrés : "+totalOk+"\n\u274C Échecs : "+totalFail+(failNames.length?("\n\nExemples :\n- "+failNames.slice(0,10).join("\n- ")):"")+"\n\nRelancez la sauvegarde pour récupérer les manquants, ou vérifiez votre connexion internet."); }
     else if(grandTotal===0){ alert("Sauvegarde générée.\n\nAucun fichier scanné n'a été trouvé dans le cloud — seules les données ont été enregistrées dans le ZIP."); }
   }catch(e){ try{ov.remove();}catch(_e){} showErr("Sauvegarde complète impossible : "+(e&&e.message?e.message:e)); }
@@ -14911,6 +14914,75 @@ function svStaffDeclFilters(){var all=svStaffDeclRows().filter(function(x){retur
   var cats='<div class="seg" style="flex-wrap:wrap">'+SV_DCATS.filter(function(c){return c[0]==="all"||present[c[0]];}).map(function(c){return btn(c[0],c[1],"sv_s_cat",SV.scat);}).join("")+'</div>';
   return st+'<div style="flex-basis:100%;height:0"></div>'+cats;}
 
+
+/* =====================================================================
+   SAUVEGARDE VERS GOOGLE DRIVE (+ tables équipe incluses, rappel hebdomadaire)
+   ===================================================================== */
+var SV_CLOUD_TABLES=["staff_data","staff_saisies","staff_task_status","staff_caisse","staff_doc_requests","dossier_decharges","client_notes","portal_clients","portal_requests","portal_documents","recu_counters","doc_counters"];
+async function svCloudDump(){var out={};if(!(CLOUD&&sb&&session))return out;
+  for(var i=0;i<SV_CLOUD_TABLES.length;i++){var t=SV_CLOUD_TABLES[i];try{var r=await sb.from(t).select("*").limit(20000);out[t]=r.error?{erreur:r.error.message}:(r.data||[]);}catch(e){out[t]={erreur:String(e.message||e)};}}
+  return out;}
+async function svBackupPayload(){var payload={app:"FID INFO COM",version:VERSION,exportedAt:new Date().toISOString(),data:{},cloud:{}};
+  KEYS.forEach(function(k){payload.data[k]=S[k];});payload.cloud=await svCloudDump();return payload;}
+function svMarkBackup(type,dest){cabinetSet("lastBackup",{at:new Date().toISOString(),type:type,dest:dest});}
+function svDaysSinceBackup(){var b=cabinetGet().lastBackup;if(!b||!b.at)return null;return Math.floor((Date.now()-new Date(b.at))/86400000);}
+/* Données seules (.json) : inclut désormais les tables de l'équipe */
+exportBackup=async function(){try{var p=await svBackupPayload(),blob=new Blob([JSON.stringify(p)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="sauvegarde-fidinfocom-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},2000);
+  svMarkBackup("donnees","téléchargement");showOk("Sauvegarde des données exportée ("+KEYS.length+" rubriques + "+Object.keys(p.cloud).length+" tables équipe).");}catch(e){showErr("Export impossible : "+(e.message||e));}};
+/* ---------- Google Drive (Google Identity Services, droit limité aux fichiers créés par le logiciel) ---------- */
+SV.gTok=null;SV.gTokExp=0;
+function svLoadGis(){return new Promise(function(res,rej){if(window.google&&google.accounts&&google.accounts.oauth2)return res();var s=document.createElement("script");s.src="https://accounts.google.com/gsi/client";s.onload=function(){res();};s.onerror=function(){rej(new Error("Chargement du service Google impossible"));};document.head.appendChild(s);});}
+async function svDriveToken(){if(SV.gTok&&Date.now()<SV.gTokExp)return SV.gTok;var cid=(cabinetGet().gClientId||"").trim();
+  if(!cid)throw new Error("Renseignez d'abord l'« ID client Google » dans le cadre Sauvegarde (voir la notice).");
+  await svLoadGis();return new Promise(function(res,rej){try{var tc=google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/drive.file",
+    callback:function(r){if(r&&r.access_token){SV.gTok=r.access_token;SV.gTokExp=Date.now()+((+r.expires_in||3600)-120)*1000;res(r.access_token);}else rej(new Error((r&&r.error)||"Autorisation Google refusée"));},
+    error_callback:function(e){rej(new Error((e&&e.message)||"Fenêtre Google fermée ou bloquée"));}});tc.requestAccessToken({prompt:""});}catch(e){rej(e);}});}
+async function svDriveApi(tok,url,opt){opt=opt||{};opt.headers=Object.assign({Authorization:"Bearer "+tok},opt.headers||{});var r=await fetch(url,opt);if(!r.ok){var t="";try{t=await r.text();}catch(e){}throw new Error("Google Drive ("+r.status+") "+t.slice(0,180));}return r;}
+async function svDriveFolder(tok){var fid=cabinetGet().gFolder;
+  if(fid){try{var r=await svDriveApi(tok,"https://www.googleapis.com/drive/v3/files/"+fid+"?fields=id,trashed");var j=await r.json();if(j.id&&!j.trashed)return fid;}catch(e){}}
+  var c=await svDriveApi(tok,"https://www.googleapis.com/drive/v3/files?fields=id",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Sauvegardes FID INFO COM",mimeType:"application/vnd.google-apps.folder"})});
+  var cj=await c.json();cabinetSet("gFolder",cj.id);return cj.id;}
+async function svDriveUpload(tok,folder,blob,name,mime,setP){
+  var init=await svDriveApi(tok,"https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size",{method:"POST",headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(blob.size)},body:JSON.stringify({name:name,parents:[folder]})});
+  var loc=init.headers.get("Location");if(!loc)throw new Error("Google Drive n'a pas ouvert l'envoi (adresse manquante).");
+  if(setP)setP("Envoi vers Google Drive… ("+(blob.size/1048576).toFixed(1)+" Mo)");
+  var up=await fetch(loc,{method:"PUT",headers:{"Content-Type":mime},body:blob});if(!up.ok){var t="";try{t=await up.text();}catch(e){}throw new Error("Envoi Drive échoué ("+up.status+") "+t.slice(0,160));}
+  return up.json();}
+async function svDrivePrune(tok,folder,prefix,keep){try{var q=encodeURIComponent("'"+folder+"' in parents and trashed=false and name contains '"+prefix+"'");
+  var r=await svDriveApi(tok,"https://www.googleapis.com/drive/v3/files?q="+q+"&orderBy=createdTime desc&fields=files(id,name,createdTime)&pageSize=100");var j=await r.json(),old=(j.files||[]).slice(keep);
+  for(var i=0;i<old.length;i++){try{await svDriveApi(tok,"https://www.googleapis.com/drive/v3/files/"+old[i].id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({trashed:true})});}catch(e){}}}catch(e){}}
+function svBusy(txt){var ov=document.createElement("div");ov.id="svBusy";ov.style.cssText="position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:#fff;font:600 15px system-ui;text-align:center;padding:20px";
+  ov.innerHTML="<div>"+txt+"<br><span id='svBusyP' style='font-weight:400;font-size:13px;opacity:.85'></span><br><span style='font-weight:400;font-size:11.5px;opacity:.6'>Ne fermez pas cette fenêtre.</span></div>";document.body.appendChild(ov);
+  return {set:function(t){var e=document.getElementById("svBusyP");if(e)e.textContent=t;},close:function(){try{ov.remove();}catch(e){}}};}
+async function svDriveBackupData(){var b=null;try{var tok=await svDriveToken();b=svBusy("Sauvegarde des données vers Google Drive…");b.set("Lecture des données…");
+  var p=await svBackupPayload(),blob=new Blob([JSON.stringify(p)],{type:"application/json"}),folder=await svDriveFolder(tok),d=new Date().toISOString().slice(0,16).replace("T","_").replace(":","h");
+  await svDriveUpload(tok,folder,blob,"donnees-fidinfocom-"+d+".json","application/json",b.set);await svDrivePrune(tok,folder,"donnees-fidinfocom-",30);
+  b.close();svMarkBackup("donnees","Google Drive");renderView();showOk("Données sauvegardées dans Google Drive (dossier « Sauvegardes FID INFO COM »).");}
+  catch(e){if(b)b.close();showErr("Sauvegarde Drive impossible : "+(e.message||e));}}
+async function svDriveBackupFull(){var tok;try{tok=await svDriveToken();}catch(e){showErr("Sauvegarde Drive impossible : "+(e.message||e));return;}
+  SV.zipHook=async function(blob,name,setP){var folder=await svDriveFolder(tok);await svDriveUpload(tok,folder,blob,name,"application/zip",setP);await svDrivePrune(tok,folder,"SAUVEGARDE-COMPLETE-",8);svMarkBackup("complete","Google Drive");};
+  try{await exportFullBackup();}finally{SV.zipHook=null;renderView();}}
+/* Encadré de sauvegarde : Drive + réglages + dernière sauvegarde */
+var _svDBC=dataBackupCard;
+dataBackupCard=function(){var h=_svDBC(),cab=cabinetGet(),lb=cab.lastBackup,days=svDaysSinceBackup();
+  var last=lb?('<div style="font-size:12.5px;margin-bottom:10px;color:'+(days>7?"#B42318":"#0E7A5F")+'"><b>Dernière sauvegarde :</b> '+svDT(lb.at)+' — '+(lb.type==="complete"?"complète (données + scans)":"données")+' · '+esc(lb.dest||"")+(days>7?' — <b>il y a '+days+' jours</b>':'')+'</div>'):'<div style="font-size:12.5px;margin-bottom:10px;color:#B42318"><b>Aucune sauvegarde enregistrée.</b></div>';
+  var drive='<div style="margin-top:14px;padding:14px 16px;border:1px solid #CFE3F6;background:#F4F9FE;border-radius:12px">'
+   +'<div style="font-weight:700;font-size:13.5px;color:#1D6FB8;margin-bottom:8px">☁️ Sauvegarde vers Google Drive</div>'+last
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn-add" data-act="sv_gd_full">'+ic("down")+' Complète vers Drive (données + scans)</button><button class="chip" data-act="sv_gd_data">'+ic("down")+' Données seules vers Drive</button></div>'
+   +'<div style="font-size:11.5px;color:var(--muted);margin-top:8px">Dossier créé dans votre Drive : <b>Sauvegardes FID INFO COM</b>. Les 8 dernières sauvegardes complètes et les 30 dernières sauvegardes de données sont conservées (les plus anciennes vont à la corbeille Drive).</div>'
+   +'<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;font-weight:600;color:#1D6FB8">Réglage unique : ID client Google '+(cab.gClientId?'✓ configuré':'(à faire une fois)')+'</summary>'
+   +'<div style="font-size:12px;line-height:1.6;margin-top:8px;color:#44403c">1. Ouvrez <b>console.cloud.google.com</b> avec votre compte Gmail, créez un projet « FID INFO COM ».<br>2. <b>API et services → Bibliothèque</b> : activez <b>Google Drive API</b>.<br>3. <b>Écran de consentement OAuth</b> : type <i>Externe</i>, ajoutez votre adresse comme <i>utilisateur test</i> (ou publiez l\'application).<br>4. <b>Identifiants → Créer → ID client OAuth</b> : type <i>Application Web</i>, origine JavaScript autorisée : <b>https://anouarmt.github.io</b>.<br>5. Copiez l\'<b>ID client</b> (se termine par .apps.googleusercontent.com) et collez-le ci-dessous.</div>'
+   +'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input class="ipt" id="sv_gcid" value="'+esc(cab.gClientId||"")+'" placeholder="xxxxxxxx.apps.googleusercontent.com" style="flex:1;min-width:260px"><button class="chip" data-act="sv_gcid_save">Enregistrer</button></div></details></div>';
+  var i=h.lastIndexOf('</div>');return i>0?h.slice(0,i)+drive+h.slice(i):h+drive;};
+/* Précharge le service Google pour que la fenêtre d'autorisation ne soit pas bloquée */
+var _svAI8=svAdminInit;svAdminInit=function(){_svAI8();if(svAdmin()&&(cabinetGet().gClientId||"").trim())setTimeout(function(){svLoadGis().catch(function(){});},3000);};
+/* Rappel sur le tableau de bord si pas de sauvegarde depuis 7 jours */
+var _svRV3=renderView;renderView=function(){_svRV3();if(SV.staff||S.tab!=="dash")return;var d=svDaysSinceBackup();if(d!==null&&d<=7)return;var v=document.getElementById("view");if(!v||v.querySelector("#svBkAlert"))return;
+  var w=v.querySelector(".wrap");if(!w)return;var h2=w.querySelector("h1,h2");var hd=h2;while(hd&&hd.parentNode!==w)hd=hd.parentNode;var box=document.createElement("div");box.id="svBkAlert";box.className="svalert mt4";box.style.background="#FBEAE8";box.style.borderColor="#F0C6C0";box.style.color="#8E1B12";
+  box.innerHTML='<span style="font-size:18px">💾</span><div style="flex:1;min-width:0">'+(d===null?"<b>Aucune sauvegarde</b> n'a encore été faite depuis ce logiciel.":"<b>Dernière sauvegarde il y a "+d+" jours.</b>")+' Votre hébergement gratuit ne fait aucune sauvegarde automatique.</div><button class="btn-primary" data-act="sv_gd_full" style="width:auto;flex:0 0 auto;white-space:nowrap">Sauvegarder vers Drive</button>';
+  if(hd&&hd.nextSibling)w.insertBefore(box,hd.nextSibling);else w.insertBefore(box,w.firstChild);};
+
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
   if(SV.staff&&e.target.classList&&e.target.classList.contains("ov")&&e.target.closest("#svOv")){SV.modal=null;svStaffModal();return;}
@@ -14967,6 +15039,9 @@ document.addEventListener("click",function(e){
   else if(a==="sv_note_del"){if(!window.confirm("Supprimer cette remarque ?"))return;var nd=SV.notes.find(function(n){return n.id===t.dataset.id;});sb.from("client_notes").delete().eq("id",t.dataset.id).then(function(r){if(r.error){showErr(r.error.message);return;}SV.notes=SV.notes.filter(function(n){return n.id!==t.dataset.id;});if(S.modal&&nd)svNotesRefresh(nd.client_id);else renderView();renderNav();});}
   else if(a==="sv_nf"){SV.nf=t.dataset.v;renderView();}
   else if(a==="sv_nk"){SV.nk=t.dataset.v;if(SV.staff)svStaffRender();else renderView();}
+  else if(a==="sv_gd_full"){svDriveBackupFull();}
+  else if(a==="sv_gd_data"){svDriveBackupData();}
+  else if(a==="sv_gcid_save"){var v=svVal("sv_gcid").trim();if(v&&!/\.apps\.googleusercontent\.com$/.test(v)){showErr("L'ID client doit se terminer par .apps.googleusercontent.com");return;}cabinetSet("gClientId",v);SV.gTok=null;showOk(v?"ID client Google enregistré.":"ID client supprimé.");renderView();}
   else if(a==="sv_row_del"){svDeleteRow(t.dataset.id);}
   else if(a==="sv_pl_del"){svDeletePl(t.dataset.id);}
   else if(a==="sv_doc_del"){svDeleteDoc(t.dataset.id);}
