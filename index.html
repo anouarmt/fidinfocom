@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10l · CPU & revenus fonciers sans TVA ni bilan · délais de paiement — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10m · CPU avec ou sans TVA · revenus fonciers · délais de paiement — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -424,11 +424,12 @@ function smartMatch(query,text){
 }
 
 var SV_ALL=0;
-/* CPU et particuliers (revenus fonciers) : ni TVA, ni bilan, ni acomptes IS, ni cotisation minimale, ni AGO */
+/* Particuliers (revenus fonciers) : ni TVA, ni bilan, ni IS, ni CM, ni AGO.
+   CPU : ni bilan, ni IS, ni CM, ni AGO — la TVA suit le « Régime TVA » choisi (certains CPU sont assujettis à la TVA). */
 function svFormeOpts(v){var L={"personne morale":"Personne morale (société)","personne physique":"Personne physique (RNR / RNS)","cpu":"CPU — Contribution professionnelle unique","particulier":"Particulier — revenus fonciers"};
   return FORMES.map(function(f){return '<option value="'+f+'"'+(String(v||"").toLowerCase()===f?" selected":"")+'>'+L[f]+'</option>';}).join("");}
 function svRegimeFix(c){var f=String(c.forme||"").toLowerCase().trim();
-  if(f==="cpu"||f==="particulier"){c.reg="neant";c.hasBilan=false;c.hasDp=false;c.hasCMpm=false;c.hasCMpp=false;if(f==="particulier")c.hasFoncier=true;}
+  if(f==="cpu"||f==="particulier"){c.hasBilan=false;c.hasDp=false;c.hasCMpm=false;c.hasCMpp=false;if(f==="particulier"){c.reg="neant";c.hasFoncier=true;}}
   return c;} // >0 : inclure les dossiers sortants (liste clients, fiche, décharges, relevés)
 function clients(){
   return SEED.concat(S.custom).filter(c=>!S.deleted[c.id]&&(SV_ALL>0||!(S.flags[c.id]||{}).sortant)).map(c=>svRegimeFix(Object.assign({},c,S.flags[c.id]||{})));
@@ -11670,7 +11671,7 @@ function modalCEdit(id){
     '<div class="mh"><h3 class="ff">'+(isNew?"Nouveau client":"Modifier le client")+'</h3><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'+
     '<div class="mb">'+
       '<div class="mb3"><div class="flbl">Dénomination du dossier</div><input class="ipt" id="cf_dossier" placeholder="Nom de la société / du client" value="'+esc(c.dossier)+'"></div>'+
-      '<div class="grid g2"><div><div class="flbl">Forme juridique</div><select class="ipt" id="cf_forme">'+svFormeOpts(c.forme)+'</select><div style="font-size:11px;color:var(--muted);margin-top:4px">CPU et particulier (revenus fonciers) : ni TVA ni bilan.</div></div><div><div class="flbl">Téléphone</div><input class="ipt" id="cf_tel" value="'+esc(c.tel)+'"></div></div>'+
+      '<div class="grid g2"><div><div class="flbl">Forme juridique</div><select class="ipt" id="cf_forme">'+svFormeOpts(c.forme)+'</select><div style="font-size:11px;color:var(--muted);margin-top:4px">Particulier (revenus fonciers) : ni TVA ni bilan. CPU : pas de bilan ; TVA selon le « Régime TVA » ci-dessous.</div></div><div><div class="flbl">Téléphone</div><input class="ipt" id="cf_tel" value="'+esc(c.tel)+'"></div></div>'+
       '<div class="mt3"><div class="flbl">Versement de la CPU <span style="font-weight:400;color:var(--muted)">(uniquement si forme = CPU)</span></div><select class="ipt" id="cf_cpupay" style="max-width:420px"><option value="annuel"'+(c.cpuPay!=="trimestriel"?" selected":"")+'>Annuel — en totalité avec la déclaration (avant le 1er avril)</option><option value="trimestriel"'+(c.cpuPay==="trimestriel"?" selected":"")+'>Trimestriel — 4 acomptes (fin mars, juin, septembre, décembre)</option></select></div>'+
       '<div class="grid g3 mt3">'+num("cf_hontrim","Honoraire trim. (DH)",c.honTrim)+num("cf_honbilan","Honoraire bilan (DH)",c.honBilan)+num("cf_pv","PV de dépôt (DH)",c.pvDepot)+'</div>'+
       '<div class="grid g2 mt3"><div><div class="flbl">Régime TVA (déclaration)</div><select class="ipt" id="cf_reg">'+REGS.map(r=>'<option value="'+r[0]+'"'+(c.reg===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div>'+
@@ -13968,7 +13969,7 @@ function svTbody(rows){var list=svFilterRows(rows);
   if(!list.length)return '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:26px">Aucun dossier pour ce filtre.</td></tr>';
   return list.map(function(x){var c=x.c,pct=x.n?Math.round(x.ok/x.n*100):0,hp=x.e?Math.min(100,Math.round(x.cl/x.e*100)):0,reste=Math.max(0,x.e-x.cl);
     var pp=svPendPay(c.id),ppTxt=pp.length?'<div class="sub" style="color:#9A7610">⏳ '+pp.length+' paiement(s) à valider</div>':'';
-    var fo=String(c.forme||"").toLowerCase(),reg=fo==="cpu"?"CPU":fo==="particulier"?"Revenus fonciers":c.reg==="mensuelle"?"TVA mensuelle":c.reg==="trimestrielle"?"TVA trimestrielle":"Hors TVA";
+    var fo=String(c.forme||"").toLowerCase(),reg=fo==="cpu"?(c.reg==="mensuelle"?"CPU · TVA mensuelle":c.reg==="trimestrielle"?"CPU · TVA trimestrielle":"CPU · hors TVA"):fo==="particulier"?"Revenus fonciers":c.reg==="mensuelle"?"TVA mensuelle":c.reg==="trimestrielle"?"TVA trimestrielle":"Hors TVA";
     return '<tr><td style="min-width:190px"><div class="dossier">'+esc(c.dossier)+'</div><div class="sub">'+esc(reg)+(c.forme?' · '+esc(c.forme):'')+'</div></td>'
       +'<td style="min-width:300px;line-height:1.9">'+svPillsHtml(c,x.dls,x.sts)+'</td>'
       +'<td style="min-width:110px"><span class="mono" style="font-weight:600;color:'+(x.r?"#B42318":"#0E7A5F")+'">'+x.ok+' / '+x.n+'</span>'+(x.r?' <span style="font-size:11px;color:#B42318">· '+x.r+' en retard</span>':'')+'<div class="svbar"><div style="width:'+pct+'%"></div></div></td>'
