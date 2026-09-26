@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10o · avancement des dossiers · sauvegarde Drive · CPU — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10p · observations sur les tâches · avancement des dossiers · sauvegarde Drive — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -5179,7 +5179,7 @@ function teamUnassignDossier(id,cid){ var s=teamStaff(id); if(!s)return; s.dossi
 function teamTaskAdd(staffId){
   var t=teamGet(),gv=function(id){var el=document.getElementById(id);return el?el.value:"";};
   var label=gv("team_task_label").trim(); if(!label){showErr("Saisissez l'intitulé de la tâche.");return;}
-  var dos=gv("team_task_dossier"); var k={id:"TK"+Date.now()+Math.floor(Math.random()*1000),staffId:staffId,dossierId:dos!==""?+dos:null,label:label,statut:"todo",prio:gv("team_task_prio")||"normale",echeance:gv("team_task_echeance")||"",acces:gv("team_task_acces")||"tache",created:new Date().toISOString()};
+  var dos=gv("team_task_dossier"); var k={id:"TK"+Date.now()+Math.floor(Math.random()*1000),staffId:staffId,dossierId:dos!==""?+dos:null,label:label,statut:"todo",prio:gv("team_task_prio")||"normale",echeance:gv("team_task_echeance")||"",acces:gv("team_task_acces")||"tache",obs:gv("team_task_obs").trim(),created:new Date().toISOString()};
   t.tasks.unshift(k); save("team"); renderNav(); renderView();
 }
 function teamTaskStatus(taskId,st){ var k=teamGet().tasks.find(function(x){return String(x.id)===String(taskId);}); if(k){k.statut=st;save("team");renderNav();renderView();} }
@@ -5194,7 +5194,7 @@ function teamTaskCard(k,showStaff){
   return '<div style="border:1px solid #EEEADF;border-radius:10px;padding:11px;margin-bottom:9px'+(od?";background:#FCF1EE":"")+'">'
     +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
       +'<div style="flex:1"><div style="font-weight:600;font-size:13px;'+(k.statut==="done"?"text-decoration:line-through;color:var(--faint)":"")+'">'+esc(k.label)+'</div>'
-      +(meta.length?'<div style="font-size:11px;color:var(--muted);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap">'+meta.join("")+'</div>':'')+'</div>'
+      +(meta.length?'<div style="font-size:11px;color:var(--muted);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap">'+meta.join("")+'</div>':'')+svTaskObsHtml(k)+'</div>'
       +'<span style="background:'+st.bg+';color:'+st.c+';border-radius:20px;padding:2px 9px;font-size:10.5px;font-weight:700;white-space:nowrap">'+st.l+'</span>'
     +'</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">'
@@ -5319,6 +5319,7 @@ function teamStaffDetail(s){
       +'<div class="flbl">Nouvelle tâche</div><input class="ipt" id="team_task_label" placeholder="ex. Déclarer la TVA du 2ᵉ trimestre" style="margin-bottom:8px">'
       +'<div class="grid g2"><div><div class="flbl">Dossier concerné</div><select class="ipt" id="team_task_dossier">'+clientOptsTask+'</select></div><div><div class="flbl">Accès accordé</div><select class="ipt" id="team_task_acces"><option value="tache">Tâche seulement</option><option value="global">Dossier complet</option></select></div></div>'
       +'<div class="grid g2" style="margin-top:8px"><div><div class="flbl">Échéance</div><input class="ipt" type="date" id="team_task_echeance"></div><div><div class="flbl">Priorité</div><select class="ipt" id="team_task_prio">'+prioOpts+'</select></div></div>'
+      +'<div style="margin-top:8px"><div class="flbl">Observation / consignes pour le collaborateur</div><textarea class="ipt" id="team_task_obs" rows="2" style="font-family:inherit;resize:vertical" placeholder="ex. Attention : le client a changé de banque en juin, demander les deux relevés."></textarea></div>'
       +'<div class="note" style="font-size:10.5px;color:var(--faint);margin-top:6px">« Tâche seulement » : le collaborateur ne verra que cette tâche. « Dossier complet » : il aura accès à tout le dossier client lié (documents, autres tâches).</div>'
       +'<button class="btn-primary" data-act="team_task_add" data-id="'+s.id+'" style="margin-top:10px">'+ic("plus","width:14px;height:14px")+' Ajouter la tâche</button>'
     +'</div>'
@@ -13926,7 +13927,7 @@ function svBuildSnapshot(s){var scope=s.saisie||"all";if(scope==="none")return n
     out.push(o);});
   return {gen:new Date().toISOString(),y:Y,clients:out,cab:svCabHead()};}
 var _svTBP=teamBuildPayload;
-teamBuildPayload=function(s){var p=_svTBP(s)||{};try{p.gen=new Date().toISOString();p.saisie=s.saisie||"all";p.suivi=svBuildSnapshot(s);var all=teamGet().tasks;p.tasks=(p.tasks||[]).map(function(t){var o=all.find(function(k){return String(k.id)===String(t.id);})||{};t.stAt=o.stAt||o.created||"";return t;});}catch(e){}return p;};
+teamBuildPayload=function(s){var p=_svTBP(s)||{};try{p.gen=new Date().toISOString();p.saisie=s.saisie||"all";p.suivi=svBuildSnapshot(s);var all=teamGet().tasks;p.tasks=(p.tasks||[]).map(function(t){var o=all.find(function(k){return String(k.id)===String(t.id);})||{};t.stAt=o.stAt||o.created||"";t.obs=o.obs||"";return t;});}catch(e){}return p;};
 function svSchedulePush(fast){if(!svAdmin())return;clearTimeout(SV.pushT);SV.pushT=setTimeout(function(){svPushAll(false);},fast?1500:5000);}
 async function svPushAll(manual){if(!svAdmin())return;
   var st=teamGet().staff.filter(function(s){return (s.email||"").trim()&&s.invited;}),ok=0;
@@ -14182,7 +14183,7 @@ async function svLoadTaskStatus(){if(!svAdmin())return;try{var r=await sb.from("
   r.data.forEach(function(row){var k=t.tasks.find(function(x){return String(x.id)===String(row.task_id);});if(!k)return;
     var s=teamStaff(k.staffId);if(!s||(s.email||"").toLowerCase()!==(row.email||"").toLowerCase())return;
     if(row.statut&&row.statut!==k.statut&&(row.updated_at||"")>(k.stAt||k.created||"")){k.statut=row.statut;k.stAt=row.updated_at;k.stBy=s.name||row.email;changed++;}});
-  if(changed){save("team");try{renderNav();}catch(e){}if(S.tab==="team"&&!S.modal){var ae=document.activeElement;if(!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||"")))renderView();}showOk(changed+" tâche(s) mise(s) à jour par l'équipe.");}}catch(e){}}
+  if(changed){save("team");try{renderNav();}catch(e){}if(S.tab==="team"&&!S.modal){var ae=document.activeElement;if(!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||"")))renderView();}showOk(changed+" tâche(s) mise(s) à jour par l'équipe.");}else if(S.tab==="team"&&!S.modal){var ae2=document.activeElement;if(!(ae2&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae2.tagName||"")))renderView();}}catch(e){}}
 function svSubTasksAdmin(){try{sb.channel("sv_tasks_admin").on("postgres_changes",{event:"*",schema:"public",table:"staff_task_status"},function(){clearTimeout(SV.tsT);SV.tsT=setTimeout(svLoadTaskStatus,600);}).subscribe();}catch(e){}}
 var _svAI=svAdminInit;
 svAdminInit=function(){_svAI();if(svAdmin()){svLoadTaskStatus();svSubTasksAdmin();}};
@@ -14203,10 +14204,10 @@ function svStaffTasksHtml(){var list=svStaffTasks().slice();
       +'<td class="mono" style="white-space:nowrap;color:'+(late?"#B42318":"inherit")+'">'+(t.echeance?svD(t.echeance)+(late?" · en retard":""):"—")+'</td>'
       +'<td><span style="color:'+P0.c+';font-weight:600;font-size:12px">● '+P0.l+'</span></td>'
       +'<td><span class="svst" style="background:'+S0.bg+';color:'+S0.c+'">'+S0.l+'</span></td>'
-      +'<td style="text-align:right;white-space:nowrap">'+(st!=="doing"&&st!=="done"?btn("doing","En cours"):"")+(st!=="done"?btn("done","Terminé","#0E7A5F"):btn("todo","Rouvrir"))+'</td></tr>';}).join("")
+      +'<td style="text-align:right;white-space:nowrap">'+(st!=="doing"&&st!=="done"?btn("doing","En cours"):"")+(st!=="done"?btn("done","Terminé","#0E7A5F"):btn("todo","Rouvrir"))+'</td></tr>'+svStaffTaskObsRow(t,late);}).join("")
    +'</tbody></table></div></div>';}
 async function svStaffSetTask(id,st){var row={email:svEmail(),task_id:String(id),statut:st,updated_at:new Date().toISOString()};
-  SV.tstat[String(id)]=row;svStaffRender();
+  SV.tstat[String(id)]=Object.assign({},SV.tstat[String(id)]||{},row);svStaffRender();
   var r=await sb.from("staff_task_status").upsert(row,{onConflict:"email,task_id"});
   if(r.error)showErr("Mise à jour impossible : "+r.error.message);else showOk(st==="done"?"Tâche terminée — le cabinet est informé.":"Statut mis à jour.");}
 function svStaffSubMe(){try{sb.channel("sv_me").on("postgres_changes",{event:"*",schema:"public",table:"staff_data",filter:"email=eq."+svEmail()},function(p){
@@ -15042,6 +15043,24 @@ document.addEventListener("change",function(e){var t=e.target;if(!t||!t.dataset)
     var patch=t.dataset.svtdetat?{etat:t.value}:{note:t.value.trim()};svSaveProg(s2.email,+b[1],teamClientName(+b[1]),patch,"Cabinet").then(function(ok){if(ok){if(patch.etat)t.setAttribute("style","padding:5px 8px;font-size:12px;width:auto;"+svEtatStyle(patch.etat));showOk("Avancement enregistré.");}});return;}
   if(t.dataset.svsdetat||t.dataset.svsdnote){var cid2=+(t.dataset.svsdetat||t.dataset.svsdnote),ds=(((SV.me||{}).payload||{}).dossiers)||[],d=ds.find(function(x){return +x.id===cid2;})||{};
     var p2=t.dataset.svsdetat?{etat:t.value}:{note:t.value.trim()};svSaveProg(svEmail(),cid2,d.name,p2,(SV.me&&SV.me.name)||svEmail()).then(function(ok){if(ok){if(p2.etat)t.setAttribute("style","padding:5px 8px;font-size:12px;width:auto;"+svEtatStyle(p2.etat));showOk("Avancement enregistré — le cabinet le voit.");}});return;}});
+
+
+/* ---------- OBSERVATIONS SUR LES TÂCHES (cabinet → collaborateur) + commentaire du collaborateur ---------- */
+function svTaskStaffNote(k){var s=teamStaff(k.staffId),em=((s||{}).email||"").toLowerCase();return (SV.tsRows||[]).find(function(r){return String(r.task_id)===String(k.id)&&(r.email||"").toLowerCase()===em;})||null;}
+function svTaskObsHtml(k){var r=svTaskStaffNote(k);
+  return '<div style="margin-top:8px"><div style="font-size:10.5px;font-weight:700;color:#9A7610;letter-spacing:.04em;text-transform:uppercase;margin-bottom:3px">📝 Observation du cabinet</div>'
+   +'<textarea class="ipt" data-tobs="'+esc(String(k.id))+'" rows="2" style="font-family:inherit;font-size:12.5px;padding:6px 9px;resize:vertical;background:#FFFBEF" placeholder="Ajouter une observation / consigne…">'+esc(k.obs||"")+'</textarea>'
+   +(r&&r.note?'<div style="margin-top:6px;padding:7px 10px;background:#E8F0FB;border-radius:8px;font-size:12.5px;color:#14201C"><span style="font-size:10.5px;font-weight:700;color:#1D6FB8;text-transform:uppercase;letter-spacing:.04em">💬 Commentaire du collaborateur</span>'+(r.note_at?' <span style="font-size:10.5px;color:var(--muted)">· '+svDT(r.note_at)+'</span>':'')+'<div style="white-space:pre-wrap;margin-top:2px">'+esc(r.note)+'</div></div>':'')+'</div>';}
+function svStaffTaskObsRow(t,late){var r=SV.tstat[String(t.id)]||{};
+  return '<tr style="'+(late?'background:#FCF1EE':'')+'"><td colspan="6" style="padding-top:0;border-top:none">'
+   +(t.obs?'<div style="padding:7px 10px;background:#FFF7E0;border-radius:8px;font-size:12.5px;margin-bottom:6px"><span style="font-size:10.5px;font-weight:700;color:#9A7610;text-transform:uppercase;letter-spacing:.04em">📝 Observation du cabinet</span><div style="white-space:pre-wrap;margin-top:2px">'+esc(t.obs)+'</div></div>':'')
+   +'<input class="ipt" data-svtnote="'+esc(String(t.id))+'" value="'+esc(r.note||"")+'" placeholder="💬 Mon commentaire pour le cabinet (où j\'en suis, ce qui manque…)" style="font-size:12.5px;padding:6px 9px"></td></tr>';}
+document.addEventListener("change",function(e){var t=e.target;if(!t||!t.dataset)return;
+  if(t.dataset.tobs!=null&&t.dataset.tobs!==""){var k=teamGet().tasks.find(function(x){return String(x.id)===String(t.dataset.tobs);});if(!k)return;k.obs=t.value.trim();save("team");showOk("Observation enregistrée — visible par le collaborateur.");return;}
+  if(t.dataset.svtnote){var id=t.dataset.svtnote,task=svStaffTasks().find(function(x){return String(x.id)===String(id);});if(!task)return;var now=new Date().toISOString();
+    var row={email:svEmail(),task_id:String(id),statut:svTaskEff(task),note:t.value.trim(),note_at:now};
+    SV.tstat[String(id)]=Object.assign({},SV.tstat[String(id)]||{},row);
+    sb.from("staff_task_status").upsert(row,{onConflict:"email,task_id"}).then(function(r){if(r.error)showErr("Enregistrement impossible : "+r.error.message);else showOk("Commentaire envoyé au cabinet.");});}});
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
