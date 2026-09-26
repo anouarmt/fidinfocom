@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10k · filtres urgents collaborateur · délais de paiement · remarques — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10l · CPU & revenus fonciers sans TVA ni bilan · délais de paiement — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -357,7 +357,7 @@ const pad=x=>String(x).padStart(2,"0");
 const fmtDate=d=>pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear();
 const daysBetween=d=>Math.ceil((d-today)/86400000);
 const STAT_COLORS={"DÉPOSÉ ✓":"#0E7A5F","EN ATTENTE":"#C8941A","MANQUE DOC":"#B5530A","NÉANT":"#8A8F99","EXONÉRÉ":"#5C6B66","SORTANT":"#B42318"};
-const CAT_LABEL={tva:"TVA",sal:"Salaires",bilan:"Bilan",is:"Acomptes IS",jur:"Juridique",foncier:"Revenus fonciers",cm:"Cotisation min.",ir:"Revenu global (IR)",tiers:"Rém. tiers",tp:"Taxe pro.",ras:"Retenue source",delais:"Délais de paiement"};
+const CAT_LABEL={tva:"TVA",sal:"Salaires",bilan:"Bilan",is:"Acomptes IS",jur:"Juridique",foncier:"Revenus fonciers",cm:"Cotisation min.",ir:"Revenu global (IR)",tiers:"Rém. tiers",tp:"Taxe pro.",ras:"Retenue source",delais:"Délais de paiement",cpu:"CPU"};
 const JUR_TYPES=["Constitution","Modification statutaire","AGO — approbation des comptes","AGE","Cession de parts","Changement de gérant","Augmentation de capital","Transfert de siège","Dissolution / Radiation","Dépôt au Registre de Commerce","Demande Modèle 7","Demande Modèle J","Attestation / Certificat","Travaux temporaires","Autre"];
 const JUR_STATUTS=["À FAIRE","EN COURS","TERMINÉ"];
 const FORMES=["personne morale","personne physique","cpu","particulier"];
@@ -423,9 +423,15 @@ function smartMatch(query,text){
   return false;
 }
 
-var SV_ALL=0; // >0 : inclure les dossiers sortants (liste clients, fiche, décharges, relevés)
+var SV_ALL=0;
+/* CPU et particuliers (revenus fonciers) : ni TVA, ni bilan, ni acomptes IS, ni cotisation minimale, ni AGO */
+function svFormeOpts(v){var L={"personne morale":"Personne morale (société)","personne physique":"Personne physique (RNR / RNS)","cpu":"CPU — Contribution professionnelle unique","particulier":"Particulier — revenus fonciers"};
+  return FORMES.map(function(f){return '<option value="'+f+'"'+(String(v||"").toLowerCase()===f?" selected":"")+'>'+L[f]+'</option>';}).join("");}
+function svRegimeFix(c){var f=String(c.forme||"").toLowerCase().trim();
+  if(f==="cpu"||f==="particulier"){c.reg="neant";c.hasBilan=false;c.hasDp=false;c.hasCMpm=false;c.hasCMpp=false;if(f==="particulier")c.hasFoncier=true;}
+  return c;} // >0 : inclure les dossiers sortants (liste clients, fiche, décharges, relevés)
 function clients(){
-  return SEED.concat(S.custom).filter(c=>!S.deleted[c.id]&&(SV_ALL>0||!(S.flags[c.id]||{}).sortant)).map(c=>Object.assign({},c,S.flags[c.id]||{}));
+  return SEED.concat(S.custom).filter(c=>!S.deleted[c.id]&&(SV_ALL>0||!(S.flags[c.id]||{}).sortant)).map(c=>svRegimeFix(Object.assign({},c,S.flags[c.id]||{})));
 }
 
 /* ---------- CLOUD LAYER (Supabase) ---------- */
@@ -671,6 +677,10 @@ function buildDeadlines(c){
     add("DELAIS","Délais de paiement T2 (Avr-Jun)","T2",new Date(Y,7,0),"delais");
     add("DELAIS","Délais de paiement T3 (Jul-Sep)","T3",new Date(Y,10,0),"delais");
     add("DELAIS","Délais de paiement T4 (Oct-Déc)","T4",new Date(Y+1,1,0),"delais");
+  }
+  if(String(c.forme||"").toLowerCase().trim()==="cpu"){ // CPU : déclaration du CA de N-1 avant le 1er avril, versement total ou 4 acomptes trimestriels
+    add("CPU","Déclaration CPU (CA "+(Y-1)+")"+(c.cpuPay==="trimestriel"?"":" + versement"),""+(Y-1),new Date(Y,2,31),"cpu");
+    if(c.cpuPay==="trimestriel"){add("CPU","CPU — 1er acompte","A1",new Date(Y,2,31),"cpu");add("CPU","CPU — 2e acompte","A2",new Date(Y,5,30),"cpu");add("CPU","CPU — 3e acompte","A3",new Date(Y,8,30),"cpu");add("CPU","CPU — 4e acompte","A4",new Date(Y,11,31),"cpu");}
   }
   if(c.hasBilan){
     var pp=(c.forme||"").toLowerCase().includes("physique");
@@ -11219,9 +11229,9 @@ function vDash(){
   ];
   let kpis=kp.map(k=>'<div class="card kpi"'+(k.go?' data-act="echgo" data-v="'+k.go+'" style="cursor:pointer"':'')+'><div class="ico" style="background:'+k.bg+';color:'+k.c+'">'+ic(k.i)+'</div><div class="v'+(k.sm?' sm':'')+' ff" style="color:'+k.c+'">'+k.v+'</div><div class="l">'+k.l+'</div><div class="s">'+k.s+'</div></div>').join("");
   // pie
-  const pm={};const REGL={mensuelle:"TVA mensuelle",trimestrielle:"TVA trimestrielle"};cs.forEach(c=>{const k=REGL[c.reg]||"Hors TVA";pm[k]=(pm[k]||0)+1;});
+  const pm={};const REGL={mensuelle:"TVA mensuelle",trimestrielle:"TVA trimestrielle"};cs.forEach(c=>{const fo=String(c.forme||"").toLowerCase();const k=fo==="cpu"?"CPU":fo==="particulier"?"Revenus fonciers":(REGL[c.reg]||"Hors TVA");pm[k]=(pm[k]||0)+1;});
   const pie=Object.keys(pm).map(k=>({name:k,value:pm[k]}));
-  const pcol=pie.map(e=>({"TVA mensuelle":"#1D6FB8","TVA trimestrielle":"#0E7A5F","Hors TVA":"#C8941A"})[e.name]||"#B9C2BD");
+  const pcol=pie.map(e=>({"TVA mensuelle":"#1D6FB8","TVA trimestrielle":"#0E7A5F","Hors TVA":"#C8941A","CPU":"#7C3AED","Revenus fonciers":"#A93226"})[e.name]||"#B9C2BD");
   const legend=pie.map((e,i)=>'<div class="row"><span><span class="sw" style="background:'+pcol[i]+'"></span>'+esc(e.name)+'</span><b class="mono">'+e.value+'</b></div>').join("");
   // bars
   const bm={};dls.filter(d=>d.u.key!=="depose"&&d.u.key!=="planif").forEach(d=>{const k=CAT_LABEL[d.cat];bm[k]=(bm[k]||0)+1;});
@@ -11311,7 +11321,7 @@ function vEch(){
   const dls=allDeadlines();
   const c=k=>dls.filter(d=>d.u.key===k).length;
   const urgs=[["active","À traiter"],["retard","En retard ("+c("retard")+")"],["urgent","Urgent ("+c("urgent")+")"],["venir","À venir ("+c("venir")+")"],["depose","Déposé ("+c("depose")+")"],["all","Tout"]];
-  const cats=[["all","Tous"],["tva","TVA"],["sal","Salaires"],["bilan","Bilan"],["is","Acomptes IS"],["foncier","Fonciers"],["cm","Cot. min."],["ir","Rev. IR"],["tiers","Rém. tiers"],["tp","Taxe pro."],["ras","Ret. source"],["delais","Délais paiement"],["jur","Juridique"]];
+  const cats=[["all","Tous"],["tva","TVA"],["sal","Salaires"],["bilan","Bilan"],["is","Acomptes IS"],["foncier","Fonciers"],["cm","Cot. min."],["ir","Rev. IR"],["tiers","Rém. tiers"],["tp","Taxe pro."],["ras","Ret. source"],["delais","Délais paiement"],["cpu","CPU"],["jur","Juridique"]];
   const mois=[["all","Toutes périodes"],["this","Ce mois-ci"],["next","Mois prochain"]];
   const regs=[["all","Tous régimes"],["mensuelle","Mensuel"],["trimestrielle","Trimestriel"],["neant","Néant"]];
   const seg=(arr,act,cur,onc)=>'<div class="seg">'+arr.map(a=>'<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:'+onc+';color:#fff':'')+'">'+a[1]+'</button>').join("")+'</div>';
@@ -11660,7 +11670,8 @@ function modalCEdit(id){
     '<div class="mh"><h3 class="ff">'+(isNew?"Nouveau client":"Modifier le client")+'</h3><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'+
     '<div class="mb">'+
       '<div class="mb3"><div class="flbl">Dénomination du dossier</div><input class="ipt" id="cf_dossier" placeholder="Nom de la société / du client" value="'+esc(c.dossier)+'"></div>'+
-      '<div class="grid g2"><div><div class="flbl">Forme juridique</div><select class="ipt" id="cf_forme">'+opt(FORMES,c.forme)+'</select></div><div><div class="flbl">Téléphone</div><input class="ipt" id="cf_tel" value="'+esc(c.tel)+'"></div></div>'+
+      '<div class="grid g2"><div><div class="flbl">Forme juridique</div><select class="ipt" id="cf_forme">'+svFormeOpts(c.forme)+'</select><div style="font-size:11px;color:var(--muted);margin-top:4px">CPU et particulier (revenus fonciers) : ni TVA ni bilan.</div></div><div><div class="flbl">Téléphone</div><input class="ipt" id="cf_tel" value="'+esc(c.tel)+'"></div></div>'+
+      '<div class="mt3"><div class="flbl">Versement de la CPU <span style="font-weight:400;color:var(--muted)">(uniquement si forme = CPU)</span></div><select class="ipt" id="cf_cpupay" style="max-width:420px"><option value="annuel"'+(c.cpuPay!=="trimestriel"?" selected":"")+'>Annuel — en totalité avec la déclaration (avant le 1er avril)</option><option value="trimestriel"'+(c.cpuPay==="trimestriel"?" selected":"")+'>Trimestriel — 4 acomptes (fin mars, juin, septembre, décembre)</option></select></div>'+
       '<div class="grid g3 mt3">'+num("cf_hontrim","Honoraire trim. (DH)",c.honTrim)+num("cf_honbilan","Honoraire bilan (DH)",c.honBilan)+num("cf_pv","PV de dépôt (DH)",c.pvDepot)+'</div>'+
       '<div class="grid g2 mt3"><div><div class="flbl">Régime TVA (déclaration)</div><select class="ipt" id="cf_reg">'+REGS.map(r=>'<option value="'+r[0]+'"'+(c.reg===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div>'+
       '<div><div class="flbl">Régime d\'exigibilité</div><select class="ipt" id="cf_regtva">'+REGS_TVA.map(r=>'<option value="'+r[0]+'"'+(regTvaOf(c)===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div></div>'+
@@ -13763,7 +13774,7 @@ function submitClient(id){
   const g=i=>document.getElementById(i);
   const dossier=g("cf_dossier").value.trim();
   if(!dossier){g("cf_dossier").focus();return;}
-  const data={dossier:dossier,forme:g("cf_forme").value,tel:g("cf_tel").value.trim(),
+  const data={dossier:dossier,forme:g("cf_forme").value,tel:g("cf_tel").value.trim(),cpuPay:(g("cf_cpupay")?g("cf_cpupay").value:"annuel"),
     honTrim:parseFloat(g("cf_hontrim").value)||0,honBilan:parseFloat(g("cf_honbilan").value)||0,
     pvDepot:parseFloat(g("cf_pv").value)||0,reg:g("cf_reg").value,regTva:(g("cf_regtva")?g("cf_regtva").value:"debit"),
     cashDefault:(g("cf_cash")?g("cf_cash").checked:false),
@@ -13854,7 +13865,7 @@ function svState(dl,pd){var d=S.done[dl.key];if(d)return{k:"ok",info:(typeof d==
   var p=(pd||SV._pd||svPendDecl())[dl.key];if(p)return{k:"pend",row:p};var u=urgency(dl,false);return{k:u.key,u:u};}
 function svFindDl(cid,key){var c=clients().find(function(x){return x.id===cid;});if(!c)return null;var y=+String(key).split("|")[0]||S.year;
   return svWithYear(y,function(){return buildDeadlines(c).find(function(d){return d.key===key;})||null;});}
-function svShort(dl){var t=dl.type;if(t==="TVA")return /^M\d+$/.test(dl.period)?MONTHS[+dl.period.slice(1)-1]:dl.period;if(t==="IS"||t==="DELAIS")return dl.period;
+function svShort(dl){var t=dl.type;if(t==="TVA")return /^M\d+$/.test(dl.period)?MONTHS[+dl.period.slice(1)-1]:dl.period;if(t==="IS"||t==="DELAIS")return dl.period;if(t==="CPU")return /^A\d$/.test(dl.period)?dl.period:"Décl.";
   var m={SALAIRES:"Salaires",CMPM:"CM",CMPP:"CM",FONCIER:"Fonciers",IR:"IR",TIERS:"Tiers",TP:"TP",RAS:"RAS",BILAN:"Bilan",AGO:"AGO"};return m[t]||t;}
 function svPill(c,dl,st){var tip=dl.label+" — échéance "+fmtDate(dl.date),pre="";
   if(st.k==="ok"){pre="✓ ";var i=st.info;tip+=i?("\nDéposée le "+svD(i.d)+(i.ref?" · réf. "+i.ref:"")+(i.by?" · par "+i.by:"")):"\nDéposée";}
@@ -13862,7 +13873,7 @@ function svPill(c,dl,st){var tip=dl.label+" — échéance "+fmtDate(dl.date),pr
   else if(st.k==="retard"){tip+="\nEN RETARD de "+(-st.u.j)+" j";}
   else if(st.k==="urgent"){tip+="\nUrgent : J-"+st.u.j;}
   return '<button class="svp svp-'+st.k+'" data-act="sv_decl" data-key="'+esc(dl.key)+'" data-cid="'+c.id+'" title="'+esc(tip)+'">'+pre+esc(svShort(dl))+'</button> ';}
-function svPillsHtml(c,dls,sts){var html="",lastCat=null,CL={tva:"TVA",is:"IS",delais:"Délais",bilan:"",sal:"",jur:"",cm:"",foncier:"",ir:"",tiers:"",tp:"",ras:""};
+function svPillsHtml(c,dls,sts){var html="",lastCat=null,CL={tva:"TVA",is:"IS",delais:"Délais",cpu:"CPU",bilan:"",sal:"",jur:"",cm:"",foncier:"",ir:"",tiers:"",tp:"",ras:""};
   dls.forEach(function(dl,i){if(dl.cat!==lastCat){lastCat=dl.cat;if(CL[dl.cat])html+='<span class="svgl">'+CL[dl.cat]+'</span>';}html+=svPill(c,dl,sts[i]);});
   return html||'<span style="color:var(--faint);font-size:12px">Aucune déclaration paramétrée</span>';}
 
@@ -13957,7 +13968,7 @@ function svTbody(rows){var list=svFilterRows(rows);
   if(!list.length)return '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:26px">Aucun dossier pour ce filtre.</td></tr>';
   return list.map(function(x){var c=x.c,pct=x.n?Math.round(x.ok/x.n*100):0,hp=x.e?Math.min(100,Math.round(x.cl/x.e*100)):0,reste=Math.max(0,x.e-x.cl);
     var pp=svPendPay(c.id),ppTxt=pp.length?'<div class="sub" style="color:#9A7610">⏳ '+pp.length+' paiement(s) à valider</div>':'';
-    var reg=c.reg==="mensuelle"?"TVA mensuelle":c.reg==="trimestrielle"?"TVA trimestrielle":"Hors TVA";
+    var fo=String(c.forme||"").toLowerCase(),reg=fo==="cpu"?"CPU":fo==="particulier"?"Revenus fonciers":c.reg==="mensuelle"?"TVA mensuelle":c.reg==="trimestrielle"?"TVA trimestrielle":"Hors TVA";
     return '<tr><td style="min-width:190px"><div class="dossier">'+esc(c.dossier)+'</div><div class="sub">'+esc(reg)+(c.forme?' · '+esc(c.forme):'')+'</div></td>'
       +'<td style="min-width:300px;line-height:1.9">'+svPillsHtml(c,x.dls,x.sts)+'</td>'
       +'<td style="min-width:110px"><span class="mono" style="font-weight:600;color:'+(x.r?"#B42318":"#0E7A5F")+'">'+x.ok+' / '+x.n+'</span>'+(x.r?' <span style="font-size:11px;color:#B42318">· '+x.r+' en retard</span>':'')+'<div class="svbar"><div style="width:'+pct+'%"></div></div></td>'
@@ -14889,7 +14900,7 @@ var _svMC2=modalClient;modalClient=function(c){var h=_svMC2(c);if(!c||c.sortant)
 
 /* ---------- Filtres des déclarations (collaborateur) : mêmes boutons que le compte cabinet ---------- */
 SV.scat="all";if(SV.sf==="todo"||!SV.sf)SV.sf="todo";
-var SV_DCATS=[["all","Tous"],["TVA","TVA"],["SALAIRES","Salaires"],["BILAN","Bilan"],["IS","Acomptes IS"],["FONCIER","Fonciers"],["CM","Cot. min."],["IR","Rev. IR"],["TIERS","Rém. tiers"],["TP","Taxe pro."],["RAS","Ret. source"],["DELAIS","Délais paiement"],["AGO","Juridique"]];
+var SV_DCATS=[["all","Tous"],["TVA","TVA"],["SALAIRES","Salaires"],["BILAN","Bilan"],["IS","Acomptes IS"],["FONCIER","Fonciers"],["CM","Cot. min."],["IR","Rev. IR"],["TIERS","Rém. tiers"],["TP","Taxe pro."],["RAS","Ret. source"],["DELAIS","Délais paiement"],["CPU","CPU"],["AGO","Juridique"]];
 function svDeclCat(key){var t=String(key||"").split("|")[2]||"";return (t==="CMPM"||t==="CMPP")?"CM":t;}
 function svStaffDeclFilters(){var all=svStaffDeclRows().filter(function(x){return smartMatch(SV.sq,x.c.n)&&(SV.scat==="all"||svDeclCat(x.d.key)===SV.scat);});
   var n=function(k){return all.filter(function(x){return x.k===k;}).length;};
