@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10q · sélection des clients · observations tâches · avancement — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10r · commentaires horodatés (tâches & dossiers) · sélection clients — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -14113,7 +14113,7 @@ function svStaffMineList(){if(!SV.mine.length)return '<tr><td colspan="6" style=
   return SV.mine.map(function(r){return '<tr><td class="mono" style="white-space:nowrap">'+svDT(r.created_at)+'</td><td>'+svTypeBadge(r.type)+'</td><td>'+esc(r.client_name||"")+'</td><td>'+svRowDetail(r)+(r.admin_note?'<div class="sub" style="color:#B42318">Motif : '+esc(r.admin_note)+'</div>':'')+'</td><td>'+(r.statut==="rejete"?svStatBadge(r.statut):'<span class="svst" style="background:#E3F1EB;color:#0E7A5F">✓ Enregistrée</span>')+'</td>'
     +'<td style="text-align:right;white-space:nowrap">'+(r.type==="paiement"&&(r.data||{}).rcNo?'<button class="chip" data-act="sv_s_rc" data-id="'+r.id+'" style="padding:3px 9px;font-size:11px">'+ic("printer","width:12px;height:12px")+' Reçu '+esc(r.data.rcNo)+'</button> ':'')+'</td></tr>';}).join("");}
 function svStaffRender(keepFocus){var root=document.getElementById("svStaff");if(!root)return;
-  var ae=document.activeElement;if(keepFocus&&(SV.modal||(ae&&ae.id&&/^(svs_|svn_)/.test(ae.id)))){svStaffLists();return;}
+  var ae=document.activeElement;if(keepFocus&&(SV.modal||(ae&&ae.id&&/^(svs_|svn_|svtcin_)/.test(ae.id)))){svStaffLists();return;}
   var me=SV.me||{},snap=svSnap(),pendN=SV.mine.filter(function(r){return r.statut==="en_attente";}).length;
   var openT=svStaffOpenTasks();var tabs=[["tasks","Mes tâches"+(openT?" ("+openT+")":"")],["cli","Clients"],["notes","Remarques"],["decl","Déclarations"],["pay","Paiements d'honoraires"],["scans","Documents"],["dech","Décharges"],["docs","Demandes"+(SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length?" ("+SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length+")":"")],["caisse","Ma caisse"],["mine","Mes saisies"+(pendN?" ("+pendN+")":"")]].map(function(t){return '<button data-act="sv_s_tab" data-v="'+t[0]+'" class="'+(SV.tab===t[0]?"on":"")+'">'+t[1]+'</button>';}).join("");
   var seg=function(arr,cur,act){return '<div class="seg">'+arr.map(function(a){return '<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(String(cur)===String(a[0])?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';};
@@ -15112,6 +15112,72 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
 /* la recherche met aussi à jour le compteur « Tout sélectionner (n) » */
 document.addEventListener("input",function(e){var t=e.target;if(!t)return;if(t.id==="cliq"){setTimeout(function(){var b=document.getElementById("svcselbar");if(b)b.outerHTML=svSelBar(true);},0);}
   else if(t.id==="svs_cq"){setTimeout(function(){var b=document.getElementById("svscselbar");if(b)b.outerHTML=svSelBar(false);},0);}});
+
+
+/* =====================================================================
+   FIL DE COMMENTAIRES HORODATÉS (tâches + dossiers) — traçabilité
+   Chaque commentaire est conservé avec son auteur, sa date et son heure.
+   Le collaborateur ne peut ni modifier ni supprimer un commentaire.
+   ===================================================================== */
+SV.tc=[];SV.tcOpen={};SV.tdOpen={};
+function svDTL(iso){try{var d=new Date(iso);return fmtDate(d)+" à "+pad(d.getHours())+":"+pad(d.getMinutes());}catch(e){return "";}}
+async function svLoadTC(){try{var r=await sb.from("task_comments").select("*").order("created_at",{ascending:true}).limit(10000);if(!r.error)SV.tc=r.data||[];}catch(e){}svTCRefreshAll();}
+function svSubTC(){try{sb.channel("sv_tc_"+(SV.staff?"s":"a")).on("postgres_changes",{event:"*",schema:"public",table:"task_comments"},function(p){
+    if(p.eventType==="INSERT"&&p.new&&(p.new.author_email||"").toLowerCase()!==svEmail())showOk("Nouveau commentaire de "+(p.new.author_name||p.new.author_email)+(p.new.client_name?" — "+p.new.client_name:""));
+    clearTimeout(SV.tcT);SV.tcT=setTimeout(svLoadTC,500);}).subscribe();}catch(e){}}
+function svTCList(kind,ref,se){se=(se||"").toLowerCase();return SV.tc.filter(function(c){return c.kind===kind&&String(c.ref)===String(ref)&&(c.staff_email||"").toLowerCase()===se;});}
+function svTCKey(kind,ref,se){return (kind+"_"+ref+"_"+(se||"")).replace(/[^a-zA-Z0-9_]/g,"_");}
+function svTCItem(c){var cab=!c.author_email||(c.author_name==="Cabinet")||((c.author_email||"").toLowerCase()!==(c.staff_email||"").toLowerCase());
+  return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed #E7E3D8"><div style="flex:0 0 30px;height:30px;border-radius:50%;background:'+(cab?"#14201C":"#1D6FB8")+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">'+(cab?"FC":esc(String(c.author_name||"?").slice(0,2).toUpperCase()))+'</div>'
+   +'<div style="flex:1;min-width:0"><div style="font-size:11.5px;color:var(--muted)"><b style="color:#14201C">'+esc(cab?"Cabinet":(c.author_name||c.author_email))+'</b> <span class="svst" style="font-size:9.5px;padding:1px 7px;background:'+(cab?"#EEF1EF":"#E8F0FB")+';color:'+(cab?"#14201C":"#1D6FB8")+'">'+(cab?"Cabinet":"Collaborateur")+'</span> · <span class="mono">'+svDTL(c.created_at)+'</span></div>'
+   +'<div style="font-size:13px;margin-top:3px;white-space:pre-wrap;line-height:1.5">'+esc(c.body)+'</div></div>'
+   +(!SV.staff?'<button class="iconbtn" data-act="sv_tc_del" data-id="'+c.id+'" title="Supprimer ce commentaire" style="color:#C0392B;align-self:flex-start">'+ic("trash","width:12px;height:12px")+'</button>':'')+'</div>';}
+function svThread(kind,ref,se,cid,cname){var key=svTCKey(kind,ref,se),list=svTCList(kind,ref,se),open=!!SV.tcOpen[key],LIM=3,hidden=list.length>LIM&&!open?list.length-LIM:0,shown=hidden?list.slice(-LIM):list;
+  return '<div id="svtc_'+key+'" style="margin-top:8px"><div style="font-size:10.5px;font-weight:700;color:#44403c;letter-spacing:.05em;text-transform:uppercase;margin-bottom:2px">💬 Commentaires ('+list.length+')</div>'
+   +(hidden?'<button class="chip" data-act="sv_tc_more" data-key="'+key+'" style="font-size:11px;padding:2px 9px;margin:4px 0">Afficher les '+hidden+' commentaire(s) précédent(s)</button>':'')
+   +(list.length?'<div>'+shown.map(svTCItem).join("")+'</div>':'<div style="font-size:12px;color:var(--faint);padding:4px 0">Aucun commentaire.</div>')
+   +((se&&CLOUD&&sb&&session)?'<div style="display:flex;gap:8px;margin-top:8px;align-items:flex-end"><textarea class="ipt" id="svtcin_'+key+'" rows="2" style="font-family:inherit;font-size:12.5px;padding:7px 10px;resize:vertical;flex:1" placeholder="Écrire un commentaire (il sera daté et conservé)…"></textarea>'
+     +'<button class="btn-primary" data-act="sv_tc_send" data-kind="'+kind+'" data-ref="'+esc(String(ref))+'" data-se="'+esc(se)+'" data-cid="'+(cid!=null?cid:"")+'" data-cname="'+esc(cname||"")+'" data-key="'+key+'" style="width:auto;padding:8px 14px;flex:0 0 auto">Envoyer</button></div>':'')
+   +'</div>';}
+function svTCRefreshAll(){if(SV.staff){var ae=document.activeElement;if(ae&&ae.id&&ae.id.indexOf("svtcin_")===0){svTCRefreshThreads();return;}if(SV.tab==="tasks")svStaffRender();return;}
+  if(S.tab==="team"&&!S.modal){svTCRefreshThreads();}}
+function svTCRefreshThreads(){
+  /* réaffichage ciblé : on reconstruit chaque fil à partir de ses attributs d'envoi, en gardant le texte en cours de saisie */
+  Array.prototype.forEach.call(document.querySelectorAll('[data-act="sv_tc_send"]'),function(b){var key=b.dataset.key,box=document.getElementById("svtc_"+key);if(!box)return;var ta=document.getElementById("svtcin_"+key),keep=ta?ta.value:"",had=document.activeElement===ta;
+    box.outerHTML=svThread(b.dataset.kind,b.dataset.ref,b.dataset.se,b.dataset.cid!==""?+b.dataset.cid:null,b.dataset.cname);var t2=document.getElementById("svtcin_"+key);if(t2){t2.value=keep;if(had){t2.focus();t2.setSelectionRange(keep.length,keep.length);}}});}
+async function svTCSend(b){var key=b.dataset.key,ta=document.getElementById("svtcin_"+key),body=ta?ta.value.trim():"";if(!body){showErr("Écrivez le commentaire.");if(ta)ta.focus();return;}
+  b.disabled=true;var row={kind:b.dataset.kind,ref:b.dataset.ref,staff_email:(b.dataset.se||"").toLowerCase(),client_id:b.dataset.cid!==""?+b.dataset.cid:null,client_name:b.dataset.cname||null,body:body,author_email:svEmail(),author_name:SV.staff?((SV.me&&SV.me.name)||svEmail()):"Cabinet"};
+  var r=await sb.from("task_comments").insert(row).select("*");b.disabled=false;if(r.error){showErr("Envoi impossible : "+r.error.message);return;}
+  if(r.data&&r.data[0])SV.tc.push(r.data[0]);if(ta)ta.value="";var box=document.getElementById("svtc_"+key);if(box)box.outerHTML=svThread(row.kind,row.ref,row.staff_email,row.client_id,row.client_name);showOk("Commentaire envoyé — "+svDTL(new Date().toISOString())+".");}
+/* ---------- tâches : consigne initiale (lecture) + fil de commentaires ---------- */
+svTaskObsHtml=function(k){var s=teamStaff(k.staffId),se=((s||{}).email||"").toLowerCase();
+  return (k.obs?'<div style="margin-top:8px;padding:7px 10px;background:#FFF7E0;border-radius:8px;font-size:12.5px"><span style="font-size:10.5px;font-weight:700;color:#9A7610;text-transform:uppercase;letter-spacing:.04em">📝 Consigne du cabinet</span> <span class="mono" style="font-size:10.5px;color:var(--muted)">· '+(k.created?svDTL(k.created):"")+'</span><div style="white-space:pre-wrap;margin-top:2px">'+esc(k.obs)+'</div></div>':'')
+   +(se?svThread("task",k.id,se,k.dossierId,k.dossierId!=null?teamClientName(k.dossierId):""):'<div class="note" style="font-size:11px;color:#B42318;margin-top:6px">Ajoutez l\'e-mail du collaborateur pour échanger des commentaires.</div>');};
+svStaffTaskObsRow=function(t,late){return '<tr style="'+(late?'background:#FCF1EE':'')+'"><td colspan="6" style="padding-top:0;border-top:none">'
+   +(t.obs?'<div style="padding:7px 10px;background:#FFF7E0;border-radius:8px;font-size:12.5px;margin-bottom:4px"><span style="font-size:10.5px;font-weight:700;color:#9A7610;text-transform:uppercase;letter-spacing:.04em">📝 Consigne du cabinet</span><div style="white-space:pre-wrap;margin-top:2px">'+esc(t.obs)+'</div></div>':'')
+   +svThread("task",t.id,svEmail(),null,t.dossier||"")+'</td></tr>';};
+/* ---------- dossiers : fil de commentaires dépliable ---------- */
+function svDosTCCell(openKey,list){var last=list[list.length-1];
+  return '<td style="min-width:240px">'+(last?'<div style="font-size:12px;line-height:1.4"><span class="mono" style="font-size:10.5px;color:var(--muted)">'+svDTL(last.created_at)+' · '+esc(last.author_name==="Cabinet"?"Cabinet":(last.author_name||""))+'</span><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px">'+esc(last.body)+'</div></div>':'<span style="font-size:12px;color:var(--faint)">Aucun commentaire</span>')
+   +'<button class="chip" data-act="sv_dos_tc" data-key="'+openKey+'" style="font-size:11px;padding:2px 9px;margin-top:4px">💬 '+list.length+' · '+(SV.tdOpen[openKey]?"Fermer":"Ouvrir le fil")+'</button></td>';}
+var _svTDH=svTeamDossiersHtml;
+svTeamDossiersHtml=function(s){var h=_svTDH(s),em=(s.email||"").toLowerCase();
+  h=h.replace('<th>Remarque / avancement</th>','<th>Commentaires</th>');
+  return h.replace(/<td style="min-width:220px"><input class="ipt" data-svtdnote="([^:"]+):(\d+)"[^>]*><\/td>([\s\S]*?)<\/tr>/g,function(m,sid,cid,rest){var key="a_"+sid+"_"+cid,list=svTCList("dossier",cid,em);
+    return svDosTCCell(key,list)+rest+'</tr>'+(SV.tdOpen[key]?'<tr><td colspan="5" style="background:#FAF8F2">'+svThread("dossier",cid,em,+cid,teamClientName(+cid))+'</td></tr>':'');});};
+var _svSDH=svStaffDossiersHtml;
+svStaffDossiersHtml=function(){var h=_svSDH(),em=svEmail(),ds=(((SV.me||{}).payload||{}).dossiers)||[];
+  h=h.replace('<th>Remarque / avancement</th>','<th>Commentaires</th>').replace("enregistrement automatique, visible par le cabinet","commentaires datés, visibles par le cabinet");
+  return h.replace(/<td style="min-width:220px"><input class="ipt" data-svsdnote="(\d+)"[^>]*><\/td>([\s\S]*?)<\/tr>/g,function(m,cid,rest){var key="s_"+cid,list=svTCList("dossier",cid,em),d=ds.find(function(x){return +x.id===+cid;})||{};
+    return svDosTCCell(key,list)+rest+'</tr>'+(SV.tdOpen[key]?'<tr><td colspan="4" style="background:#FAF8F2">'+svThread("dossier",cid,em,+cid,d.name||"")+'</td></tr>':'');});};
+/* raccordements */
+var _svAI10=svAdminInit;svAdminInit=function(){_svAI10();if(svAdmin()){svLoadTC();svSubTC();}};
+var _svSB8=svStaffBoot;svStaffBoot=async function(){await _svSB8();await svLoadTC();svSubTC();svStaffRender();};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t)return;var a=t.dataset.act;
+  if(a==="sv_tc_send"){svTCSend(t);}
+  else if(a==="sv_tc_more"){SV.tcOpen[t.dataset.key]=true;svTCRefreshThreads();}
+  else if(a==="sv_dos_tc"){SV.tdOpen[t.dataset.key]=!SV.tdOpen[t.dataset.key];if(SV.staff)svStaffRender();else renderView();}
+  else if(a==="sv_tc_del"){if(SV.staff)return;if(!window.confirm("Supprimer définitivement ce commentaire ?"))return;var id=t.dataset.id;sb.from("task_comments").delete().eq("id",id).then(function(r){if(r.error){showErr(r.error.message);return;}SV.tc=SV.tc.filter(function(c){return c.id!==id;});svTCRefreshThreads();showOk("Commentaire supprimé.");});}});
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
