@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10t · espace collaborateur allégé · sauvegarde Drive · commentaires — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10u · sauvegarde lisible Excel · espace collaborateur allégé — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -911,6 +911,7 @@ async function exportFullBackup(){
     var payload={app:"FID INFO COM",version:VERSION,exportedAt:new Date().toISOString(),data:{}};
     KEYS.forEach(function(k){payload.data[k]=S[k];});
     try{setP("Lecture des tables de l'équipe…");payload.cloud=await svCloudDump();}catch(_e){}
+    try{setP("Création de la version lisible (Excel)…");zip.file("LISIBLE-fidinfocom-"+new Date().toISOString().slice(0,10)+".xlsx",await svReadableBlob(payload));}catch(_e){}
     zip.file("donnees/sauvegarde-fidinfocom-"+new Date().toISOString().slice(0,10)+".json", JSON.stringify(payload));
     /* 2) noms de dossiers lisibles (id -> nom du client) */
     var byId={}; try{ clients().forEach(function(c){byId[String(c.id)]=(c.dossier||("dossier "+c.id));}); }catch(e){}
@@ -14963,6 +14964,7 @@ function svBusy(txt){var ov=document.createElement("div");ov.id="svBusy";ov.styl
 async function svDriveBackupData(){var b=null;try{var tok=await svDriveToken();b=svBusy("Sauvegarde des données vers Google Drive…");b.set("Lecture des données…");
   var p=await svBackupPayload(),blob=new Blob([JSON.stringify(p)],{type:"application/json"}),folder=await svDriveFolder(tok),d=new Date().toISOString().slice(0,16).replace("T","_").replace(":","h");
   await svDriveUpload(tok,folder,blob,"donnees-fidinfocom-"+d+".json","application/json",b.set);await svDrivePrune(tok,folder,"donnees-fidinfocom-",30);
+  try{b.set("Envoi de la version lisible (Excel)…");var xb=await svReadableBlob(p);await svDriveUpload(tok,folder,xb,"LISIBLE-fidinfocom-"+d+".xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",b.set);await svDrivePrune(tok,folder,"LISIBLE-fidinfocom-",30);}catch(_e){}
   b.close();svMarkBackup("donnees","Google Drive");renderView();showOk("Données sauvegardées dans Google Drive (dossier « Sauvegardes FID INFO COM »).");}
   catch(e){if(b)b.close();if(String(e&&e.message)!=="__silent__")showErr("Sauvegarde Drive impossible : "+(e.message||e));}}
 async function svDriveBackupFull(){var tok;try{tok=await svDriveToken();}catch(e){if(String(e&&e.message)!=="__silent__")showErr("Sauvegarde Drive impossible : "+(e.message||e));return;}
@@ -14974,8 +14976,8 @@ dataBackupCard=function(){var h=_svDBC(),cab=cabinetGet(),lb=cab.lastBackup,days
   var last=lb?('<div style="font-size:12.5px;margin-bottom:10px;color:'+(days>7?"#B42318":"#0E7A5F")+'"><b>Dernière sauvegarde :</b> '+svDT(lb.at)+' — '+(lb.type==="complete"?"complète (données + scans)":"données")+' · '+esc(lb.dest||"")+(days>7?' — <b>il y a '+days+' jours</b>':'')+'</div>'):'<div style="font-size:12.5px;margin-bottom:10px;color:#B42318"><b>Aucune sauvegarde enregistrée.</b></div>';
   var drive='<div style="margin-top:14px;padding:14px 16px;border:1px solid #CFE3F6;background:#F4F9FE;border-radius:12px">'
    +'<div style="font-weight:700;font-size:13.5px;color:#1D6FB8;margin-bottom:8px">☁️ Sauvegarde vers Google Drive</div>'+last
-   +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn-add" data-act="sv_gd_full">'+ic("down")+' Complète vers Drive (données + scans)</button><button class="chip" data-act="sv_gd_data">'+ic("down")+' Données seules vers Drive</button></div>'
-   +'<div style="font-size:11.5px;color:var(--muted);margin-top:8px">Dossier créé dans votre Drive : <b>Sauvegardes FID INFO COM</b>. Les 8 dernières sauvegardes complètes et les 30 dernières sauvegardes de données sont conservées (les plus anciennes vont à la corbeille Drive).</div>'
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn-add" data-act="sv_gd_full">'+ic("down")+' Complète vers Drive (données + scans)</button><button class="chip" data-act="sv_gd_data">'+ic("down")+' Données seules vers Drive</button><button class="chip" data-act="sv_readable">'+ic("down")+' Version lisible (Excel)</button></div>'
+   +'<div style="font-size:11.5px;color:var(--muted);margin-top:8px">Dossier créé dans votre Drive : <b>Sauvegardes FID INFO COM</b>. Chaque sauvegarde contient aussi un fichier <b>LISIBLE-….xlsx</b> (un onglet par sujet) à ouvrir directement dans Drive. Les 8 dernières sauvegardes complètes et les 30 dernières sauvegardes de données sont conservées (les plus anciennes vont à la corbeille Drive).</div>'
    +'<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;font-weight:600;color:#1D6FB8">Réglage unique : ID client Google '+(cab.gClientId?'✓ configuré':'(à faire une fois)')+'</summary>'
    +'<div style="font-size:12px;line-height:1.6;margin-top:8px;color:#44403c">1. Ouvrez <b>console.cloud.google.com</b> avec votre compte Gmail, créez un projet « FID INFO COM ».<br>2. <b>API et services → Bibliothèque</b> : activez <b>Google Drive API</b>.<br>3. <b>Écran de consentement OAuth</b> : type <i>Externe</i>, ajoutez votre adresse comme <i>utilisateur test</i> (ou publiez l\'application).<br>4. <b>Identifiants → Créer → ID client OAuth</b> : type <i>Application Web</i>, origine JavaScript autorisée : <b>https://anouarmt.github.io</b>.<br>5. Copiez l\'<b>ID client</b> (se termine par .apps.googleusercontent.com) et collez-le ci-dessous.</div>'
    +'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input class="ipt" id="sv_gcid" value="'+esc(cab.gClientId||"")+'" placeholder="xxxxxxxx.apps.googleusercontent.com" style="flex:1;min-width:260px"><button class="chip" data-act="sv_gcid_save">Enregistrer</button></div></details></div>';
@@ -15196,6 +15198,54 @@ var _svSDS=svStaffDocsSection;svStaffDocsSection=function(c){var h=_svSDS(c),tot
   if(tot>shown&&!SV.allDocs[c.id])h=h.replace(/<\/div>$/,'<button class="chip" data-act="sv_s_alldocs" data-cid="'+c.id+'" style="margin-top:8px">Afficher tous les documents ('+tot+')</button></div>');return h;};
 document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest('[data-act="sv_s_alldocs"]');if(t)svStaffLoadAllDocs(+t.dataset.cid);});
 
+
+/* =====================================================================
+   SAUVEGARDE LISIBLE : fichier Excel (un onglet par sujet) joint à chaque sauvegarde
+   ===================================================================== */
+function svReadableBook(p){var D=p.data||{},C=p.cloud||{},wb=XLSX.utils.book_new();
+  var arr=function(x){return Array.isArray(x)?x:[];};
+  var add=function(name,head,rows){var ws=XLSX.utils.aoa_to_sheet([head].concat(rows.length?rows:[["(aucune donnée)"]]));
+    ws["!cols"]=head.map(function(h,i){var w=String(h).length;rows.slice(0,300).forEach(function(r){var v=r[i];if(v!=null)w=Math.max(w,Math.min(60,String(v).length));});return {wch:w+2};});
+    ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(1,rows.length),c:head.length-1}})};XLSX.utils.book_append_sheet(wb,ws,name);};
+  var all;SV_ALL++;try{all=clients();}finally{SV_ALL--;}
+  var byId={};all.forEach(function(c){byId[String(c.id)]=c.dossier;});var nm=function(id){return byId[String(id)]||("#"+id);};
+  var d=function(iso){return iso?svD(String(iso).slice(0,10)):"";},dt=function(iso){return iso?svDT(iso):"";};
+  /* 1. Clients */
+  add("Clients",["N°","Dossier","Forme","Téléphone","E-mail","ICE","IF","RC","Taxe prof.","CNSS","Capital","Constitution","Adresse","Ville","Régime TVA","Gérant(s)","CIN gérant(s)","Hon. trimestriel","Hon. bilan","Situation"],
+    all.map(function(c){var i=svClientInfo(c),so=i.soc,g=i.gers;return [c.id,c.dossier,c.forme||"",c.tel||"",so.email||"",so.ice||"",so.idf||"",so.rc||"",so.tp||"",so.cnss||"",so.capital||"",so.dateConst||"",so.adresse||"",so.ville||"",svRegLabel(c.reg),g.map(function(x){return x.nom;}).join(", "),g.map(function(x){return x.cin||"";}).filter(Boolean).join(", "),+c.honTrim||0,+c.honBilan||0,c.sortant?("SORTANT depuis le "+d(c.sortant.date)+(c.sortant.motif?" — "+c.sortant.motif:"")):"Actif"];}));
+  /* 2. Déclarations (exercice en cours et précédent) */
+  var ys=[SV_NOW_Y-1,SV_NOW_Y],rowsD=[],done=D.done||S.done||{};
+  all.forEach(function(c){ys.forEach(function(y){svWithYear(y,function(){buildDeadlines(c).forEach(function(dl){var x=done[dl.key],st=x?"Déposée":(dl.date<new Date()?"En retard":"À venir");
+    var info=(x&&typeof x==="object")?x:{};rowsD.push([c.dossier,y,dl.label,fmtDate(dl.date),st,info.d?d(info.d):"",info.ref||"",info.m||"",info.by||(x?"Cabinet":""),c.sortant?"sortant":""]);});});});});
+  add("Déclarations",["Dossier","Exercice","Déclaration","Échéance","Statut","Date de dépôt","Référence","Montant payé","Déposée par","Remarque"],rowsD);
+  /* 3. Encaissements */
+  add("Encaissements",["Date","Dossier","Exercice","Période","Montant (DH)","Mode","Référence","N° reçu","Encaissé par","Origine"],
+    arr(D.paylog).map(function(x){return [d(x.date),nm(x.cid),x.y,x.k,+x.montant||0,x.mode||"",x.ref||"",x.rcNo||"",x.by||"",x.src==="equipe"?"Collaborateur":"Cabinet"];}));
+  add("Reçus",["N° reçu","Date","Dossier","Montant (DH)","Motif","Mode"],arr(D.receipts).map(function(r){return [r.no||"",d(r.date),r.dossier||nm(r.clientId),+r.montant||0,r.motif||"",r.mode||""];}));
+  /* 4. Décharges */
+  add("Décharges",["N°","Date","Dossier","Remis à","CIN","Qualité","Motif","Documents remis","Solde dû (DH)","Établie par"],arr(C.dossier_decharges).map(function(r){var x=r.data||{};return [r.no,d(x.date),r.client_name||nm(r.client_id),x.nom||"",x.cin||"",x.qualite||"",x.motif||"",(x.items||[]).concat(x.autres||[]).join(" ; "),+x.reste||0,r.author_name||""];}));
+  /* 5. Tâches + commentaires + avancement */
+  var team=D.team||{},staff=arr(team.staff),stN=function(id){var s=staff.find(function(x){return String(x.id)===String(id);});return s?(s.name||s.email):"";};
+  add("Tâches",["Créée le","Collaborateur","Dossier","Tâche","Consigne du cabinet","Priorité","Échéance","Statut"],arr(team.tasks).map(function(k){return [dt(k.created),stN(k.staffId),k.dossierId!=null?nm(k.dossierId):"",k.label,k.obs||"",k.prio||"",d(k.echeance),(TEAM_ST[k.statut]||{}).l||k.statut];}));
+  var taskL={};arr(team.tasks).forEach(function(k){taskL[String(k.id)]=k.label;});
+  add("Commentaires",["Date et heure","Sur","Dossier / tâche","Auteur","Collaborateur concerné","Commentaire"],arr(C.task_comments).slice().sort(function(a,b){return String(a.created_at).localeCompare(String(b.created_at));}).map(function(c){return [dt(c.created_at),c.kind==="task"?"Tâche":"Dossier",c.kind==="task"?(taskL[String(c.ref)]||c.ref)+(c.client_name?" ("+c.client_name+")":""):(c.client_name||nm(c.ref)),c.author_name||c.author_email,c.staff_email,c.body];}));
+  add("Avancement dossiers",["Collaborateur","Dossier","État","Mis à jour le","Par"],arr(C.staff_dossier_progress).map(function(r){return [r.email,r.client_name||nm(r.client_id),(SV_ETATS[r.etat]||[r.etat])[0],dt(r.updated_at),r.updated_by||""];}));
+  /* 6. Remarques, saisies, caisse, demandes */
+  add("Remarques clients",["Date et heure","Dossier","Type","Auteur","Remarque","Lue par le cabinet"],arr(C.client_notes).map(function(n){return [dt(n.created_at),n.client_name||nm(n.client_id),(SV_NOTE_KINDS[n.kind]||[n.kind])[0],n.author_name||n.email,n.body,n.lu_cabinet?"oui":"non"];}));
+  add("Saisies équipe",["Date et heure","Collaborateur","Type","Dossier","Détail","Montant","Statut"],arr(C.staff_saisies).map(function(r){var x=r.data||{};return [dt(r.created_at),r.author_name||r.email,r.type,r.client_name||nm(r.client_id),x.label||x.name||x.k||"",+x.montant||"",r.statut];}));
+  add("Caisse collaborateur",["Date","Collaborateur","Nature","Montant remis (DH)","Remarque"],arr(C.staff_caisse).map(function(r){return [d(r.date),r.email,r.nature,+r.montant||0,r.note||""];}));
+  add("Demandes documents",["Date","Collaborateur","Dossier","Documents","Période","Statut","Relances"],arr(C.staff_doc_requests).map(function(r){return [dt(r.created_at),r.author_name||r.email,r.client_name||nm(r.client_id),(r.types||[]).join(", "),r.periode||"",r.statut,r.relances||0];}));
+  /* 7. Documents scannés (index) */
+  var rowsS=[];Object.keys(D.docs||{}).forEach(function(cid){arr((D.docs||{})[cid]).forEach(function(m){rowsS.push([nm(cid),m.name,m.cat||"",d(m.date),Math.round((+m.size||0)/1024)+" Ko",m.by||"",m.path||""]);});});
+  add("Documents scannés",["Dossier","Fichier","Catégorie","Déposé le","Taille","Déposé par","Emplacement"],rowsS);
+  /* page de garde */
+  var ws0=XLSX.utils.aoa_to_sheet([["SAUVEGARDE LISIBLE — FID INFO COM"],["Générée le",svDT(p.exportedAt||new Date().toISOString())],["Version du logiciel",p.version||""],[""],["Ce classeur sert à CONSULTER vos informations."],["Pour RESTAURER le logiciel, utilisez le fichier .json de la même sauvegarde (Tableau de bord → Restaurer une sauvegarde)."],[""],["Onglets",wb.SheetNames.join(" · ")]]);
+  ws0["!cols"]=[{wch:28},{wch:110}];XLSX.utils.book_append_sheet(wb,ws0,"Lisez-moi");wb.SheetNames.unshift(wb.SheetNames.pop());
+  return wb;}
+async function svReadableBlob(p){await ensureXLSX();var out=XLSX.write(svReadableBook(p),{bookType:"xlsx",type:"array"});return new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});}
+async function svDownloadReadable(){try{var p=await svBackupPayload(),blob=await svReadableBlob(p),url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="LISIBLE-fidinfocom-"+todayISO()+".xlsx";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},2000);showOk("Version lisible (Excel) téléchargée.");}catch(e){showErr("Export Excel impossible : "+(e.message||e));}}
+
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
   if(SV.staff&&e.target.classList&&e.target.classList.contains("ov")&&e.target.closest("#svOv")){SV.modal=null;svStaffModal();return;}
@@ -15253,6 +15303,7 @@ document.addEventListener("click",function(e){
   else if(a==="sv_nf"){SV.nf=t.dataset.v;renderView();}
   else if(a==="sv_nk"){SV.nk=t.dataset.v;if(SV.staff)svStaffRender();else renderView();}
   else if(a==="sv_gd_full"){svDriveBackupFull();}
+  else if(a==="sv_readable"){svDownloadReadable();}
   else if(a==="sv_gd_data"){svDriveBackupData();}
   else if(a==="sv_gcid_save"){var v=svVal("sv_gcid").trim();if(v&&!/\.apps\.googleusercontent\.com$/.test(v)){showErr("L'ID client doit se terminer par .apps.googleusercontent.com");return;}cabinetSet("gClientId",v);SV.gTok=null;showOk(v?"ID client Google enregistré.":"ID client supprimé.");renderView();}
   else if(a==="sv_td_all"){var s1=svFindStaff(t.dataset.id);if(!s1)return;var all=clients().map(function(c){return +c.id;});if(!window.confirm("Affecter les "+all.length+" dossiers actifs à "+(s1.name||"ce collaborateur")+" ?"))return;s1.dossiers=all;save("team");renderView();showOk(all.length+" dossiers affectés.");}
