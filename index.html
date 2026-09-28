@@ -308,9 +308,9 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10u · sauvegarde lisible Excel · espace collaborateur allégé — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10v · frais divers (création de société, formalités…) centralisés avec totaux — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
-const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel"];
+const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
 
 /* ---------- ICONS ---------- */
@@ -370,12 +370,12 @@ const MOIS_FULL=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Ao�
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---------- STATE ---------- */
-const LS={flags:"fid_flags",done:"fid_done",pay:"fid_pay",jur:"fid_jur",custom:"fid_custom",deleted:"fid_deleted",years:"fid_years",receipts:"fid_receipts",tva:"fid_tva",sal:"fid_sal",liasse:"fid_liasse",docs:"fid_docs",compta:"fid_compta",emprunts:"fid_emprunts",factures:"fid_factures",cabinet:"fid_cabinet",paie:"fid_paie",portal:"fid_portal",team:"fid_team",paylog:"fid_paylog",honrel:"fid_honrel",notiflog:"fid_notiflog",controle:"fid_controle",relancelog:"fid_relancelog"};
+const LS={flags:"fid_flags",done:"fid_done",pay:"fid_pay",jur:"fid_jur",custom:"fid_custom",deleted:"fid_deleted",years:"fid_years",receipts:"fid_receipts",tva:"fid_tva",sal:"fid_sal",liasse:"fid_liasse",docs:"fid_docs",compta:"fid_compta",emprunts:"fid_emprunts",factures:"fid_factures",cabinet:"fid_cabinet",paie:"fid_paie",portal:"fid_portal",team:"fid_team",paylog:"fid_paylog",honrel:"fid_honrel",frais:"fid_frais",notiflog:"fid_notiflog",controle:"fid_controle",relancelog:"fid_relancelog"};
 function ld(k){try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){return {}}}
 function lda(k){try{const v=JSON.parse(localStorage.getItem(k));return Array.isArray(v)?v:[]}catch(e){return []}}
 const S={tab:"dash",flags:ld(LS.flags),done:ld(LS.done),pay:ld(LS.pay),jur:ld(LS.jur),
   custom:lda(LS.custom),deleted:ld(LS.deleted),years:lda(LS.years),receipts:lda(LS.receipts),tva:ld(LS.tva),sal:ld(LS.sal),liasse:ld(LS.liasse),docs:ld(LS.docs),compta:ld(LS.compta),emprunts:ld(LS.emprunts),factures:lda(LS.factures),cabinet:ld(LS.cabinet),paie:ld(LS.paie),portal:ld(LS.portal),team:ld(LS.team),paieSel:{id:null,mois:null,emp:null},paieView:"bulletins",facSel:{id:null},facDraft:null,year:YEAR,curClient:(function(){try{var v=localStorage.getItem("fid_curclient");return v?+v:null;}catch(e){return null;}})(),comptaView:"saisie",comptaList:{type:null,statut:"",q:"",dmin:"",dmax:"",mmin:"",mmax:""},ageRef:"",cptFilter:{q:"",cpt:"",jrn:"",dmin:"",dmax:"",mmin:"",mmax:"",sens:"",hideZero:false},tvaSel:{id:null,period:null},salSel:{id:null},liasseSel:{id:null},liasseView:"is",docsSel:{id:null},empSel:{id:null},
-  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",echMois:"all",echReg:"all",gq:"",modal:null,jurForm:null,grpSel:{},grpTpl:null,notiflog:lda(LS.notiflog),controle:ld(LS.controle),relancelog:lda(LS.relancelog),paylog:lda(LS.paylog),honrel:lda(LS.honrel),tsType:"tva",tsPeriod:null};
+  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",echMois:"all",echReg:"all",gq:"",modal:null,jurForm:null,grpSel:{},grpTpl:null,notiflog:lda(LS.notiflog),controle:ld(LS.controle),relancelog:lda(LS.relancelog),paylog:lda(LS.paylog),honrel:lda(LS.honrel),frais:lda(LS.frais),tsType:"tva",tsPeriod:null};
 /* Restaure le dernier onglet / exercice / sous-vue (sinon une actualisation (F5)
    ramène toujours au tableau de bord). L'onglet sera revalidé dans renderView. */
 (function restoreUI(){ try{ var u=JSON.parse(localStorage.getItem("fid_ui")||"null");
@@ -11810,11 +11810,11 @@ function vFac(){if(S.facDraft)return header("Facturation","STE FIDUCIAIRE FID IN
 
 
 // Libellés courts des modules (utilisés dans la barre de sous-onglets d'un volet).
-const TAB_LABELS={dash:"Tableau de bord",suivi:"Suivi des dossiers",saisies:"Saisies équipe",fiches:"Fiches sociétés",notes:"Remarques équipe",decharges:"Décharges",activite:"Activité équipe",sante:"Santé des dossiers",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",relances:"Relances groupées",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
+const TAB_LABELS={dash:"Tableau de bord",suivi:"Suivi des dossiers",frais:"Frais divers",saisies:"Saisies équipe",fiches:"Fiches sociétés",notes:"Remarques équipe",decharges:"Décharges",activite:"Activité équipe",sante:"Santé des dossiers",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",relances:"Relances groupées",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
 // Volets de navigation : chaque volet regroupe des modules qui se ressemblent.
 // Pour déplacer un module d'un volet à l'autre, change simplement sa place dans "tabs".
 const GROUPS=[
-  {id:"g_dash",label:"Tableau de bord",icon:"dash",tabs:["dash","suivi","sante"]},
+  {id:"g_dash",label:"Tableau de bord",icon:"dash",tabs:["dash","suivi","frais","sante"]},
   {id:"g_pilotage",label:"Pilotage",icon:"scale",tabs:["analyse"]},
   {id:"g_compta",label:"Comptabilité",icon:"book",tabs:["compta","controle"]},
   {id:"g_fiscal",label:"Fiscal",icon:"bank",tabs:["tva","liasse","ech","teledec"]},
@@ -13118,7 +13118,7 @@ function renderView(){
   if(S.tab==="emprunts"){S.tab="compta";S.comptaView="emprunts";}   // module Emprunts intégré dans la Comptabilité
   try{if(S.curClient!=null)localStorage.setItem("fid_curclient",String(S.curClient));}catch(e){}
   try{localStorage.setItem("fid_ui",JSON.stringify({tab:S.tab,year:S.year,comptaView:S.comptaView,liasseView:S.liasseView,paieView:S.paieView,tvaPeriod:(S.tvaSel||{}).period||null}));}catch(e){}
-  const vmap={dash:vDash,sante:vSante,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,controle:vControle,jur:vJur,delais:vDelais,relances:vRelances,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse,suivi:vSuivi,saisies:vSaisies,fiches:vFiches,activite:vActivite,decharges:vDecharges,notes:vNotes};
+  const vmap={dash:vDash,sante:vSante,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,controle:vControle,jur:vJur,delais:vDelais,relances:vRelances,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse,suivi:vSuivi,frais:vFrais,saisies:vSaisies,fiches:vFiches,activite:vActivite,decharges:vDecharges,notes:vNotes};
   if(typeof vmap[S.tab]!=="function")S.tab="dash";   // onglet restauré inconnu -> retour sûr au tableau de bord
   const v=vmap[S.tab]();
   document.getElementById("view").innerHTML=voletToggle()+v;
@@ -13884,9 +13884,9 @@ function svPillsHtml(c,dls,sts){var html="",lastCat=null,CL={tva:"TVA",is:"IS",d
 
 /* ---------- enregistrements (gérant) ---------- */
 function svRecordDecl(key,o){S.done[key]={d:o.d||todayISO(),ref:o.ref||"",m:+o.m||0,note:o.note||"",by:o.by||"Cabinet",src:o.src||"cabinet",at:new Date().toISOString()};save("done");}
-function svRecordPay(o){var key=o.y+"|"+o.cid+"|"+o.k;S.pay[key]=Math.round(((+S.pay[key]||0)+(+o.montant||0))*100)/100;save("pay");
+function svRecordPay(o){var key=o.y+"|"+o.cid+"|"+o.k;if(o.k!=="FRAIS"){S.pay[key]=Math.round(((+S.pay[key]||0)+(+o.montant||0))*100)/100;save("pay");}
   if(!Array.isArray(S.paylog))S.paylog=[];
-  var _pl={id:"PL"+Date.now()+Math.floor(Math.random()*1000),cid:o.cid,y:+o.y,k:o.k,montant:+o.montant||0,mode:o.mode||"",date:o.date||todayISO(),ref:o.ref||"",note:o.note||"",by:o.by||"Cabinet",src:o.src||"cabinet",at:new Date().toISOString(),rcNo:o.rcNo||""};S.paylog.unshift(_pl);svRegisterRec(_pl);
+  var _pl={id:"PL"+Date.now()+Math.floor(Math.random()*1000),cid:o.cid,y:+o.y,k:o.k,montant:+o.montant||0,mode:o.mode||"",date:o.date||todayISO(),ref:o.ref||"",note:o.note||"",by:o.by||"Cabinet",src:o.src||"cabinet",at:new Date().toISOString(),rcNo:o.rcNo||""};if(o.k==="FRAIS"){_pl.fid=o.fid||"";_pl.lib=o.lib||"";}var _sid=o.sid||SV.curSid;if(_sid)_pl.sid=_sid;S.paylog.unshift(_pl);svRegisterRec(_pl);
   if(S.paylog.length>5000)S.paylog.length=5000;save("paylog");return _pl;}
 function svApplyRow(row){var d=row.data||{},by=row.author_name||row.email;
   if(row.type==="document"){var key=String(row.client_id);if(!S.docs)S.docs={};var arr=S.docs[key]||[];if(!arr.some(function(m){return m.path===d.path;})){S.docs[key]=arr.concat([{id:Date.now()+Math.floor(Math.random()*1000),name:d.name,size:d.size||0,date:d.date||new Date().toISOString(),cat:d.cat||"",path:d.path,by:by}]);save("docs");}return;}
@@ -13912,7 +13912,7 @@ async function svLoad(){if(!svAdmin()||SV.loading)return;SV.loading=true;
     if(n)showOk(n+" saisie(s) de l'équipe intégrée(s) automatiquement.");}
   svRefreshUI();}
 function svRefreshUI(){try{renderNav();}catch(e){}
-  if(["suivi","saisies","hon","ech"].indexOf(S.tab)>=0){var ae=document.activeElement;if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||""))return;if(S.modal)return;renderView();}}
+  if(["suivi","frais","saisies","hon","ech"].indexOf(S.tab)>=0){var ae=document.activeElement;if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||""))return;if(S.modal)return;renderView();}}
 function svSubAdmin(){if(SV.ch)return;try{SV.ch=sb.channel("sv_admin_"+session.user.id).on("postgres_changes",{event:"*",schema:"public",table:"staff_saisies"},function(p){
     if(p.eventType==="INSERT"&&p.new){var n=p.new;showOk("Nouvelle saisie de "+(n.author_name||n.email)+" : "+(n.type==="paiement"?"paiement":"déclaration")+" — "+(n.client_name||""));}
     clearTimeout(SV.loadT);SV.loadT=setTimeout(svLoad,700);}).subscribe();}catch(e){}}
@@ -13924,7 +13924,7 @@ function svBuildSnapshot(s){var scope=s.saisie||"all";if(scope==="none")return n
   clients().forEach(function(c){if(ids&&ids.indexOf(+c.id)<0)return;var o={id:c.id,n:c.dossier,d:[],pay:{},i:svClientInfo(c),docs:((S.docs||{})[String(c.id)]||[]).filter(function(m){return m&&m.path;}).slice(-30).map(function(m){return {id:m.id,n:m.name,c:m.cat||"",s:m.size||0,d:m.date||"",p:m.path,by:m.by||""};}),docsN:((S.docs||{})[String(c.id)]||[]).filter(function(m){return m&&m.path;}).length};
     [Y-1,Y].forEach(function(y){svWithYear(y,function(){
       buildDeadlines(c).forEach(function(dl){var done=!!S.done[dl.key];if(y<Y&&(done||svIso(dl.date)<Y+"-01-01"))return;o.d.push({key:dl.key,l:dl.label+(y<Y?" ("+y+")":""),dt:svIso(dl.date),done:done});});
-      if(svHon(c)>0)o.pay[y]={exp:expectedFor(c),col:collFor(c),p:payPlan(c).map(function(p){return {k:p.k,l:p.label,paid:+S.pay[y+"|"+c.id+"|"+p.k]||0,due:svPeriodDue(c,p.k)};}),h:(S.paylog||[]).filter(function(p){return +p.cid===+c.id&&+p.y===y;}).slice(0,20).map(function(p){return {d:p.date,m:p.montant,mo:p.mode,ref:p.ref,rc:p.rcNo,k:p.k};})};});});
+      if(svHon(c)>0)o.pay[y]={exp:expectedFor(c),col:collFor(c),p:payPlan(c).map(function(p){return {k:p.k,l:p.label,paid:+S.pay[y+"|"+c.id+"|"+p.k]||0,due:svPeriodDue(c,p.k)};}),h:(S.paylog||[]).filter(function(p){return +p.cid===+c.id&&+p.y===y&&p.k!=="FRAIS";}).slice(0,20).map(function(p){return {d:p.date,m:p.montant,mo:p.mode,ref:p.ref,rc:p.rcNo,k:p.k};})};});});
     out.push(o);});
   return {gen:new Date().toISOString(),y:Y,clients:out,cab:svCabHead()};}
 var _svTBP=teamBuildPayload;
@@ -13937,7 +13937,7 @@ async function svPushAll(manual){if(!svAdmin())return;
 
 /* ---------- raccordements au logiciel existant ---------- */
 var _svSave=save;
-save=function(k){_svSave(k);if(!SV.staff&&["done","pay","custom","flags","deleted","team"].indexOf(k)>=0)svSchedulePush(k==="team");};
+save=function(k){_svSave(k);if(!SV.staff&&["done","pay","custom","flags","deleted","team","frais","paylog"].indexOf(k)>=0)svSchedulePush(k==="team");};
 var _svCU=cloudUpsert;
 cloudUpsert=function(k,v){if(SV.staff)return;return _svCU(k,v);};
 var _svPA=pullAll;
@@ -13978,15 +13978,15 @@ function svTbody(rows){var list=svFilterRows(rows);
       +'<td style="min-width:300px;line-height:1.9">'+svPillsHtml(c,x.dls,x.sts)+'</td>'
       +'<td style="min-width:110px"><span class="mono" style="font-weight:600;color:'+(x.r?"#B42318":"#0E7A5F")+'">'+x.ok+' / '+x.n+'</span>'+(x.r?' <span style="font-size:11px;color:#B42318">· '+x.r+' en retard</span>':'')+'<div class="svbar"><div style="width:'+pct+'%"></div></div></td>'
       +'<td class="n" style="min-width:150px"><span style="color:#0a5f4a;font-weight:600">'+svMoney(x.cl)+'</span><span style="color:var(--faint)"> / '+svMoney(x.e)+'</span><div class="svbar"><div style="width:'+hp+'%"></div></div>'+ppTxt+'</td>'
-      +'<td class="n" style="font-weight:700;color:'+(reste>0.5?"#B5530A":"#0E7A5F")+'">'+svMoney(reste)+'</td>'
+      +'<td class="n" style="font-weight:700;color:'+(reste>0.5?"#B5530A":"#0E7A5F")+'">'+svMoney(reste)+(function(){var ft=frClientTot(c.id);return ft.r>0.5?'<div class="sub" style="color:#6B3FA0;font-weight:600">+ frais divers '+svMoney(ft.r)+'</div>':'';})()+'</td>'
       +'<td style="white-space:nowrap;text-align:right;min-width:150px"><button class="chip" data-act="sv_payopen" data-cid="'+c.id+'" style="padding:4px 10px;font-size:11.5px">'+ic("plus","width:12px;height:12px")+' Encaisser</button> <button class="iconbtn" data-act="sv_releve" data-cid="'+c.id+'" title="Relevé de compte (imprimer)">'+ic("receipt","width:15px;height:15px")+'</button>'+(reste>0.5&&waNumbers(c.tel||"").length?'<button class="iconbtn" data-act="sv_rel" data-cid="'+c.id+'" title="Relancer par WhatsApp'+(svLastRel(c.id)?' (dernière : '+svDT(svLastRel(c.id).at)+')':'')+'" style="color:'+(svLastRel(c.id)?'#0E7A5F':'#B5530A')+'">'+ic("whatsapp","width:15px;height:15px")+'</button>':'')+'<button class="iconbtn" data-act="pay" data-id="'+c.id+'" title="Grille des honoraires">'+ic("wallet","width:15px;height:15px")+'</button></td></tr>';}).join("");}
 function svPaylogHtml(){var byId={};clients().forEach(function(c){byId[c.id]=c;});
   var list=(S.paylog||[]).filter(function(p){return +p.y===+S.year;}).slice(0,40);
   var tot=(S.paylog||[]).filter(function(p){return +p.y===+S.year;}).reduce(function(s,p){return s+(+p.montant||0);},0);
-  var body=list.length?list.map(function(p){var c=byId[p.cid];return '<tr><td class="mono">'+svD(p.date)+'</td><td><div class="dossier" style="font-size:13px">'+esc(c?c.dossier:("#"+p.cid))+'</div></td><td>'+esc(p.k)+'</td><td class="n" style="font-weight:600;color:#0a5f4a">'+svMoney(p.montant)+'</td><td>'+esc(p.mode||"")+'</td><td>'+esc(p.ref||"")+'</td><td>'+esc(p.by||"")+(p.src==="equipe"?' <span class="svst" style="background:#E8F0FB;color:#1D6FB8">équipe</span>':'')+'</td><td style="white-space:nowrap"><button class="chip" data-act="sv_rc_pl" data-id="'+esc(p.id)+'" style="padding:3px 9px;font-size:11px">'+ic("printer","width:12px;height:12px")+' '+(p.rcNo?esc(p.rcNo):'Générer')+'</button> <button class="iconbtn" data-act="sv_pl_del" data-id="'+esc(p.id)+'" title="Supprimer l\'encaissement" style="color:#C0392B">'+ic("trash","width:13px;height:13px")+'</button></td></tr>';}).join("")
+  var body=list.length?list.map(function(p){var c=byId[p.cid];return '<tr><td class="mono">'+svD(p.date)+'</td><td><div class="dossier" style="font-size:13px">'+esc(c?c.dossier:("#"+p.cid))+'</div></td><td>'+(p.k==="FRAIS"?'<span class="svst" style="background:#F3EEFB;color:#6B3FA0">Frais</span> '+esc(p.lib||""):esc(p.k))+'</td><td class="n" style="font-weight:600;color:#0a5f4a">'+svMoney(p.montant)+'</td><td>'+esc(p.mode||"")+'</td><td>'+esc(p.ref||"")+'</td><td>'+esc(p.by||"")+(p.src==="equipe"?' <span class="svst" style="background:#E8F0FB;color:#1D6FB8">équipe</span>':'')+'</td><td style="white-space:nowrap"><button class="chip" data-act="sv_rc_pl" data-id="'+esc(p.id)+'" style="padding:3px 9px;font-size:11px">'+ic("printer","width:12px;height:12px")+' '+(p.rcNo?esc(p.rcNo):'Générer')+'</button> <button class="iconbtn" data-act="sv_pl_del" data-id="'+esc(p.id)+'" title="Supprimer l\'encaissement" style="color:#C0392B">'+ic("trash","width:13px;height:13px")+'</button></td></tr>';}).join("")
     :'<tr><td colspan="8" style="text-align:center;color:var(--faint);padding:20px">Aucun encaissement enregistré via « Encaisser » ou l\'Espace collaborateur pour '+S.year+'.</td></tr>';
   return '<div class="card mt5" style="padding:0;overflow:hidden"><div style="padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="sectit" style="margin:0">'+ic("bank")+' Journal des encaissements '+S.year+'</div><div class="mono" style="font-size:12.5px;color:var(--muted)">Total journal : <b style="color:#0a5f4a">'+svMoney(tot)+'</b></div></div>'
-    +'<div class="svx"><table class="svt"><thead><tr><th>Date</th><th>Dossier</th><th>Période</th><th style="text-align:right">Montant</th><th>Mode</th><th>Référence</th><th>Saisi par</th><th>Reçu</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';}
+    +'<div class="svx"><table class="svt"><thead><tr><th>Date</th><th>Dossier</th><th>Période / objet</th><th style="text-align:right">Montant</th><th>Mode</th><th>Référence</th><th>Saisi par</th><th>Reçu</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';}
 function vSuivi(){var rows=svComputeRows(),tot=0,dep=0,ret=0,exp=0,col=0;
   rows.forEach(function(x){tot+=x.n;dep+=x.ok;ret+=x.r;exp+=x.e;col+=x.cl;});
   var pend=svPendCount();
@@ -14030,7 +14030,7 @@ function svModalPay(){var m=S.modal,c=clients().find(function(x){return x.id===m
     .map(function(o){return '<option value="'+esc(o.p.k)+'"'+(o.p.k===first?" selected":"")+'>'+esc(o.p.label)+(o.paid?" — déjà encaissé "+svMoney(o.paid):"")+'</option>';}).join("");
   var modes=PAY_MODES.map(function(x){return '<option>'+esc(x)+'</option>';}).join("");
   var hist=(S.paylog||[]).filter(function(p){return +p.cid===+c.id;}).slice(0,6);
-  var histH=hist.length?'<div class="flbl" style="margin-top:18px">Derniers encaissements</div>'+hist.map(function(p){return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--line-soft)"><span>'+svD(p.date)+' · '+esc(p.y+" "+p.k)+' · '+esc(p.mode||"")+'</span><b class="mono" style="color:#0a5f4a">'+svMoney(p.montant)+'</b></div>';}).join(""):'';
+  var histH=hist.length?'<div class="flbl" style="margin-top:18px">Derniers encaissements</div>'+hist.map(function(p){return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--line-soft)"><span>'+svD(p.date)+' · '+esc(p.k==="FRAIS"?(p.lib||"Frais divers"):p.y+" "+p.k)+' · '+esc(p.mode||"")+'</span><b class="mono" style="color:#0a5f4a">'+svMoney(p.montant)+'</b></div>';}).join(""):'';
   return '<div class="ov"><div class="modal" data-stop style="max-width:480px"><div class="mh"><div><h3 class="ff">Encaisser des honoraires</h3><div class="meta"><span>'+esc(c.dossier)+' · exercice '+S.year+' · attendu '+svMoney(expectedFor(c))+', encaissé '+svMoney(collFor(c))+'</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div><div class="mb" style="padding:22px">'
     +'<div class="grid g2"><div><div class="flbl">Période</div><select class="ipt" id="sv_p_k">'+opts+'</select></div><div><div class="flbl">Montant (DH)</div><input class="ipt mono" type="number" step="0.01" id="sv_p_mt" placeholder="0"></div></div>'
     +'<div class="grid g2 mt3"><div><div class="flbl">Mode</div><select class="ipt" id="sv_p_mode">'+modes+'</select></div><div><div class="flbl">Date</div><input class="ipt" type="date" id="sv_p_date" value="'+todayISO()+'"></div></div>'
@@ -14105,8 +14105,8 @@ function svStaffPayList(){var snap=svSnap();if(!snap)return '';var y=SV.py||snap
   var rows=snap.clients.filter(function(c){return c.pay&&c.pay[y]&&smartMatch(SV.pq,c.n);});
   if(!rows.length)return '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:26px">Aucun dossier avec honoraires pour '+y+'.</td></tr>';
   return rows.map(function(c){var P=c.pay[y];
-    var extra=SV.mine.filter(function(r){return r.type==="paiement"&&+r.client_id===+c.id&&+(r.data||{}).year===+y&&r.statut==="valide"&&r.traite_at&&r.traite_at>snap.gen;}).reduce(function(s,r){return s+(+r.data.montant||0);},0);
-    var pend=SV.mine.filter(function(r){return r.type==="paiement"&&+r.client_id===+c.id&&+(r.data||{}).year===+y&&r.statut==="en_attente";}).reduce(function(s,r){return s+(+r.data.montant||0);},0);
+    var extra=SV.mine.filter(function(r){return r.type==="paiement"&&(r.data||{}).k!=="FRAIS"&&+r.client_id===+c.id&&+(r.data||{}).year===+y&&r.statut==="valide"&&r.traite_at&&r.traite_at>snap.gen;}).reduce(function(s,r){return s+(+r.data.montant||0);},0);
+    var pend=SV.mine.filter(function(r){return r.type==="paiement"&&(r.data||{}).k!=="FRAIS"&&+r.client_id===+c.id&&+(r.data||{}).year===+y&&r.statut==="en_attente";}).reduce(function(s,r){return s+(+r.data.montant||0);},0);
     var col=P.col+extra+pend,reste=Math.max(0,P.exp-col);pend=0;
     return '<tr><td><div class="dossier" style="font-size:13px">'+esc(c.n)+'</div></td><td class="n">'+svMoney(P.exp)+'</td><td class="n" style="color:#0a5f4a;font-weight:600">'+svMoney(col)+'</td><td class="n" style="font-weight:700;color:'+(reste>0.5?"#B5530A":"#0E7A5F")+'">'+svMoney(reste)+'</td>'
       +'<td style="text-align:right;white-space:nowrap"><button class="iconbtn" data-act="sv_s_releve" data-cid="'+c.id+'" title="Relevé de compte">'+ic("receipt","width:15px;height:15px")+'</button>'+(reste>0.5&&waNumbers((c.i||{}).tel||"").length?'<button class="iconbtn" data-act="sv_s_rel" data-cid="'+c.id+'" title="Relancer par WhatsApp" style="color:#B5530A">'+ic("whatsapp","width:15px;height:15px")+'</button>':'')+' <button class="btn-primary" data-act="sv_s_pay" data-cid="'+c.id+'" style="padding:6px 12px;font-size:12px">'+ic("plus","width:13px;height:13px")+' Paiement</button></td></tr>';}).join("");}
@@ -14116,7 +14116,7 @@ function svStaffMineList(){if(!SV.mine.length)return '<tr><td colspan="6" style=
 function svStaffRender(keepFocus){var root=document.getElementById("svStaff");if(!root)return;
   var ae=document.activeElement;if(keepFocus&&(SV.modal||(ae&&ae.id&&/^(svs_|svn_|svtcin_)/.test(ae.id)))){svStaffLists();return;}
   var me=SV.me||{},snap=svSnap(),pendN=SV.mine.filter(function(r){return r.statut==="en_attente";}).length;
-  var openT=svStaffOpenTasks();var tabs=[["tasks","Mes tâches"+(openT?" ("+openT+")":"")],["cli","Clients"],["notes","Remarques"],["decl","Déclarations"],["pay","Paiements d'honoraires"],["scans","Documents"],["dech","Décharges"],["docs","Demandes"+(SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length?" ("+SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length+")":"")],["caisse","Ma caisse"],["mine","Mes saisies"+(pendN?" ("+pendN+")":"")]].map(function(t){return '<button data-act="sv_s_tab" data-v="'+t[0]+'" class="'+(SV.tab===t[0]?"on":"")+'">'+t[1]+'</button>';}).join("");
+  var openT=svStaffOpenTasks();var tabs=[["tasks","Mes tâches"+(openT?" ("+openT+")":"")],["cli","Clients"],["notes","Remarques"],["decl","Déclarations"],["pay","Paiements d'honoraires"],["frais","Frais divers"],["scans","Documents"],["dech","Décharges"],["docs","Demandes"+(SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length?" ("+SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length+")":"")],["caisse","Ma caisse"],["mine","Mes saisies"+(pendN?" ("+pendN+")":"")]].map(function(t){return '<button data-act="sv_s_tab" data-v="'+t[0]+'" class="'+(SV.tab===t[0]?"on":"")+'">'+t[1]+'</button>';}).join("");
   var seg=function(arr,cur,act){return '<div class="seg">'+arr.map(function(a){return '<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(String(cur)===String(a[0])?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';};
   var body="";
   if(SV.tab==="tasks"){body=svStaffTasksHtml();}
@@ -14130,6 +14130,7 @@ function svStaffRender(keepFocus){var root=document.getElementById("svStaff");if
   else if(SV.tab==="decl"){body='<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_q" placeholder="Rechercher un dossier…" value="'+esc(SV.sq)+'"></div>'
       +svStaffDeclFilters()+'</div>'
       +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th>Déclaration</th><th>Échéance</th><th>Statut</th><th></th></tr></thead><tbody id="svs_list">'+svStaffDeclList()+'</tbody></table></div></div>';}
+  else if(SV.tab==="frais"){body=frStaffHtml();}
   else if(SV.tab==="pay"){var y=SV.py||snap.y;body='<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_pq" placeholder="Rechercher un dossier…" value="'+esc(SV.pq)+'"></div>'
       +seg([[snap.y-1,String(snap.y-1)],[snap.y,String(snap.y)]],y,"sv_s_py")+'</div>'
       +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th style="text-align:right">Attendu '+y+'</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Reste</th><th></th></tr></thead><tbody id="svs_plist">'+svStaffPayList()+'</tbody></table></div></div>';}
@@ -14370,7 +14371,7 @@ async function svSyncRecCounters(){if(!svAdmin())return;var mx={};
   (S.receipts||[]).concat(S.paylog||[]).forEach(function(r){var p=svRecNum(r.no||r.rcNo);if(p)mx[p.y]=Math.max(mx[p.y]||0,p.n);});
   for(var y in mx){try{await sb.rpc("sync_recu",{p_year:+y,p_min:mx[y]});}catch(e){}}}
 function svRegisterRec(pl){if(!pl||!pl.rcNo)return;if(!Array.isArray(S.receipts))S.receipts=[];if(S.receipts.some(function(r){return r.no===pl.rcNo;}))return;
-  var c=clients().find(function(x){return +x.id===+pl.cid;});S.receipts.push({no:pl.rcNo,clientId:pl.cid,dossier:c?c.dossier:"",montant:pl.montant,motif:svRecMotif(pl.k,pl.y),date:pl.date,mode:pl.mode,ref:pl.ref||"",by:pl.by||""});save("receipts");}
+  var c=clients().find(function(x){return +x.id===+pl.cid;});S.receipts.push({no:pl.rcNo,clientId:pl.cid,dossier:c?c.dossier:"",montant:pl.montant,motif:svPlMotif(pl),date:pl.date,mode:pl.mode,ref:pl.ref||"",by:pl.by||""});save("receipts");}
 function svRecMotif(k,y){var m={T1:"1er trimestre",T2:"2e trimestre",T3:"3e trimestre",T4:"4e trimestre",ANNUEL:"annuels",BILAN:"du bilan"};var i=MONTHS.indexOf(k);
   return "Honoraires "+(m[k]||(i>=0?MOIS_FULL[i]:k))+" "+(k==="BILAN"?"exercice "+(+y-1):y);}
 function svCabHead(){var c=cabinetGet(),v=function(x){x=String(x==null?"":x).trim();return /^[0\s.\-]*$/.test(x)?"":x;};return {raison:v(c.raison),activite:v(c.activite),adresse:v(c.adresse),ville:v(c.ville),ice:v(c.ice),if:v(c.if),rc:v(c.rc),tp:v(c.patente),capital:v(c.capital),tel:v(c.tel),email:v(c.email)};}
@@ -14397,9 +14398,9 @@ function svPrintRec(r,w){w=w||window.open("","_blank");if(!w){showErr("Autorisez
   w.document.open();w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Reçu '+esc(r.no)+'</title><style>body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:0;padding:16px}'+SV_RC_CSS+'@page{margin:9mm}</style></head><body>'+svRecHtml(r)
     +'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},300);};</scr'+'ipt></body></html>');w.document.close();}
 function svRecFromPl(pl){var c=clients().find(function(x){return +x.id===+pl.cid;})||{},soc=((S.flags[pl.cid]||{}).societe)||{};
-  return {no:pl.rcNo,client:c.dossier||"",ice:soc.ice||"",montant:pl.montant,motif:svRecMotif(pl.k,pl.y),mode:pl.mode,ref:pl.ref,date:pl.date,by:pl.by&&pl.by!=="Cabinet"?pl.by:"",cab:svCabHead()};}
+  return {no:pl.rcNo,client:c.dossier||"",ice:soc.ice||"",montant:pl.montant,motif:svPlMotif(pl),mode:pl.mode,ref:pl.ref,date:pl.date,by:pl.by&&pl.by!=="Cabinet"?pl.by:"",cab:svCabHead()};}
 function svPrintRecFromPl(pl,w){if(pl&&pl.rcNo)svPrintRec(svRecFromPl(pl),w);else if(w)w.close();}
-function svRecFromStaff(c,d){var snap=svSnap()||{},i=(c&&c.i)||{};return {no:d.rcNo,client:c?c.n:"",ice:(i.soc||{}).ice||"",montant:d.montant,motif:svRecMotif(d.k,d.year),mode:d.mode,ref:d.ref,date:d.date,by:(SV.me&&SV.me.name)||"",cab:snap.cab};}
+function svRecFromStaff(c,d){var snap=svSnap()||{},i=(c&&c.i)||{};return {no:d.rcNo,client:c?c.n:"",ice:(i.soc||{}).ice||"",montant:d.montant,motif:d.k==="FRAIS"?(d.lib||"Frais divers"):svRecMotif(d.k,d.year),mode:d.mode,ref:d.ref,date:d.date,by:(SV.me&&SV.me.name)||"",cab:snap.cab};}
 // Ancien bouton « Reçu » (Honoraires) : même modèle et même numérotation
 doPrintReceipt=async function(id){var c=clients().find(function(x){return x.id===id;});if(!c)return;
   var montant=parseFloat(svVal("rc_montant"))||0;if(montant<=0){var f=document.getElementById("rc_montant");if(f)f.focus();return;}
@@ -14442,7 +14443,7 @@ function svOpen(url){var w=window.open(url,"_blank");if(!w)showErr("Autorisez le
 /* ---------------- 1. RELEVÉ DE COMPTE CLIENT ---------------- */
 function svReleveAdmin(cid,y){var c=clients().find(function(x){return +x.id===+cid;});if(!c)return null;y=+y||S.year;var so=((S.flags[c.id]||{}).societe)||{};
   var rows=svWithYear(y,function(){return payPlan(c).map(function(p){var paid=+S.pay[y+"|"+c.id+"|"+p.k]||0;return {k:p.k,l:p.label,due:svPeriodDue(c,p.k),paid:paid};});});
-  var h=(S.paylog||[]).filter(function(p){return +p.cid===+c.id&&+p.y===y;}).map(function(p){return {d:p.date,m:p.montant,mo:p.mode,ref:p.ref,rc:p.rcNo,k:p.k,by:p.by};});
+  var h=(S.paylog||[]).filter(function(p){return +p.cid===+c.id&&+p.y===y&&p.k!=="FRAIS";}).map(function(p){return {d:p.date,m:p.montant,mo:p.mode,ref:p.ref,rc:p.rcNo,k:p.k,by:p.by};});
   return {client:c.dossier,ice:so.ice||"",tel:c.tel||"",y:y,rows:rows,h:h,cab:svCabHead()};}
 function svReleveStaff(c,y){var P=((c.pay||{})[y])||{p:[]};return {client:c.n,ice:((c.i||{}).soc||{}).ice||"",tel:(c.i||{}).tel||"",y:y,rows:P.p.map(function(p){return {k:p.k,l:p.l,due:+p.due||0,paid:+p.paid||0};}),h:(P.h||[]),cab:(svSnap()||{}).cab};}
 function svReleveHtml(R){var cab=R.cab||{},td=0,tp=0;
@@ -14610,10 +14611,10 @@ async function svDeleteRow(id){var r=SV.rows.find(function(x){return x.id===id;}
   var res=await sb.from("staff_saisies").delete().eq("id",id);if(res.error){showErr("Suppression impossible : "+res.error.message);return;}
   if(r.type==="document"){var dk=String(r.client_id);if(S.docs&&S.docs[dk]){S.docs[dk]=S.docs[dk].filter(function(m){return m.path!==d.path;});save("docs");}try{await sb.storage.from(DOC_BUCKET).remove([d.path]);}catch(_e){}}
   else if(r.statut==="valide"){if(r.type==="declaration"){var dn=S.done[r.decl_key];if(dn&&(typeof dn!=="object"||dn.src==="equipe")){delete S.done[r.decl_key];save("done");}}
-    else svUndoPay(+r.client_id,+d.year||S.year,d.k,d.montant,d.rcNo,null);}
+    else{svUndoPay(+r.client_id,+d.year||S.year,d.k,d.montant,d.rcNo,(((S.paylog||[]).find(function(p){return p.sid===r.id;}))||{}).id||null);if(d.k==="FRAIS")frCleanupRow(r.id);}}
   SV.rows=SV.rows.filter(function(x){return x.id!==id;});renderNav();renderView();showOk("Saisie supprimée.");}
 function svDeletePl(id){var p=(S.paylog||[]).find(function(x){return x.id===id;});if(!p)return;var c=clients().find(function(x){return +x.id===+p.cid;});
-  if(!window.confirm("Supprimer l'encaissement de "+svMoney(p.montant)+" ("+(c?c.dossier:"")+", "+p.k+" "+p.y+") ?\n\nLe montant sera retiré des honoraires encaissés"+(p.rcNo?" et le reçu "+p.rcNo+" annulé":"")+"."))return;
+  if(!window.confirm("Supprimer l'encaissement de "+svMoney(p.montant)+" ("+(c?c.dossier:"")+", "+(p.k==="FRAIS"?(p.lib||"frais divers"):p.k+" "+p.y)+") ?\n\nLe montant sera retiré "+(p.k==="FRAIS"?"du frais correspondant":"des honoraires encaissés")+""+(p.rcNo?" et le reçu "+p.rcNo+" annulé":"")+"."))return;
   svUndoPay(p.cid,p.y,p.k,p.montant,p.rcNo,p.id);renderView();showOk("Encaissement supprimé.");}
 async function svDeleteDoc(id){if(!window.confirm("Supprimer définitivement cette demande de documents ?"))return;var r=await sb.from("staff_doc_requests").delete().eq("id",id);if(r.error){showErr(r.error.message);return;}SV.docs=SV.docs.filter(function(x){return x.id!==id;});renderView();showOk("Demande supprimée.");}
 
@@ -15220,7 +15221,9 @@ function svReadableBook(p){var D=p.data||{},C=p.cloud||{},wb=XLSX.utils.book_new
   add("Déclarations",["Dossier","Exercice","Déclaration","Échéance","Statut","Date de dépôt","Référence","Montant payé","Déposée par","Remarque"],rowsD);
   /* 3. Encaissements */
   add("Encaissements",["Date","Dossier","Exercice","Période","Montant (DH)","Mode","Référence","N° reçu","Encaissé par","Origine"],
-    arr(D.paylog).map(function(x){return [d(x.date),nm(x.cid),x.y,x.k,+x.montant||0,x.mode||"",x.ref||"",x.rcNo||"",x.by||"",x.src==="equipe"?"Collaborateur":"Cabinet"];}));
+    arr(D.paylog).map(function(x){return [d(x.date),nm(x.cid),x.y,x.k==="FRAIS"?"Frais : "+(x.lib||""):x.k,+x.montant||0,x.mode||"",x.ref||"",x.rcNo||"",x.by||"",x.src==="equipe"?"Collaborateur":"Cabinet"];}));
+  var frPd=function(id){return arr(D.paylog).filter(function(x){return x.k==="FRAIS"&&x.fid===id;}).reduce(function(t,x){return t+(+x.montant||0);},0);};
+  add("Frais divers",["Date","Dossier","Nature","Détail","Montant convenu (DH)","Encaissé (DH)","Reste (DH)","Statut","Remarque","Saisi par"],arr(D.frais).map(function(f){var p=Math.round(frPd(f.id)*100)/100,m=+f.montant||0,r=Math.max(0,Math.round((m-p)*100)/100);return [d(f.date),nm(f.cid),f.type||"",f.lib||"",m,p,r,r<=0.5?"Soldé":(p>0?"Partiel":"Impayé"),f.note||"",f.by||""];}));
   add("Reçus",["N° reçu","Date","Dossier","Montant (DH)","Motif","Mode"],arr(D.receipts).map(function(r){return [r.no||"",d(r.date),r.dossier||nm(r.clientId),+r.montant||0,r.motif||"",r.mode||""];}));
   /* 4. Décharges */
   add("Décharges",["N°","Date","Dossier","Remis à","CIN","Qualité","Motif","Documents remis","Solde dû (DH)","Établie par"],arr(C.dossier_decharges).map(function(r){var x=r.data||{};return [r.no,d(x.date),r.client_name||nm(r.client_id),x.nom||"",x.cin||"",x.qualite||"",x.motif||"",(x.items||[]).concat(x.autres||[]).join(" ; "),+x.reste||0,r.author_name||""];}));
@@ -15245,6 +15248,258 @@ function svReadableBook(p){var D=p.data||{},C=p.cloud||{},wb=XLSX.utils.book_new
 async function svReadableBlob(p){await ensureXLSX();var out=XLSX.write(svReadableBook(p),{bookType:"xlsx",type:"array"});return new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});}
 async function svDownloadReadable(){try{var p=await svBackupPayload(),blob=await svReadableBlob(p),url=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=url;a.download="LISIBLE-fidinfocom-"+todayISO()+".xlsx";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},2000);showOk("Version lisible (Excel) téléchargée.");}catch(e){showErr("Export Excel impossible : "+(e.message||e));}}
+
+/* =========================== FRAIS DIVERS (hors honoraires périodiques) ===========================
+   Création de société, formalités juridiques, attestations, débours… : un registre par client.
+   - S.frais : [{id,cid,type,lib,date,montant,note,by,src,at,sid}]  (montant = somme convenue)
+   - Les paiements sont dans le journal S.paylog avec k:"FRAIS", fid (id du frais) et lib (libellé),
+     ils ne touchent jamais les honoraires (S.pay). Reçus : même numérotation que les honoraires. */
+var FR_TYPES=["Création de société","Modification juridique (statuts, gérance, siège…)","Cession de parts / capital","Dissolution / liquidation","Domiciliation","Attestation / document administratif","Immatriculation (RC, IF, TP, ICE)","Dossier CNSS / social","Débours (timbres, greffe, enregistrement)","Conseil / assistance","Autre"];
+var FR={q:"",st:"all",ty:"",per:"all"};
+function frList(){if(!Array.isArray(S.frais))S.frais=[];return S.frais;}
+function frLabel(f){return (f.type||"Frais divers")+(f.lib?" — "+f.lib:"");}
+function frPays(fid){return (S.paylog||[]).filter(function(p){return p.k==="FRAIS"&&p.fid===fid;});}
+function frR2(x){return Math.round((+x||0)*100)/100;}
+function frPaid(f){return frR2(frPays(f.id).reduce(function(s,p){return s+(+p.montant||0);},0));}
+function frReste(f){return Math.max(0,frR2((+f.montant||0)-frPaid(f)));}
+function frOfClient(cid){return frList().filter(function(f){return +f.cid===+cid;});}
+function frClientTot(cid){var t={n:0,m:0,p:0};frOfClient(cid).forEach(function(f){t.n++;t.m+=+f.montant||0;t.p+=frPaid(f);});t.m=frR2(t.m);t.p=frR2(t.p);t.r=Math.max(0,frR2(t.m-t.p));return t;}
+function frNewId(){return "FR"+Date.now()+Math.floor(Math.random()*1000);}
+function frAdd(o){var f={id:o.id||frNewId(),cid:+o.cid,type:o.type||"Autre",lib:o.lib||"",date:o.date||todayISO(),montant:frR2(o.montant),note:o.note||"",by:o.by||"Cabinet",src:o.src||"cabinet",at:new Date().toISOString()};if(o.sid)f.sid=o.sid;frList().unshift(f);save("frais");return f;}
+function frPayRecord(f,o){var d=o.date||todayISO();return svRecordPay({cid:f.cid,y:+String(d).slice(0,4)||S.year,k:"FRAIS",fid:f.id,lib:frLabel(f),montant:o.montant,mode:o.mode,date:d,ref:o.ref,note:o.note,by:o.by||"Cabinet",src:o.src||"cabinet",rcNo:o.rcNo||"",sid:o.sid||""});}
+function svPlMotif(pl){return pl&&pl.k==="FRAIS"?(pl.lib||"Frais divers"):svRecMotif(pl.k,pl.y);}
+function frAllClients(){var all;SV_ALL++;try{all=clients();}finally{SV_ALL--;}return all;}
+function frCliName(cid,byId){var c=byId?byId[cid]:frAllClients().find(function(x){return +x.id===+cid;});return c?c.dossier:"Dossier #"+cid;}
+function frStatut(m,p){var r=frR2(m-p);if(m<=0&&p<=0)return ['<span class="svst" style="background:#EEF0EE;color:#5C6660">À chiffrer</span>',"—"];
+  if(r<=0.5)return ['<span class="svst" style="background:#E3F1EB;color:#0E7A5F">Soldé</span>',"Soldé"];
+  if(p>0)return ['<span class="svst" style="background:#FFF7E0;color:#9A7610">Partiel</span>',"Partiel"];
+  return ['<span class="svst" style="background:#FBEAE8;color:#B42318">Impayé</span>',"Impayé"];}
+
+/* ---------- vue cabinet : Frais divers ---------- */
+function frFiltered(){var byId={};frAllClients().forEach(function(c){byId[c.id]=c;});
+  return {byId:byId,list:frList().filter(function(f){
+    if(FR.per==="year"&&String(f.date||"").slice(0,4)!==String(S.year))return false;
+    if(FR.ty&&f.type!==FR.ty)return false;
+    var r=frReste(f);if(FR.st==="open"&&!(r>0.5))return false;if(FR.st==="solde"&&r>0.5)return false;
+    if(FR.q&&!smartMatch(FR.q,frCliName(f.cid,byId)+" "+frLabel(f)+" "+(f.note||"")))return false;return true;})};}
+function frRecap(F){var g={};F.list.forEach(function(f){var k=String(f.cid);if(!g[k])g[k]={cid:f.cid,n:0,m:0,p:0};g[k].n++;g[k].m+=+f.montant||0;g[k].p+=frPaid(f);});
+  return Object.keys(g).map(function(k){var x=g[k],c=F.byId[x.cid];x.name=frCliName(x.cid,F.byId);x.m=frR2(x.m);x.p=frR2(x.p);x.r=Math.max(0,frR2(x.m-x.p));
+    x.he=0;x.hc=0;if(c){try{x.he=frR2(expectedFor(c));x.hc=frR2(collFor(c));}catch(e){}}x.hr=Math.max(0,frR2(x.he-x.hc));return x;})
+    .sort(function(a,b){return (b.r+b.hr)-(a.r+a.hr)||a.name.localeCompare(b.name);});}
+function frBodyHtml(){var F=frFiltered(),list=F.list,tm=0,tp=0;list.forEach(function(f){tm+=+f.montant||0;tp+=frPaid(f);});tm=frR2(tm);tp=frR2(tp);
+  var rec=frRecap(F),th=0,tc=0;rec.forEach(function(x){th+=x.he;tc+=x.hc;});
+  var kpis='<div class="grid g4 mt5">'+facKpi("receipt","#6B3FA0","#F3EEFB",fmtDH(Math.round(tm)),"Frais convenus ("+list.length+")")
+    +facKpi("bank","#0E7A5F","#e6f4ef",fmtDH(Math.round(tp)),"Frais encaissés")
+    +facKpi("wallet","#B5530A","#FCEEE0",fmtDH(Math.round(Math.max(0,tm-tp))),"Frais restant à encaisser")
+    +facKpi("users","#14201C","#eef0ee",rec.length,"Dossiers concernés")+'</div>';
+  var money=function(v,col,b){return '<td class="n" style="'+(b?"font-weight:700;":"")+(col?"color:"+col:"")+'">'+svMoney(v)+'</td>';};
+  var recH=rec.length?rec.map(function(x){var totR=x.r+x.hr;return '<tr><td><div class="dossier" style="font-size:13px">'+esc(x.name)+'</div><div class="sub">'+x.n+' frais</div></td>'
+      +money(x.m)+money(x.p,"#0a5f4a")+money(x.r,x.r>0.5?"#B5530A":"#0E7A5F",1)
+      +'<td class="n"><span style="color:#0a5f4a">'+svMoney(x.hc)+'</span><span style="color:var(--faint)"> / '+svMoney(x.he)+'</span></td>'
+      +money(x.p+x.hc,"#0a5f4a",1)+money(totR,totR>0.5?"#B42318":"#0E7A5F",1)
+      +'<td style="text-align:right;white-space:nowrap;min-width:130px"><button class="chip" data-act="fr_new" data-cid="'+x.cid+'" style="padding:3px 9px;font-size:11px">'+ic("plus","width:12px;height:12px")+' Frais</button> <button class="iconbtn" data-act="sv_releve" data-cid="'+x.cid+'" title="Relevé de compte complet (honoraires + frais)">'+ic("receipt","width:15px;height:15px")+'</button></td></tr>';}).join("")
+    +'<tr style="background:#FAF8F2;font-weight:700"><td>TOTAL</td>'+money(tm)+money(tp,"#0a5f4a")+money(Math.max(0,tm-tp),"#B5530A")+'<td class="n">'+svMoney(tc)+' / '+svMoney(th)+'</td>'+money(tp+tc,"#0a5f4a")+money(Math.max(0,tm-tp)+Math.max(0,th-tc),"#B42318")+'<td></td></tr>'
+    :'<tr><td colspan="8" style="text-align:center;color:var(--faint);padding:22px">Aucun frais pour ce filtre.</td></tr>';
+  var det=list.length?list.map(function(f){var p=frPaid(f),r=Math.max(0,frR2((+f.montant||0)-p)),st=frStatut(+f.montant||0,p),pays=frPays(f.id);
+    var ph=pays.map(function(pl){return '<div class="sub" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px">↳ '+svD(pl.date)+' · <b class="mono" style="color:#0a5f4a">'+svMoney(pl.montant)+'</b> · '+esc(pl.mode||"")+(pl.ref?' · réf. '+esc(pl.ref):'')+(pl.by&&pl.by!=="Cabinet"?' · '+esc(pl.by):'')
+      +' <button class="chip" data-act="sv_rc_pl" data-id="'+esc(pl.id)+'" style="padding:1px 7px;font-size:10.5px">'+ic("printer","width:11px;height:11px")+' '+(pl.rcNo?esc(pl.rcNo):'Reçu')+'</button><button class="iconbtn" data-act="sv_pl_del" data-id="'+esc(pl.id)+'" title="Supprimer ce paiement" style="color:#C0392B;padding:2px">'+ic("trash","width:12px;height:12px")+'</button></div>';}).join("");
+    return '<tr><td class="mono" style="white-space:nowrap">'+svD(f.date)+'</td><td><div class="dossier" style="font-size:13px">'+esc(frCliName(f.cid,F.byId))+'</div></td>'
+      +'<td style="min-width:230px"><b>'+esc(f.type||"")+'</b>'+(f.lib?'<div style="font-size:12.5px">'+esc(f.lib)+'</div>':'')+(f.note?'<div class="sub">'+esc(f.note)+'</div>':'')+(f.src==="equipe"?'<div class="sub">saisi par '+esc(f.by||"le collaborateur")+'</div>':'')+ph+'</td>'
+      +money(+f.montant||0)+money(p,"#0a5f4a")+money(r,r>0.5?"#B5530A":"#0E7A5F",1)+'<td>'+st[0]+'</td>'
+      +'<td style="text-align:right;white-space:nowrap;min-width:170px">'+(r>0.5||!(+f.montant>0)?'<button class="chip" data-act="fr_pay" data-id="'+esc(f.id)+'" style="padding:4px 10px;font-size:11.5px">'+ic("plus","width:12px;height:12px")+' Encaisser</button> ':'')
+      +'<button class="iconbtn" data-act="fr_edit" data-id="'+esc(f.id)+'" title="Modifier">'+ic("pencil","width:14px;height:14px")+'</button><button class="iconbtn" data-act="fr_del" data-id="'+esc(f.id)+'" title="Supprimer ce frais" style="color:#C0392B">'+ic("trash","width:14px;height:14px")+'</button></td></tr>';}).join("")
+    :'<tr><td colspan="8" style="text-align:center;color:var(--faint);padding:22px">Aucun frais enregistré. Cliquez sur « Nouveau frais » (ex. : création de société, modification des statuts, attestation…).</td></tr>';
+  return kpis
+    +'<div class="card mt5" style="padding:0;overflow:hidden"><div style="padding:16px 20px"><div class="sectit" style="margin:0">'+ic("users")+' Récapitulatif par client — frais divers + honoraires '+S.year+'</div></div><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th style="text-align:right">Frais convenus</th><th style="text-align:right">Frais encaissés</th><th style="text-align:right">Reste frais</th><th style="text-align:right">Honoraires '+S.year+' (encaissé / attendu)</th><th style="text-align:right">Total encaissé</th><th style="text-align:right">Total restant dû</th><th></th></tr></thead><tbody>'+recH+'</tbody></table></div></div>'
+    +'<div class="card mt5" style="padding:0;overflow:hidden"><div style="padding:16px 20px"><div class="sectit" style="margin:0">'+ic("receipt")+' Détail des frais et de leurs paiements</div></div><div class="svx svscroll"><table class="svt"><thead><tr><th>Date</th><th>Dossier</th><th>Nature / objet</th><th style="text-align:right">Montant</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Reste</th><th>Statut</th><th></th></tr></thead><tbody>'+det+'</tbody></table></div></div>';}
+function vFrais(){
+  var seg=function(arr,cur,act){return '<div class="seg">'+arr.map(function(a){return '<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';};
+  var tyOpts='<option value="">Toutes les natures</option>'+FR_TYPES.map(function(t){return '<option'+(FR.ty===t?" selected":"")+'>'+esc(t)+'</option>';}).join("");
+  return '<div class="wrap">'+header("Frais divers","Création de société, formalités juridiques, attestations, débours… — tout ce qui n'est pas un honoraire périodique, centralisé avec les totaux")
+    +'<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mt5">'
+      +'<div class="search">'+ic("search")+'<input id="fr_q" placeholder="Rechercher un dossier, une nature…" value="'+esc(FR.q)+'"></div>'
+      +seg([["all","Toutes dates"],["year","Exercice "+S.year]],FR.per,"fr_per")
+      +seg([["all","Tous"],["open","Non soldés"],["solde","Soldés"]],FR.st,"fr_st")
+      +'<select class="ipt" id="fr_ty" style="width:auto;max-width:260px">'+tyOpts+'</select>'
+      +'<div style="margin-left:auto;display:flex;gap:8px"><button class="chip" data-act="fr_print" style="white-space:nowrap">'+ic("printer","width:13px;height:13px")+' Imprimer l\'état</button><button class="btn-primary" data-act="fr_new">'+ic("plus","width:14px;height:14px")+' Nouveau frais</button></div></div>'
+    +'<div id="fr_body">'+frBodyHtml()+'</div>'
+    +'<div class="note mt4" style="font-size:11.5px">Les paiements de frais apparaissent aussi dans le journal des encaissements, dans le relevé de compte du client et dans la sauvegarde Excel (feuille « Frais divers »). Ils ne modifient jamais les honoraires.</div></div>';}
+function frRefresh(){var b=document.getElementById("fr_body");if(b)b.innerHTML=frBodyHtml();else renderView();}
+function frPrintState(){var F=frFiltered(),rec=frRecap(F),tm=0,tp=0,th=0,tc=0;
+  var r1=rec.map(function(x){tm+=x.m;tp+=x.p;th+=x.he;tc+=x.hc;return '<tr><td>'+esc(x.name)+'</td><td class="r">'+svMoney(x.m)+'</td><td class="r">'+svMoney(x.p)+'</td><td class="r">'+svMoney(x.r)+'</td><td class="r">'+svMoney(x.hc)+' / '+svMoney(x.he)+'</td><td class="r"><b>'+svMoney(x.p+x.hc)+'</b></td><td class="r"><b>'+svMoney(x.r+x.hr)+'</b></td></tr>';}).join("");
+  var r2=F.list.map(function(f){var p=frPaid(f);return '<tr><td>'+esc(svD(f.date))+'</td><td>'+esc(frCliName(f.cid,F.byId))+'</td><td>'+esc(frLabel(f))+'</td><td class="r">'+svMoney(+f.montant||0)+'</td><td class="r">'+svMoney(p)+'</td><td class="r">'+svMoney(Math.max(0,(+f.montant||0)-p))+'</td><td>'+frStatut(+f.montant||0,p)[1]+'</td></tr>';}).join("");
+  var cab=svCabHead();
+  svPrintDoc("Frais divers",'<div class="fiche"><div class="fh"><div><div class="nm">État des frais divers</div><div class="sb">'+(FR.per==="year"?"Exercice "+S.year:"Toutes dates")+(FR.ty?" · "+esc(FR.ty):"")+(FR.st==="open"?" · non soldés":FR.st==="solde"?" · soldés":"")+'</div></div><div class="cab">'+esc(cab.raison||"FID INFO COM")+'</div></div>'
+    +'<h3>Récapitulatif par client</h3><table class="pp"><tr><th>Dossier</th><th style="text-align:right">Frais convenus</th><th style="text-align:right">Frais encaissés</th><th style="text-align:right">Reste frais</th><th style="text-align:right">Honoraires '+S.year+' enc. / att.</th><th style="text-align:right">Total encaissé</th><th style="text-align:right">Total restant dû</th></tr>'+(r1||'<tr><td colspan="7">Aucun frais.</td></tr>')
+    +'<tr style="font-weight:bold;border-top:2px solid #14201C"><td>TOTAL</td><td class="r">'+svMoney(tm)+'</td><td class="r">'+svMoney(tp)+'</td><td class="r">'+svMoney(Math.max(0,tm-tp))+'</td><td class="r">'+svMoney(tc)+' / '+svMoney(th)+'</td><td class="r">'+svMoney(tp+tc)+'</td><td class="r">'+svMoney(Math.max(0,tm-tp)+Math.max(0,th-tc))+'</td></tr></table>'
+    +'<h3>Détail des frais</h3><table class="pp"><tr><th>Date</th><th>Dossier</th><th>Nature / objet</th><th style="text-align:right">Montant</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Reste</th><th>Statut</th></tr>'+(r2||'<tr><td colspan="7">Aucun frais.</td></tr>')+'</table></div>',true);}
+
+/* ---------- modales cabinet ---------- */
+function frPayFields(pre,defMt,withNote){var modes=PAY_MODES.map(function(x){return '<option>'+esc(x)+'</option>';}).join("");
+  return '<div class="grid g2 mt3"><div><div class="flbl">Montant reçu (DH)</div><input class="ipt mono" type="number" step="0.01" id="'+pre+'mt" value="'+(defMt>0?defMt:"")+'" placeholder="0"></div><div><div class="flbl">Mode</div><select class="ipt" id="'+pre+'mode">'+modes+'</select></div></div>'
+    +'<div class="grid g2 mt3"><div><div class="flbl">Date du paiement</div><input class="ipt" type="date" id="'+pre+'date" value="'+todayISO()+'"></div><div><div class="flbl">Référence (n° chèque, virement…)</div><input class="ipt" id="'+pre+'ref"></div></div>'
+    +(withNote?'<div class="mt3"><div class="flbl">Remarque</div><input class="ipt" id="'+pre+'note"></div>':'')
+    +'<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px;cursor:pointer"><input type="checkbox" id="'+pre+'rc" checked> Générer et imprimer le reçu de paiement</label>';}
+function frFormFields(pre,f,cliOpts){var tyOpts=FR_TYPES.map(function(t){return '<option'+(f&&f.type===t?" selected":"")+'>'+esc(t)+'</option>';}).join("");
+  return (cliOpts?'<div><div class="flbl">Client</div><select class="ipt" id="'+pre+'client">'+cliOpts+'</select></div>':'')
+    +'<div class="grid g2 mt3"><div><div class="flbl">Nature</div><select class="ipt" id="'+pre+'type">'+tyOpts+'</select></div><div><div class="flbl">Date</div><input class="ipt" type="date" id="'+pre+'fdate" value="'+esc((f&&f.date)||todayISO())+'"></div></div>'
+    +'<div class="mt3"><div class="flbl">Détail / objet (ex. SARL AU « Alpha », transfert du siège…)</div><input class="ipt" id="'+pre+'lib" value="'+esc((f&&f.lib)||"")+'"></div>'
+    +'<div class="grid g2 mt3"><div><div class="flbl">Montant total convenu (DH)</div><input class="ipt mono" type="number" step="0.01" id="'+pre+'total" value="'+(f&&+f.montant?+f.montant:"")+'" placeholder="0"></div><div><div class="flbl">Remarque</div><input class="ipt" id="'+pre+'fnote" value="'+esc((f&&f.note)||"")+'"></div></div>';}
+function frModal(){var m=S.modal,f=m.id?frList().find(function(x){return x.id===m.id;}):null,title,sub="",body;
+  var wrap=function(t,s,b){return '<div class="ov"><div class="modal" data-stop style="max-width:520px"><div class="mh"><div><h3 class="ff">'+t+'</h3><div class="meta"><span>'+esc(s)+'</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div><div class="mb" style="padding:22px;max-height:78vh;overflow:auto">'+b+'</div></div></div>';};
+  if(m.type==="fr_pay"){if(!f)return '';var p=frPaid(f),r=Math.max(0,frR2((+f.montant||0)-p));
+    body='<div style="background:#FAF8F2;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.7"><b>'+esc(frLabel(f))+'</b><br>Montant convenu : <b class="mono">'+svMoney(+f.montant||0)+'</b> · déjà encaissé : <b class="mono" style="color:#0a5f4a">'+svMoney(p)+'</b> · reste : <b class="mono" style="color:#B5530A">'+svMoney(r)+'</b></div>'
+      +frPayFields("fr_p",r,true)+'<button class="btn-primary" data-act="fr_pay_save" style="margin-top:14px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Enregistrer le paiement</button>';
+    return wrap("Encaisser un frais",frCliName(f.cid),body);}
+  var cli=frAllClients().slice().sort(function(a,b){return String(a.dossier).localeCompare(String(b.dossier));});
+  var cur=f?f.cid:m.cid,opts=(cur?'':'<option value="">— choisir le dossier —</option>')+cli.map(function(c){return '<option value="'+c.id+'"'+(+c.id===+cur?" selected":"")+'>'+esc(c.dossier)+(c.sortant?" (sortant)":"")+'</option>';}).join("");
+  body=frFormFields("fr_",f,opts)
+    +(f?'':'<div style="border-top:1px dashed var(--line);margin-top:16px;padding-top:6px"><div class="flbl" style="margin-top:8px">Paiement reçu maintenant (facultatif — laissez vide si le client paiera plus tard)</div>'+frPayFields("fr_p",0,false)+'</div>')
+    +'<button class="btn-primary" data-act="fr_save" style="margin-top:14px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' '+(f?"Enregistrer les modifications":"Enregistrer le frais")+'</button>'
+    +(f&&frPays(f.id).length?'<div class="note" style="font-size:11px;margin-top:8px">Les paiements déjà reçus restent attachés à ce frais.</div>':'');
+  return wrap(f?"Modifier le frais":"Nouveau frais divers",f?frCliName(f.cid):"Hors honoraires périodiques",body);}
+var _frRM=renderModal;renderModal=function(){var t=S.modal&&S.modal.type;if(t==="fr_new"||t==="fr_pay"){document.getElementById("overlay").innerHTML=frModal();try{enhanceClientSelects();}catch(e){}return;}_frRM();};
+function frSave(btn){var m=S.modal;if(!m)return;var f=m.id?frList().find(function(x){return x.id===m.id;}):null;
+  var cid=f?f.cid:+svVal("fr_client");if(!cid){showErr("Choisissez le dossier du client.");return;}
+  var total=+svVal("fr_total")||0,o={type:svVal("fr_type"),lib:svVal("fr_lib").trim(),date:svVal("fr_fdate")||todayISO(),montant:total,note:svVal("fr_fnote").trim()};
+  if(f){f.type=o.type;f.lib=o.lib;f.date=o.date;f.montant=frR2(total);f.note=o.note;f.upd=new Date().toISOString();save("frais");
+    (S.paylog||[]).forEach(function(pl){if(pl.k==="FRAIS"&&pl.fid===f.id)pl.lib=frLabel(f);});save("paylog");S.modal=null;renderModal();renderView();showOk("Frais modifié.");return;}
+  var pm=+svVal("fr_pmt")||0;if(!(total>0)&&!(pm>0)){showErr("Indiquez le montant convenu (ou le montant reçu).");return;}
+  if(!(total>0))o.montant=pm;
+  var nf=frAdd({cid:cid,type:o.type,lib:o.lib,date:o.date,montant:o.montant,note:o.note});
+  if(!(pm>0)){S.modal=null;renderModal();renderView();showOk("Frais enregistré : "+svMoney(nf.montant)+".");return;}
+  var wantRc=!!(document.getElementById("fr_prc")||{}).checked,pd=svVal("fr_pdate")||todayISO();if(btn)btn.disabled=true;var w=wantRc?svRecWin():null;
+  (wantRc?svNextRec(+String(pd).slice(0,4)||S.year):Promise.resolve("")).then(function(no){var pl=frPayRecord(nf,{montant:pm,mode:svVal("fr_pmode"),date:pd,ref:svVal("fr_pref").trim(),rcNo:no});
+    S.modal=null;renderModal();renderView();showOk("Frais enregistré, paiement de "+svMoney(pm)+" encaissé"+(no?" — reçu "+no:"")+".");if(no)svPrintRecFromPl(pl,w);});}
+function frPaySave(btn){var m=S.modal,f=m&&frList().find(function(x){return x.id===m.id;});if(!f)return;var mt=+svVal("fr_pmt");if(!(mt>0)){showErr("Saisissez le montant reçu.");return;}
+  var wantRc=!!(document.getElementById("fr_prc")||{}).checked,pd=svVal("fr_pdate")||todayISO();if(btn)btn.disabled=true;var w=wantRc?svRecWin():null;
+  (wantRc?svNextRec(+String(pd).slice(0,4)||S.year):Promise.resolve("")).then(function(no){if(!(+f.montant>0)){f.montant=frR2(mt);save("frais");}
+    var pl=frPayRecord(f,{montant:mt,mode:svVal("fr_pmode"),date:pd,ref:svVal("fr_pref").trim(),note:svVal("fr_pnote").trim(),rcNo:no});
+    S.modal=null;renderModal();renderView();showOk("Paiement enregistré : "+svMoney(mt)+(no?" — reçu "+no:"")+".");if(no)svPrintRecFromPl(pl,w);});}
+function frDelete(id){var f=frList().find(function(x){return x.id===id;});if(!f)return;var pays=frPays(id),sum=pays.reduce(function(s,p){return s+(+p.montant||0);},0);
+  if(!window.confirm("Supprimer le frais « "+frLabel(f)+" » ("+frCliName(f.cid)+") ?"+(pays.length?"\n\n"+pays.length+" paiement(s) lié(s) ("+svMoney(sum)+") seront aussi supprimés, ainsi que leurs reçus.":"")))return;
+  pays.forEach(function(p){svUndoPay(p.cid,p.y,"FRAIS",p.montant,p.rcNo,p.id);});
+  S.frais=frList().filter(function(x){return x.id!==id;});save("frais");renderView();showOk("Frais supprimé.");}
+function frCleanupRow(sid){var f=frList().find(function(x){return x.sid===sid;});if(f&&!frPays(f.id).length){S.frais=frList().filter(function(x){return x!==f;});save("frais");}}
+
+/* ---------- raccordements (journal, reçus, relevé, suivi, saisies de l'équipe) ---------- */
+var _frAR=svApplyRow;
+svApplyRow=function(row){var d=row.data||{};
+  if(row.type==="paiement"&&d.k==="FRAIS"){var by=row.author_name||row.email,f=frList().find(function(x){return x.id===d.fid;});
+    if(!f&&d.frais)f=frAdd({id:d.fid,cid:+row.client_id,type:d.frais.type,lib:d.frais.lib,date:d.frais.date,montant:d.frais.montant,note:d.frais.note,by:by,src:"equipe",sid:row.id});
+    if(!f)f=frAdd({id:d.fid||frNewId(),cid:+row.client_id,type:"Autre",lib:d.lib||"",date:d.date,montant:+d.montant||0,by:by,src:"equipe",sid:row.id});
+    if(+d.montant>0&&!(S.paylog||[]).some(function(p){return p.sid===row.id;}))frPayRecord(f,{montant:+d.montant,mode:d.mode,date:d.date,ref:d.ref,note:d.note,by:by,src:"equipe",rcNo:d.rcNo||"",sid:row.id});
+    return;}
+  SV.curSid=row.id;try{_frAR(row);}finally{SV.curSid=null;}};
+var _frRD=svRowDetail;
+svRowDetail=function(r){var d=r.data||{};if(r.type!=="paiement"||d.k!=="FRAIS")return _frRD(r);
+  return 'Frais divers : '+esc(d.lib||"")+(d.frais?' <span class="svst" style="background:#F3EEFB;color:#6B3FA0">nouveau · convenu '+svMoney(d.frais.montant)+'</span>':'')
+    +(+d.montant>0?' — <b class="mono">'+svMoney(d.montant)+'</b> · '+esc(d.mode||"")+' · '+svD(d.date)+(d.ref?' · réf. '+esc(d.ref):''):' — (aucun paiement)')+(d.note?'<div class="sub">'+esc(d.note)+'</div>':'');};
+var _frSB=svBuildSnapshot;
+svBuildSnapshot=function(s){var r=_frSB(s);if(!r)return r;try{var ids={};r.clients.forEach(function(c){ids[c.id]=1;});var y0=String(SV_NOW_Y-1);
+  r.fr=frList().filter(function(f){return ids[f.cid]&&(frReste(f)>0.5||String(f.date||"").slice(0,4)>=y0);}).slice(0,500).map(function(f){return {id:f.id,cid:f.cid,t:f.type,l:f.lib,dt:f.date,m:+f.montant||0,p:frPaid(f),h:frPays(f.id).slice(0,10).map(function(p){return {d:p.date,m:p.montant,mo:p.mode,ref:p.ref,rc:p.rcNo};})};});}catch(e){}return r;};
+var _frRA=svReleveAdmin;
+svReleveAdmin=function(cid,y){var R=_frRA(cid,y);if(!R)return R;R.fr=frOfClient(cid).map(function(f){return {l:frLabel(f),dt:f.date,m:+f.montant||0,p:frPaid(f),h:frPays(f.id).map(function(p){return {d:p.date,m:p.montant,mo:p.mode,ref:p.ref,rc:p.rcNo};})};});return R;};
+var _frRS=svReleveStaff;
+svReleveStaff=function(c,y){var sn=svSnap()||{};y=y||sn.y||SV_NOW_Y;var R=_frRS(c,y);R.fr=frStaffItems().filter(function(f){return +f.cid===+c.id;}).map(function(f){return {l:f.t+(f.l?" — "+f.l:""),dt:f.dt,m:f.m,p:f.p,h:f.h};});return R;};
+svReleveHtml=function(R){var cab=R.cab||{},fr=R.fr||[],hasH=!!(R.rows&&R.rows.length),td=0,tp=0,fm=0,fp=0;
+  var rows=(R.rows||[]).map(function(r){td+=r.due;tp+=r.paid;var rest=Math.max(0,r.due-r.paid);return '<tr><td>'+esc(r.l)+'</td><td class="r">'+svMoney(r.due)+'</td><td class="r">'+(r.paid?svMoney(r.paid):"—")+'</td><td class="r" style="color:'+(rest>0.5?"#B5530A":"#0E7A5F")+'"><b>'+(rest>0.5?svMoney(rest):"Réglé")+'</b></td></tr>';}).join("");
+  var frRows=fr.map(function(f){fm+=f.m;fp+=f.p;var rest=Math.max(0,f.m-f.p);return '<tr><td>'+esc(svD(f.dt))+'</td><td>'+esc(f.l)+'</td><td class="r">'+svMoney(f.m)+'</td><td class="r">'+(f.p?svMoney(f.p):"—")+'</td><td class="r" style="color:'+(rest>0.5?"#B5530A":"#0E7A5F")+'"><b>'+(rest>0.5?svMoney(rest):"Réglé")+'</b></td></tr>';}).join("");
+  var pays=(R.h||[]).map(function(p){return {d:p.d,o:"Honoraires "+(p.k||""),mo:p.mo,ref:p.ref,rc:p.rc,m:p.m};});
+  fr.forEach(function(f){(f.h||[]).forEach(function(p){pays.push({d:p.d,o:f.l,mo:p.mo,ref:p.ref,rc:p.rc,m:p.m});});});
+  pays.sort(function(a,b){return String(b.d||"").localeCompare(String(a.d||""));});
+  var hist=pays.length?pays.map(function(p){return '<tr><td>'+esc(svD(p.d))+'</td><td>'+esc(p.o||"")+'</td><td>'+esc(p.mo||"")+(p.ref?' — '+esc(p.ref):'')+'</td><td>'+esc(p.rc||"")+'</td><td class="r">'+svMoney(p.m)+'</td></tr>';}).join(""):'<tr><td colspan="5" style="color:#999">Aucun paiement détaillé enregistré.</td></tr>';
+  var rh=Math.max(0,td-tp),rf=Math.max(0,fm-fp),reste=rh+rf;
+  var ttl="Relevé de compte"+(hasH?" — honoraires "+R.y:"")+(fr.length?(hasH?" et frais divers":" — frais divers"):"");
+  return '<div class="fiche"><div class="fh"><div><div class="nm">'+esc(ttl)+'</div><div class="sb">'+esc(R.client)+(R.ice?' · ICE '+esc(R.ice):'')+'</div></div><div class="cab">'+esc(cab.raison||"FID INFO COM")+'<br><span>'+esc([cab.adresse,cab.ville].filter(Boolean).join(", "))+'</span><br><span>'+esc([cab.ice?"ICE "+cab.ice:"",cab.tel?"Tél. "+cab.tel:""].filter(Boolean).join(" · "))+'</span></div></div>'
+   +(hasH||!fr.length?'<h3>Honoraires '+R.y+' — détail par période</h3><table class="pp"><tr><th>Période</th><th style="text-align:right">Honoraires dus</th><th style="text-align:right">Réglé</th><th style="text-align:right">Reste</th></tr>'+rows
+   +'<tr style="font-weight:bold;border-top:2px solid #14201C"><td>TOTAL HONORAIRES</td><td class="r">'+svMoney(td)+'</td><td class="r">'+svMoney(tp)+'</td><td class="r">'+svMoney(rh)+'</td></tr></table>':'')
+   +(fr.length?'<h3>Frais divers (hors honoraires)</h3><table class="pp"><tr><th>Date</th><th>Nature / objet</th><th style="text-align:right">Montant</th><th style="text-align:right">Réglé</th><th style="text-align:right">Reste</th></tr>'+frRows
+   +'<tr style="font-weight:bold;border-top:2px solid #14201C"><td colspan="2">TOTAL FRAIS DIVERS</td><td class="r">'+svMoney(fm)+'</td><td class="r">'+svMoney(fp)+'</td><td class="r">'+svMoney(rf)+'</td></tr></table>':'')
+   +'<h3>Paiements reçus</h3><table class="pp"><tr><th>Date</th><th>Objet</th><th>Mode</th><th>N° reçu</th><th style="text-align:right">Montant</th></tr>'+hist+'</table>'
+   +(hasH&&fr.length?'<table class="pp" style="margin-top:14px"><tr><th></th><th style="text-align:right">Dû</th><th style="text-align:right">Réglé</th><th style="text-align:right">Reste</th></tr><tr><td>Honoraires '+R.y+'</td><td class="r">'+svMoney(td)+'</td><td class="r">'+svMoney(tp)+'</td><td class="r">'+svMoney(rh)+'</td></tr><tr><td>Frais divers</td><td class="r">'+svMoney(fm)+'</td><td class="r">'+svMoney(fp)+'</td><td class="r">'+svMoney(rf)+'</td></tr><tr style="font-weight:bold;border-top:2px solid #14201C"><td>TOTAL GÉNÉRAL</td><td class="r">'+svMoney(td+fm)+'</td><td class="r">'+svMoney(tp+fp)+'</td><td class="r">'+svMoney(reste)+'</td></tr></table>':'')
+   +'<div style="margin-top:16px;padding:12px 14px;background:#F3F1EA;border-radius:6px;display:flex;justify-content:space-between;font-size:14px"><span>Solde restant dû au '+fmtDate(new Date())+'</span><b style="color:'+(reste>0.5?"#B5530A":"#0E7A5F")+'">'+svMoney(reste)+'</b></div>'
+   +'<div style="margin-top:28px;display:flex;justify-content:flex-end"><div style="width:230px;border-top:1px solid #999;padding-top:5px;font-size:10px;color:#666;text-align:center">Signature du cabinet</div></div></div>';};
+var _frVS=vSuivi;
+vSuivi=function(){var h=_frVS();var t={m:0,p:0,n:0};frList().forEach(function(f){if(String(f.date||"").slice(0,4)!==String(S.year)&&!(frReste(f)>0.5))return;t.n++;t.m+=+f.montant||0;t.p+=frPaid(f);});
+  var strip='<div class="card mt4" style="padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:4px solid #6B3FA0"><div style="flex:1;min-width:220px;font-size:13px"><b>Frais divers</b> <span style="color:var(--muted)">(création de société, formalités…) — '+t.n+' frais '+S.year+' ou non soldés</span></div>'
+    +'<div class="mono" style="font-size:12.5px">Encaissé <b style="color:#0a5f4a">'+svMoney(t.p)+'</b> · Reste <b style="color:#B5530A">'+svMoney(Math.max(0,t.m-t.p))+'</b></div>'
+    +'<button class="chip" data-act="fr_new">'+ic("plus","width:12px;height:12px")+' Nouveau frais</button><button class="chip" data-act="tab" data-tab="frais">Voir le détail</button></div>';
+  var mk='<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mt5 mb4">',i=h.indexOf(mk);return i>0?h.slice(0,i)+strip+h.slice(i):h;};
+var _frMP=svModalPay;
+svModalPay=function(){var h=_frMP();var m=S.modal,mk='<div class="note" style="font-size:11px;margin-top:8px">Le montant s';
+  return h.replace(mk,'<button class="chip" data-act="fr_new" data-cid="'+m.cid+'" style="margin-top:10px;width:100%;justify-content:center;color:#6B3FA0;border-color:#C9B6E4">'+ic("plus","width:12px;height:12px")+' Encaisser plutôt des frais divers (création de société, formalités…)</button>'+mk);};
+
+/* ---------- espace collaborateur ---------- */
+SV.frq="";SV.frf="open";
+function frStaffItems(){var snap=svSnap();if(!snap)return [];var gen=snap.gen||"";
+  var items=(snap.fr||[]).map(function(f){return {id:f.id,cid:f.cid,t:f.t||"",l:f.l||"",dt:f.dt,m:+f.m||0,p:+f.p||0,h:(f.h||[]).slice()};});
+  (SV.mine||[]).filter(function(r){var d=r.data||{};return r.type==="paiement"&&d.k==="FRAIS"&&(r.statut==="en_attente"||(r.statut==="valide"&&r.traite_at&&r.traite_at>gen));}).slice().reverse().forEach(function(r){var d=r.data,f=items.find(function(x){return x.id===d.fid;});
+    if(!f&&d.frais){f={id:d.fid,cid:+r.client_id,t:d.frais.type||"",l:d.frais.lib||"",dt:d.frais.date,m:+d.frais.montant||0,p:0,h:[]};items.unshift(f);}
+    if(f&&+d.montant>0){f.p+=+d.montant;f.h.unshift({d:d.date,m:+d.montant,mo:d.mode,ref:d.ref,rc:d.rcNo});}});
+  var byId={};(snap.clients||[]).forEach(function(c){byId[c.id]=c;});
+  items.forEach(function(f){f.n=(byId[f.cid]||{}).n||("Dossier #"+f.cid);f.p=frR2(f.p);f.r=Math.max(0,frR2(f.m-f.p));});
+  return items;}
+function frStaffRows(){var items=frStaffItems().filter(function(f){if(SV.frf==="open"&&!(f.r>0.5||!(f.m>0)))return false;return !SV.frq||smartMatch(SV.frq,f.n+" "+f.t+" "+f.l);}),tm=0,tp=0;
+  if(!items.length)return '<tr><td colspan="8" style="text-align:center;color:var(--faint);padding:26px">Aucun frais'+(SV.frf==="open"?" non soldé":"")+'. Utilisez « Nouveau frais » pour enregistrer par ex. une création de société.</td></tr>';
+  return items.map(function(f){tm+=f.m;tp+=f.p;var st=frStatut(f.m,f.p);
+    return '<tr><td class="mono" style="white-space:nowrap">'+svD(f.dt)+'</td><td><div class="dossier" style="font-size:13px">'+esc(f.n)+'</div></td><td><b>'+esc(f.t)+'</b>'+(f.l?'<div style="font-size:12.5px">'+esc(f.l)+'</div>':'')+'</td><td class="n">'+svMoney(f.m)+'</td><td class="n" style="color:#0a5f4a;font-weight:600">'+svMoney(f.p)+'</td><td class="n" style="font-weight:700;color:'+(f.r>0.5?"#B5530A":"#0E7A5F")+'">'+svMoney(f.r)+'</td><td>'+st[0]+'</td>'
+      +'<td style="text-align:right;white-space:nowrap;min-width:160px"><button class="iconbtn" data-act="fr_s_releve" data-cid="'+f.cid+'" title="Relevé de compte">'+ic("receipt","width:15px;height:15px")+'</button>'+(f.r>0.5||!(f.m>0)?' <button class="btn-primary" data-act="fr_s_pay" data-id="'+esc(f.id)+'" style="padding:6px 12px;font-size:12px">'+ic("plus","width:13px;height:13px")+' Paiement</button>':'')+'</td></tr>';}).join("")
+    +'<tr style="background:#FAF8F2;font-weight:700"><td colspan="3">TOTAL</td><td class="n">'+svMoney(tm)+'</td><td class="n" style="color:#0a5f4a">'+svMoney(tp)+'</td><td class="n" style="color:#B5530A">'+svMoney(Math.max(0,tm-tp))+'</td><td colspan="2"></td></tr>';}
+function frStaffHtml(){if(!svSnap())return '<div class="card mt5" style="padding:30px;text-align:center;color:var(--muted)">La liste des clients n\'est pas encore publiée par le cabinet.</div>';
+  var seg='<div class="seg">'+[["open","Non soldés"],["all","Tous"]].map(function(a){return '<button data-act="fr_s_f" data-v="'+a[0]+'" style="'+(SV.frf===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
+  return '<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_frq" placeholder="Rechercher un dossier, une nature…" value="'+esc(SV.frq)+'"></div>'+seg+'<button class="btn-primary" data-act="fr_s_new" style="margin-left:auto;width:auto;flex:0 0 auto">'+ic("plus","width:14px;height:14px")+' Nouveau frais</button></div>'
+    +'<div class="note" style="font-size:11.5px;margin:0 0 10px">Frais hors honoraires : création de société, modification des statuts, attestations, débours… Chaque paiement peut donner un reçu.</div>'
+    +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Date</th><th>Dossier</th><th>Nature / objet</th><th style="text-align:right">Montant</th><th style="text-align:right">Payé</th><th style="text-align:right">Reste</th><th>Statut</th><th></th></tr></thead><tbody id="svs_frlist">'+frStaffRows()+'</tbody></table></div></div>';}
+var _frSL=svStaffLists;svStaffLists=function(){_frSL();var e=document.getElementById("svs_frlist");if(e)e.innerHTML=frStaffRows();};
+var _frSM=svStaffModal;
+svStaffModal=function(){var o=document.getElementById("svOv"),m=SV.modal;if(!o||!m||(m.type!=="fr_new"&&m.type!=="fr_pay"))return _frSM();
+  var snap=svSnap();if(!snap){o.innerHTML="";return;}var body,title,sub;
+  var wrap=function(t,s,b){return '<div class="ov"><div class="modal" data-stop style="max-width:520px"><div class="mh"><div><h3 class="ff">'+t+'</h3><div class="meta"><span>'+esc(s)+'</span></div></div><button class="xbtn" data-act="sv_s_close">'+ic("x")+'</button></div><div class="mb" style="padding:22px;max-height:78vh;overflow:auto">'+b+'</div></div></div>';};
+  if(m.type==="fr_pay"){var f=frStaffItems().find(function(x){return x.id===m.id;});if(!f){o.innerHTML="";return;}
+    body='<div style="background:#FAF8F2;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.7"><b>'+esc(f.t+(f.l?" — "+f.l:""))+'</b><br>Montant convenu : <b class="mono">'+svMoney(f.m)+'</b> · déjà payé : <b class="mono" style="color:#0a5f4a">'+svMoney(f.p)+'</b> · reste : <b class="mono" style="color:#B5530A">'+svMoney(f.r)+'</b></div>'
+      +frPayFields("frs_p",f.r,true)+'<button class="btn-primary" data-act="fr_s_save" style="margin-top:14px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Enregistrer le paiement</button>';
+    o.innerHTML=wrap("Paiement de frais",f.n,body);return;}
+  var cli=(snap.clients||[]).slice().sort(function(a,b){return String(a.n).localeCompare(String(b.n));});
+  var opts=(m.cid?'':'<option value="">— choisir le dossier —</option>')+cli.map(function(c){return '<option value="'+c.id+'"'+(+c.id===+m.cid?" selected":"")+'>'+esc(c.n)+'</option>';}).join("");
+  body=frFormFields("frs_",null,opts)+'<div style="border-top:1px dashed var(--line);margin-top:16px;padding-top:6px"><div class="flbl" style="margin-top:8px">Paiement reçu maintenant (facultatif)</div>'+frPayFields("frs_p",0,false)+'</div>'
+    +'<button class="btn-primary" data-act="fr_s_save" style="margin-top:14px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Enregistrer</button>';
+  o.innerHTML=wrap("Nouveau frais divers","Hors honoraires périodiques",body);try{enhanceClientSelects();}catch(e){}};
+async function frStaffSave(btn){var m=SV.modal,snap=svSnap();if(!m||!snap)return;var f=null,cid,isNew=m.type==="fr_new",data;
+  if(isNew){cid=+svVal("frs_client");if(!cid){showErr("Choisissez le dossier du client.");return;}}
+  else{f=frStaffItems().find(function(x){return x.id===m.id;});if(!f)return;cid=f.cid;}
+  var c=snap.clients.find(function(x){return +x.id===+cid;});if(!c)return;
+  var mt=+svVal("frs_pmt")||0,pd=svVal("frs_pdate")||todayISO();
+  if(isNew){var total=+svVal("frs_total")||0;if(!(total>0)&&!(mt>0)){showErr("Indiquez le montant convenu (ou le montant reçu).");return;}
+    var fr={type:svVal("frs_type"),lib:svVal("frs_lib").trim(),date:svVal("frs_fdate")||todayISO(),montant:total>0?total:mt,note:svVal("frs_fnote").trim()};
+    data={k:"FRAIS",fid:frNewId(),lib:fr.type+(fr.lib?" — "+fr.lib:""),frais:fr};}
+  else{if(!(mt>0)){showErr("Saisissez le montant reçu.");return;}data={k:"FRAIS",fid:f.id,lib:f.t+(f.l?" — "+f.l:"")};}
+  data.label="Frais : "+data.lib;data.year=+String(pd).slice(0,4)||snap.y;data.montant=mt;data.mode=mt>0?svVal("frs_pmode"):"";data.date=pd;data.ref=svVal("frs_pref").trim();data.note=isNew?"":svVal("frs_pnote").trim();
+  var wantRc=mt>0&&!!(document.getElementById("frs_prc")||{}).checked;if(btn)btn.disabled=true;
+  var w=wantRc?svRecWin():null;data.rcNo=wantRc?await svNextRec(data.year):"";
+  var ok=await svStaffInsert({type:"paiement",client_id:+c.id,client_name:c.n,data:data},btn);
+  if(ok&&data.rcNo)svPrintRec(svRecFromStaff(c,data),w);else if(w)w.close();}
+
+/* ---------- événements ---------- */
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t)return;var a=t.dataset.act;if(a.indexOf("fr_")!==0)return;
+  if(a==="fr_new"){S.modal={type:"fr_new",cid:+t.dataset.cid||null};renderModal();}
+  else if(a==="fr_edit"){S.modal={type:"fr_new",id:t.dataset.id};renderModal();}
+  else if(a==="fr_pay"){S.modal={type:"fr_pay",id:t.dataset.id};renderModal();}
+  else if(a==="fr_save"){frSave(t);}
+  else if(a==="fr_pay_save"){frPaySave(t);}
+  else if(a==="fr_del"){frDelete(t.dataset.id);}
+  else if(a==="fr_per"){FR.per=t.dataset.v;renderView();}
+  else if(a==="fr_st"){FR.st=t.dataset.v;renderView();}
+  else if(a==="fr_print"){frPrintState();}
+  else if(a==="fr_s_f"){SV.frf=t.dataset.v;svStaffRender();}
+  else if(a==="fr_s_new"){SV.modal={type:"fr_new"};svStaffModal();}
+  else if(a==="fr_s_pay"){SV.modal={type:"fr_pay",id:t.dataset.id};svStaffModal();}
+  else if(a==="fr_s_save"){frStaffSave(t);}
+  else if(a==="fr_s_releve"){var sn=svSnap(),c=sn&&sn.clients.find(function(x){return +x.id===+t.dataset.cid;});if(c)svPrintReleve(svReleveStaff(c,SV.py||sn.y));}
+});
+document.addEventListener("input",function(e){var id=e.target&&e.target.id;if(id==="fr_q"){FR.q=e.target.value;frRefresh();}else if(id==="svs_frq"){SV.frq=e.target.value;var l=document.getElementById("svs_frlist");if(l)l.innerHTML=frStaffRows();}});
+document.addEventListener("change",function(e){if(e.target&&e.target.id==="fr_ty"){FR.ty=e.target.value;frRefresh();}});
+
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
@@ -15282,7 +15537,7 @@ document.addEventListener("click",function(e){
   else if(a==="sv_rc_pl"){var pl=(S.paylog||[]).find(function(x){return x.id===t.dataset.id;});if(!pl)return;
     if(pl.rcNo)svPrintRecFromPl(pl);else{var w4=svRecWin();svNextRec(pl.y).then(function(no){pl.rcNo=no;save("paylog");svRegisterRec(pl);renderView();svPrintRecFromPl(pl,w4);});}}
   else if(a==="sv_rc_row"){var rr=SV.rows.find(function(x){return x.id===t.dataset.id;});if(rr){var d=rr.data||{},cc=clients().find(function(x){return +x.id===+rr.client_id;})||{},so=((S.flags[rr.client_id]||{}).societe)||{};
-    svPrintRec({no:d.rcNo,client:rr.client_name||cc.dossier||"",ice:so.ice||"",montant:d.montant,motif:svRecMotif(d.k,d.year),mode:d.mode,ref:d.ref,date:d.date,by:rr.author_name||"",cab:svCabHead()});}}
+    svPrintRec({no:d.rcNo,client:rr.client_name||cc.dossier||"",ice:so.ice||"",montant:d.montant,motif:d.k==="FRAIS"?(d.lib||"Frais divers"):svRecMotif(d.k,d.year),mode:d.mode,ref:d.ref,date:d.date,by:rr.author_name||"",cab:svCabHead()});}}
   else if(a==="sv_s_rc"){var mr=SV.mine.find(function(x){return x.id===t.dataset.id;});if(mr){var sn=svSnap()||{clients:[]},sc=sn.clients.find(function(x){return +x.id===+mr.client_id;})||{n:mr.client_name,i:{}};svPrintRec(svRecFromStaff(sc,mr.data||{}));}}
   else if(a==="sv_s_docview"){svStaffDocOpen(t.dataset.path);}
   else if(a==="sv_doc_view"){svDocsOpen(+t.dataset.cid,t.dataset.id);}
