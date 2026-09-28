@@ -308,7 +308,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10v · frais divers (création de société, formalités…) centralisés avec totaux — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10w · nouveau client saisi par le collaborateur au paiement · frais divers — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -14132,7 +14132,7 @@ function svStaffRender(keepFocus){var root=document.getElementById("svStaff");if
       +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th>Déclaration</th><th>Échéance</th><th>Statut</th><th></th></tr></thead><tbody id="svs_list">'+svStaffDeclList()+'</tbody></table></div></div>';}
   else if(SV.tab==="frais"){body=frStaffHtml();}
   else if(SV.tab==="pay"){var y=SV.py||snap.y;body='<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_pq" placeholder="Rechercher un dossier…" value="'+esc(SV.pq)+'"></div>'
-      +seg([[snap.y-1,String(snap.y-1)],[snap.y,String(snap.y)]],y,"sv_s_py")+'</div>'
+      +seg([[snap.y-1,String(snap.y-1)],[snap.y,String(snap.y)]],y,"sv_s_py")+'<button class="btn-primary" data-act="fr_s_newcli" data-ty="Honoraires / avance (nouveau client)" style="margin-left:auto;width:auto;flex:0 0 auto">'+ic("plus","width:14px;height:14px")+' Paiement d\'un nouveau client</button></div>'
       +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th style="text-align:right">Attendu '+y+'</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Reste</th><th></th></tr></thead><tbody id="svs_plist">'+svStaffPayList()+'</tbody></table></div></div>';}
   else{body='<div class="card mt5" style="padding:0;overflow:hidden"><div class="svx"><table class="svt"><thead><tr><th>Saisie le</th><th>Type</th><th>Dossier</th><th>Détail</th><th>Statut</th><th></th></tr></thead><tbody>'+svStaffMineList()+'</tbody></table></div></div>';}
   root.innerHTML='<div class="svs-top"><div class="svs-brand">FID INFO COM<span>Espace collaborateur</span></div>'
@@ -14611,7 +14611,7 @@ async function svDeleteRow(id){var r=SV.rows.find(function(x){return x.id===id;}
   var res=await sb.from("staff_saisies").delete().eq("id",id);if(res.error){showErr("Suppression impossible : "+res.error.message);return;}
   if(r.type==="document"){var dk=String(r.client_id);if(S.docs&&S.docs[dk]){S.docs[dk]=S.docs[dk].filter(function(m){return m.path!==d.path;});save("docs");}try{await sb.storage.from(DOC_BUCKET).remove([d.path]);}catch(_e){}}
   else if(r.statut==="valide"){if(r.type==="declaration"){var dn=S.done[r.decl_key];if(dn&&(typeof dn!=="object"||dn.src==="equipe")){delete S.done[r.decl_key];save("done");}}
-    else{svUndoPay(+r.client_id,+d.year||S.year,d.k,d.montant,d.rcNo,(((S.paylog||[]).find(function(p){return p.sid===r.id;}))||{}).id||null);if(d.k==="FRAIS")frCleanupRow(r.id);}}
+    else{svUndoPay(+r.client_id,+d.year||S.year,d.k,d.montant,d.rcNo,(((S.paylog||[]).find(function(p){return p.sid===r.id;}))||{}).id||null);if(d.k==="FRAIS")frCleanupRow(r.id);if(d.newClient)frCleanupClient(+r.client_id,r.id);}}
   SV.rows=SV.rows.filter(function(x){return x.id!==id;});renderNav();renderView();showOk("Saisie supprimée.");}
 function svDeletePl(id){var p=(S.paylog||[]).find(function(x){return x.id===id;});if(!p)return;var c=clients().find(function(x){return +x.id===+p.cid;});
   if(!window.confirm("Supprimer l'encaissement de "+svMoney(p.montant)+" ("+(c?c.dossier:"")+", "+(p.k==="FRAIS"?(p.lib||"frais divers"):p.k+" "+p.y)+") ?\n\nLe montant sera retiré "+(p.k==="FRAIS"?"du frais correspondant":"des honoraires encaissés")+""+(p.rcNo?" et le reçu "+p.rcNo+" annulé":"")+"."))return;
@@ -15254,7 +15254,7 @@ async function svDownloadReadable(){try{var p=await svBackupPayload(),blob=await
    - S.frais : [{id,cid,type,lib,date,montant,note,by,src,at,sid}]  (montant = somme convenue)
    - Les paiements sont dans le journal S.paylog avec k:"FRAIS", fid (id du frais) et lib (libellé),
      ils ne touchent jamais les honoraires (S.pay). Reçus : même numérotation que les honoraires. */
-var FR_TYPES=["Création de société","Modification juridique (statuts, gérance, siège…)","Cession de parts / capital","Dissolution / liquidation","Domiciliation","Attestation / document administratif","Immatriculation (RC, IF, TP, ICE)","Dossier CNSS / social","Débours (timbres, greffe, enregistrement)","Conseil / assistance","Autre"];
+var FR_TYPES=["Création de société","Honoraires / avance (nouveau client)","Modification juridique (statuts, gérance, siège…)","Cession de parts / capital","Dissolution / liquidation","Domiciliation","Attestation / document administratif","Immatriculation (RC, IF, TP, ICE)","Dossier CNSS / social","Débours (timbres, greffe, enregistrement)","Conseil / assistance","Autre"];
 var FR={q:"",st:"all",ty:"",per:"all"};
 function frList(){if(!Array.isArray(S.frais))S.frais=[];return S.frais;}
 function frLabel(f){return (f.type||"Frais divers")+(f.lib?" — "+f.lib:"");}
@@ -15438,7 +15438,7 @@ function frStaffItems(){var snap=svSnap();if(!snap)return [];var gen=snap.gen||"
     if(!f&&d.frais){f={id:d.fid,cid:+r.client_id,t:d.frais.type||"",l:d.frais.lib||"",dt:d.frais.date,m:+d.frais.montant||0,p:0,h:[]};items.unshift(f);}
     if(f&&+d.montant>0){f.p+=+d.montant;f.h.unshift({d:d.date,m:+d.montant,mo:d.mode,ref:d.ref,rc:d.rcNo});}});
   var byId={};(snap.clients||[]).forEach(function(c){byId[c.id]=c;});
-  items.forEach(function(f){f.n=(byId[f.cid]||{}).n||("Dossier #"+f.cid);f.p=frR2(f.p);f.r=Math.max(0,frR2(f.m-f.p));});
+  items.forEach(function(f){f.n=(byId[f.cid]||frStaffPendingClients().find(function(x){return +x.id===+f.cid;})||{}).n||("Dossier #"+f.cid);f.p=frR2(f.p);f.r=Math.max(0,frR2(f.m-f.p));});
   return items;}
 function frStaffRows(){var items=frStaffItems().filter(function(f){if(SV.frf==="open"&&!(f.r>0.5||!(f.m>0)))return false;return !SV.frq||smartMatch(SV.frq,f.n+" "+f.t+" "+f.l);}),tm=0,tp=0;
   if(!items.length)return '<tr><td colspan="8" style="text-align:center;color:var(--faint);padding:26px">Aucun frais'+(SV.frf==="open"?" non soldé":"")+'. Utilisez « Nouveau frais » pour enregistrer par ex. une création de société.</td></tr>';
@@ -15448,7 +15448,7 @@ function frStaffRows(){var items=frStaffItems().filter(function(f){if(SV.frf==="
     +'<tr style="background:#FAF8F2;font-weight:700"><td colspan="3">TOTAL</td><td class="n">'+svMoney(tm)+'</td><td class="n" style="color:#0a5f4a">'+svMoney(tp)+'</td><td class="n" style="color:#B5530A">'+svMoney(Math.max(0,tm-tp))+'</td><td colspan="2"></td></tr>';}
 function frStaffHtml(){if(!svSnap())return '<div class="card mt5" style="padding:30px;text-align:center;color:var(--muted)">La liste des clients n\'est pas encore publiée par le cabinet.</div>';
   var seg='<div class="seg">'+[["open","Non soldés"],["all","Tous"]].map(function(a){return '<button data-act="fr_s_f" data-v="'+a[0]+'" style="'+(SV.frf===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
-  return '<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_frq" placeholder="Rechercher un dossier, une nature…" value="'+esc(SV.frq)+'"></div>'+seg+'<button class="btn-primary" data-act="fr_s_new" style="margin-left:auto;width:auto;flex:0 0 auto">'+ic("plus","width:14px;height:14px")+' Nouveau frais</button></div>'
+  return '<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_frq" placeholder="Rechercher un dossier, une nature…" value="'+esc(SV.frq)+'"></div>'+seg+'<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="fr_s_newcli" style="width:auto">'+ic("plus","width:13px;height:13px")+' Nouveau client</button><button class="btn-primary" data-act="fr_s_new" style="width:auto;flex:0 0 auto">'+ic("plus","width:14px;height:14px")+' Nouveau frais</button></div></div>'
     +'<div class="note" style="font-size:11.5px;margin:0 0 10px">Frais hors honoraires : création de société, modification des statuts, attestations, débours… Chaque paiement peut donner un reçu.</div>'
     +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Date</th><th>Dossier</th><th>Nature / objet</th><th style="text-align:right">Montant</th><th style="text-align:right">Payé</th><th style="text-align:right">Reste</th><th>Statut</th><th></th></tr></thead><tbody id="svs_frlist">'+frStaffRows()+'</tbody></table></div></div>';}
 var _frSL=svStaffLists;svStaffLists=function(){_frSL();var e=document.getElementById("svs_frlist");if(e)e.innerHTML=frStaffRows();};
@@ -15461,20 +15461,23 @@ svStaffModal=function(){var o=document.getElementById("svOv"),m=SV.modal;if(!o||
       +frPayFields("frs_p",f.r,true)+'<button class="btn-primary" data-act="fr_s_save" style="margin-top:14px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Enregistrer le paiement</button>';
     o.innerHTML=wrap("Paiement de frais",f.n,body);return;}
   var cli=(snap.clients||[]).slice().sort(function(a,b){return String(a.n).localeCompare(String(b.n));});
-  var opts=(m.cid?'':'<option value="">— choisir le dossier —</option>')+cli.map(function(c){return '<option value="'+c.id+'"'+(+c.id===+m.cid?" selected":"")+'>'+esc(c.n)+'</option>';}).join("");
-  body=frFormFields("frs_",null,opts)+'<div style="border-top:1px dashed var(--line);margin-top:16px;padding-top:6px"><div class="flbl" style="margin-top:8px">Paiement reçu maintenant (facultatif)</div>'+frPayFields("frs_p",0,false)+'</div>'
+  var opts=(m.cid?'':'<option value="">— choisir le dossier —</option>')+frStaffPendingOpts(m.cid)+cli.map(function(c){return '<option value="'+c.id+'"'+(+c.id===+m.cid?" selected":"")+'>'+esc(c.n)+'</option>';}).join("");
+  body=frNewCliBlock(!!m.newCli)+frFormFields("frs_",m.ty?{type:m.ty}:null,opts)+'<div style="border-top:1px dashed var(--line);margin-top:16px;padding-top:6px"><div class="flbl" style="margin-top:8px">Paiement reçu maintenant (facultatif)</div>'+frPayFields("frs_p",0,false)+'</div>'
     +'<button class="btn-primary" data-act="fr_s_save" style="margin-top:14px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Enregistrer</button>';
-  o.innerHTML=wrap("Nouveau frais divers","Hors honoraires périodiques",body);try{enhanceClientSelects();}catch(e){}};
+  o.innerHTML=wrap(m.newCli?"Paiement d'un nouveau client":"Nouveau frais divers","Hors honoraires périodiques",body);try{enhanceClientSelects();}catch(e){}frNewCliToggle();};
 async function frStaffSave(btn){var m=SV.modal,snap=svSnap();if(!m||!snap)return;var f=null,cid,isNew=m.type==="fr_new",data;
-  if(isNew){cid=+svVal("frs_client");if(!cid){showErr("Choisissez le dossier du client.");return;}}
+  var nc=null,isNC=isNew&&!!(document.getElementById("frs_isnew")||{}).checked;
+  if(isNC){var ncn=svVal("frs_nc_nom").trim();if(!ncn){showErr("Saisissez le nom du nouveau client.");var ni=document.getElementById("frs_nc_nom");if(ni)ni.focus();return;}
+    cid=Date.now();nc={nom:ncn,forme:svVal("frs_nc_forme"),tel:svVal("frs_nc_tel").trim(),ice:svVal("frs_nc_ice").trim(),note:svVal("frs_nc_note").trim()};}
+  else if(isNew){cid=+svVal("frs_client");if(!cid){showErr("Choisissez le dossier du client (ou cochez « Nouveau client »).");return;}}
   else{f=frStaffItems().find(function(x){return x.id===m.id;});if(!f)return;cid=f.cid;}
-  var c=snap.clients.find(function(x){return +x.id===+cid;});if(!c)return;
+  var c=nc?{id:cid,n:nc.nom,i:{tel:nc.tel,soc:{ice:nc.ice}}}:(snap.clients.find(function(x){return +x.id===+cid;})||frStaffPendingClients().find(function(x){return +x.id===+cid;}));if(!c)return;
   var mt=+svVal("frs_pmt")||0,pd=svVal("frs_pdate")||todayISO();
   if(isNew){var total=+svVal("frs_total")||0;if(!(total>0)&&!(mt>0)){showErr("Indiquez le montant convenu (ou le montant reçu).");return;}
     var fr={type:svVal("frs_type"),lib:svVal("frs_lib").trim(),date:svVal("frs_fdate")||todayISO(),montant:total>0?total:mt,note:svVal("frs_fnote").trim()};
     data={k:"FRAIS",fid:frNewId(),lib:fr.type+(fr.lib?" — "+fr.lib:""),frais:fr};}
   else{if(!(mt>0)){showErr("Saisissez le montant reçu.");return;}data={k:"FRAIS",fid:f.id,lib:f.t+(f.l?" — "+f.l:"")};}
-  data.label="Frais : "+data.lib;data.year=+String(pd).slice(0,4)||snap.y;data.montant=mt;data.mode=mt>0?svVal("frs_pmode"):"";data.date=pd;data.ref=svVal("frs_pref").trim();data.note=isNew?"":svVal("frs_pnote").trim();
+  if(nc)data.newClient=nc;data.label="Frais : "+data.lib;data.year=+String(pd).slice(0,4)||snap.y;data.montant=mt;data.mode=mt>0?svVal("frs_pmode"):"";data.date=pd;data.ref=svVal("frs_pref").trim();data.note=isNew?"":svVal("frs_pnote").trim();
   var wantRc=mt>0&&!!(document.getElementById("frs_prc")||{}).checked;if(btn)btn.disabled=true;
   var w=wantRc?svRecWin():null;data.rcNo=wantRc?await svNextRec(data.year):"";
   var ok=await svStaffInsert({type:"paiement",client_id:+c.id,client_name:c.n,data:data},btn);
@@ -15495,10 +15498,56 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
   else if(a==="fr_s_new"){SV.modal={type:"fr_new"};svStaffModal();}
   else if(a==="fr_s_pay"){SV.modal={type:"fr_pay",id:t.dataset.id};svStaffModal();}
   else if(a==="fr_s_save"){frStaffSave(t);}
-  else if(a==="fr_s_releve"){var sn=svSnap(),c=sn&&sn.clients.find(function(x){return +x.id===+t.dataset.cid;});if(c)svPrintReleve(svReleveStaff(c,SV.py||sn.y));}
+  else if(a==="fr_s_releve"){var sn=svSnap(),c=sn&&(sn.clients.find(function(x){return +x.id===+t.dataset.cid;})||frStaffPendingClients().find(function(x){return +x.id===+t.dataset.cid;}));if(c)svPrintReleve(svReleveStaff(c,SV.py||sn.y));}
 });
 document.addEventListener("input",function(e){var id=e.target&&e.target.id;if(id==="fr_q"){FR.q=e.target.value;frRefresh();}else if(id==="svs_frq"){SV.frq=e.target.value;var l=document.getElementById("svs_frlist");if(l)l.innerHTML=frStaffRows();}});
 document.addEventListener("change",function(e){if(e.target&&e.target.id==="fr_ty"){FR.ty=e.target.value;frRefresh();}});
+
+
+/* =========================== NOUVEAU CLIENT SAISI PAR LE COLLABORATEUR ===========================
+   Un client qui paie avant d'être créé dans le logiciel : le collaborateur saisit son nom (et quelques
+   informations) dans la fenêtre de paiement. Le cabinet reçoit la saisie : le client est créé
+   automatiquement (fiche à compléter), le frais et le paiement lui sont rattachés.
+   Le collaborateur ne peut rien supprimer ; le cabinet peut tout supprimer. */
+function frNewCliBlock(on){var formes=typeof svFormeOpts==="function"?svFormeOpts("personne morale"):'<option value="personne morale">personne morale</option>';
+  return '<label style="display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer;background:#F3EEFB;border:1px solid #D9CBEE;border-radius:10px;padding:9px 12px;margin-bottom:10px"><input type="checkbox" id="frs_isnew"'+(on?" checked":"")+'> <span><b>Nouveau client</b> — il n\'existe pas encore dans la liste</span></label>'
+    +'<div id="frs_newblk" style="display:'+(on?"block":"none")+';border:1px dashed #C9B6E4;border-radius:10px;padding:12px;margin-bottom:10px">'
+    +'<div class="grid g2"><div><div class="flbl">Nom / raison sociale *</div><input class="ipt" id="frs_nc_nom" placeholder="ex. SARL AU ALPHA"></div><div><div class="flbl">Forme</div><select class="ipt" id="frs_nc_forme">'+formes+'</select></div></div>'
+    +'<div class="grid g2 mt3"><div><div class="flbl">Téléphone</div><input class="ipt" id="frs_nc_tel"></div><div><div class="flbl">ICE ou CIN</div><input class="ipt" id="frs_nc_ice"></div></div>'
+    +'<div class="mt3"><div class="flbl">Remarque pour le cabinet</div><input class="ipt" id="frs_nc_note" placeholder="facultatif"></div>'
+    +'<div class="note" style="font-size:11px;margin-top:6px">Le client sera créé par le cabinet avec ces informations ; sa fiche sera complétée ensuite.</div></div>';}
+function frNewCliToggle(){var cb=document.getElementById("frs_isnew"),on=!!(cb&&cb.checked),blk=document.getElementById("frs_newblk"),sel=document.getElementById("frs_client");
+  if(blk)blk.style.display=on?"block":"none";if(sel){var box=sel.parentNode;if(box)box.style.display=on?"none":"";}
+  if(on){var n=document.getElementById("frs_nc_nom");if(n)n.focus();}}
+/* clients créés par le collaborateur mais pas encore dans la liste publiée */
+function frStaffPendingClients(){var snap=svSnap(),ids={},out=[];((snap&&snap.clients)||[]).forEach(function(c){ids[c.id]=1;});
+  (SV.mine||[]).forEach(function(r){var nc=(r.data||{}).newClient;if(!nc||r.statut==="rejete"||ids[+r.client_id])return;ids[+r.client_id]=1;out.push({id:+r.client_id,n:nc.nom,i:{tel:nc.tel||"",soc:{ice:nc.ice||""}},pending:true});});
+  return out;}
+function frStaffPendingOpts(cur){return frStaffPendingClients().map(function(c){return '<option value="'+c.id+'"'+(+c.id===+cur?" selected":"")+'>'+esc(c.n)+' (nouveau — en cours d\'ajout)</option>';}).join("");}
+/* côté cabinet : création du client à l'intégration de la saisie */
+function frEnsureClient(row){var nc=(row.data||{}).newClient,id=+row.client_id;if(!nc||!id)return;
+  if(!Array.isArray(S.custom))S.custom=[];if(S.custom.some(function(c){return +c.id===id;}))return;
+  var by=row.author_name||row.email||"le collaborateur",now=new Date().toISOString();
+  S.custom.push({id:id,dossier:String(nc.nom||("Client "+id)).trim(),forme:nc.forme||"personne morale",tel:nc.tel||"",honTrim:0,honBilan:0,pvDepot:0,reg:"neant",hasBilan:false,hasSal:false,hasDp:false,hasFoncier:false,
+    comment:"Ajouté par "+by+" le "+svDT(now)+" lors d'un paiement — fiche à compléter"+(nc.note?" · "+nc.note:""),staffNew:{by:by,at:now,sid:row.id,todo:true}});
+  save("custom");if(S.deleted&&S.deleted[id]){delete S.deleted[id];save("deleted");}
+  if(nc.ice){S.flags[id]=Object.assign({},S.flags[id]);S.flags[id].societe=Object.assign({},S.flags[id].societe);if(/^\d{15}$/.test(String(nc.ice).replace(/\s/g,"")))S.flags[id].societe.ice=String(nc.ice).replace(/\s/g,"");else S.flags[id].societe.cinRef=String(nc.ice);save("flags");}}
+function frCleanupClient(cid,sid){var c=(S.custom||[]).find(function(x){return +x.id===+cid&&x.staffNew&&x.staffNew.sid===sid;});if(!c)return;
+  if(frOfClient(cid).length||(S.paylog||[]).some(function(p){return +p.cid===+cid;}))return;
+  S.custom=S.custom.filter(function(x){return x!==c;});save("custom");}
+function frNewClientsTodo(){return (S.custom||[]).filter(function(c){return c.staffNew&&c.staffNew.todo&&!(S.deleted||{})[c.id];});}
+function frNewCliAlert(){var l=frNewClientsTodo();if(!l.length)return '';
+  return '<div class="card mt4" style="padding:12px 18px;border-left:4px solid #1D6FB8;background:#F3F8FD"><div style="font-size:13px;margin-bottom:6px"><b>'+l.length+' nouveau(x) client(s) ajouté(s) par le collaborateur</b> <span style="color:var(--muted)">— complétez leur fiche (forme, régime TVA, honoraires…)</span></div>'
+    +l.map(function(c){return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 0;border-top:1px solid var(--line-soft);font-size:12.5px"><b style="flex:1;min-width:160px">'+esc(c.dossier)+'</b><span style="color:var(--muted)">par '+esc(c.staffNew.by)+' · '+svDT(c.staffNew.at)+'</span>'
+      +'<button class="chip" data-act="client" data-id="'+c.id+'" style="padding:3px 10px;font-size:11.5px">'+ic("pencil","width:12px;height:12px")+' Compléter la fiche</button><button class="chip" data-act="fr_nc_ok" data-id="'+c.id+'" style="padding:3px 10px;font-size:11.5px">✓ Fiche vérifiée</button></div>';}).join("")+'</div>';}
+var _frAR2=svApplyRow;svApplyRow=function(row){try{if((row.data||{}).newClient)frEnsureClient(row);}catch(e){}return _frAR2(row);};
+var _frRD2=svRowDetail;svRowDetail=function(r){var h=_frRD2(r),nc=(r.data||{}).newClient;return nc?'<span class="svst" style="background:#E8F0FB;color:#1D6FB8">Nouveau client : '+esc(nc.nom||"")+'</span> '+h:h;};
+var _frVF=vFrais;vFrais=function(){var h=_frVF(),a=frNewCliAlert(),mk='<div id="fr_body">';return a?h.replace(mk,a+mk):h;};
+var _frVS2=vSuivi;vSuivi=function(){var h=_frVS2(),a=frNewCliAlert(),mk='<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mt5 mb4">',i=h.indexOf(mk);return a&&i>0?h.slice(0,i)+a+h.slice(i):h;};
+document.addEventListener("change",function(e){if(e.target&&e.target.id==="frs_isnew")frNewCliToggle();});
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t)return;var a=t.dataset.act;
+  if(a==="fr_nc_ok"){var c=(S.custom||[]).find(function(x){return +x.id===+t.dataset.id;});if(c&&c.staffNew){c.staffNew.todo=false;save("custom");renderView();}}
+  else if(a==="fr_s_newcli"){SV.modal={type:"fr_new",newCli:1,ty:t.dataset.ty||""};svStaffModal();}});
 
 
 /* =========================== ÉVÉNEMENTS =========================== */
