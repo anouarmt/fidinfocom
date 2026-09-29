@@ -2,8 +2,17 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>FID INFO COM — Suivi des déclarations</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#14201C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="FID INFO COM">
+<meta name="application-name" content="FID INFO COM">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
@@ -278,6 +287,52 @@ select.ipt{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xm
   body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   @page{margin:10mm}
 }
+/* ===== TÉLÉPHONE / APPLICATION INSTALLÉE ===== */
+@media(max-width:640px){
+  html,body{overscroll-behavior-y:none}
+  .app{display:block;height:100dvh;height:100vh}
+  .side{position:fixed!important;left:0;right:0;bottom:0;top:auto!important;width:100%!important;height:auto!important;flex-direction:row!important;z-index:40;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -6px 18px rgba(0,0,0,.18)}
+  .side .brand,.side .foot{display:none!important}
+  .nav{flex-direction:row!important;overflow-x:auto;overflow-y:hidden;padding:6px 6px!important;gap:2px!important;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .nav::-webkit-scrollbar{display:none}
+  .nav button{flex:0 0 auto!important;width:auto!important;min-width:60px;flex-direction:column!important;justify-content:center!important;align-items:center!important;gap:3px!important;padding:7px 8px!important;border-radius:10px!important;font-size:10px!important;text-align:center!important}
+  .nav button span{display:block!important;font-size:10px;line-height:1.1;white-space:nowrap;max-width:74px;overflow:hidden;text-overflow:ellipsis}
+  .nav button svg{width:20px;height:20px}
+  .main{height:100dvh!important;height:100vh;padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+  .wrap{padding:16px 14px 24px!important}
+  .head{flex-direction:column;align-items:flex-start!important;gap:10px;padding-bottom:14px}
+  .head>div:last-child{text-align:left!important}
+  .head h2{font-size:24px!important}
+  .head p{font-size:12.5px}
+  .g4{grid-template-columns:1fr 1fr!important;gap:10px!important}
+  .seg{max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .seg::-webkit-scrollbar{display:none}
+  .seg button{white-space:nowrap;flex:0 0 auto}
+  .search{max-width:100%;flex:1 1 100%}
+  .search input{width:100%}
+  .ov{padding:10px!important;align-items:end}
+  .modal{max-height:92vh!important;border-radius:20px!important}
+  .mb{padding:16px!important}
+  #aide-fab{bottom:calc(78px + env(safe-area-inset-bottom))!important}
+  body:has(#overlay .ov) #aide-fab,body:has(#svOv .ov) #aide-fab{display:none!important}
+  .svs-top{padding:10px 14px!important;padding-top:calc(10px + env(safe-area-inset-top))!important}
+  .svs-user{font-size:12px;gap:6px!important;flex-wrap:wrap}
+  .svs-user button{padding:5px 9px!important;font-size:11.5px!important}
+  .svs-wrap{padding:14px 12px 70px!important}
+  .svs-tabs{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto;max-width:100%;scrollbar-width:none}
+  .svs-tabs::-webkit-scrollbar{display:none}
+  .svs-tabs button{white-space:nowrap;flex:0 0 auto}
+  .svs-bar{flex-wrap:wrap;gap:8px}
+  .svx,.svscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+}
+@media(display-mode:standalone){body{-webkit-user-select:none;user-select:none}input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text}}
+#fidInstall{position:fixed;left:10px;right:10px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;background:#14201C;color:#E8EDEA;border-radius:16px;padding:12px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:13px;line-height:1.35;max-width:520px;margin:0 auto}
+#fidInstall img{width:42px;height:42px;border-radius:10px;flex-shrink:0}
+#fidInstall b{color:#EBC873}
+#fidInstall button{border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;white-space:nowrap}
+#fidInstall .ok{background:#0E7A5F;color:#fff}
+#fidInstall .no{color:#A9B8B2;padding:8px 6px}
+@media(min-width:641px){#fidInstall{bottom:20px;left:auto;right:20px}}
 </style>
 </head>
 <body>
@@ -308,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10w · nouveau client saisi par le collaborateur au paiement · frais divers — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10x · application mobile Android / iPhone · nouveau client au paiement · frais divers — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -15549,6 +15604,28 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
   if(a==="fr_nc_ok"){var c=(S.custom||[]).find(function(x){return +x.id===+t.dataset.id;});if(c&&c.staffNew){c.staffNew.todo=false;save("custom");renderView();}}
   else if(a==="fr_s_newcli"){SV.modal={type:"fr_new",newCli:1,ty:t.dataset.ty||""};svStaffModal();}});
 
+
+/* =========================== APPLICATION MOBILE (Android / iPhone) ===========================
+   Le logiciel s'installe comme une application : icône sur l'écran d'accueil, plein écran.
+   Même compte, mêmes données (cloud) que sur l'ordinateur ; mises à jour automatiques. */
+var FIDAPP={prompt:null};
+function fidIsStandalone(){try{return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;}catch(e){return false;}}
+function fidIsIOS(){var u=navigator.userAgent||"";return /iPhone|iPad|iPod/i.test(u)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);}
+function fidInstallHide(forever){var b=document.getElementById("fidInstall");if(b)b.remove();if(forever){try{localStorage.setItem("fid_install_no",String(Date.now()));}catch(e){}}}
+function fidInstallShow(){if(fidIsStandalone()||document.getElementById("fidInstall"))return;
+  try{var no=+localStorage.getItem("fid_install_no")||0;if(no&&Date.now()-no<14*864e5)return;}catch(e){}
+  var small=window.matchMedia&&window.matchMedia("(max-width: 900px)").matches;if(!FIDAPP.prompt&&!(fidIsIOS()&&small))return;
+  var d=document.createElement("div");d.id="fidInstall";
+  d.innerHTML='<img src="apple-touch-icon.png" alt=""><div style="flex:1"><b>Installer l\'application</b><br><span style="color:#A9B8B2;font-size:12px">'+(FIDAPP.prompt?'Icône sur l\'écran d\'accueil, ouverture en plein écran.':'Touchez <b style="color:#fff">Partager</b> ⬆ puis <b style="color:#fff">« Sur l\'écran d\'accueil »</b>.')+'</span></div>'
+    +(FIDAPP.prompt?'<button class="ok" data-fidapp="install">Installer</button>':'')+'<button class="no" data-fidapp="later">Plus tard</button>';
+  document.body.appendChild(d);}
+window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();FIDAPP.prompt=e;setTimeout(fidInstallShow,1500);});
+window.addEventListener("appinstalled",function(){FIDAPP.prompt=null;fidInstallHide(false);try{showOk("Application installée. Retrouvez « FID INFO COM » sur votre écran d'accueil.");}catch(e){}});
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-fidapp]");if(!t)return;var a=t.dataset.fidapp;
+  if(a==="install"&&FIDAPP.prompt){var p=FIDAPP.prompt;FIDAPP.prompt=null;p.prompt();(p.userChoice||Promise.resolve()).then(function(){fidInstallHide(false);});}
+  else if(a==="later"){fidInstallHide(true);}});
+if("serviceWorker" in navigator&&location.protocol==="https:"){window.addEventListener("load",function(){navigator.serviceWorker.register("./sw.js").catch(function(){});});}
+setTimeout(function(){if(fidIsIOS())fidInstallShow();},4000);
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
