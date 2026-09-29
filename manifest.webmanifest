@@ -1,0 +1,20 @@
+{
+  "name": "FID INFO COM — Suivi des déclarations",
+  "short_name": "FID INFO COM",
+  "description": "Suivi des déclarations fiscales, des honoraires et des frais — STE FIDUCIAIRE FID INFO COM, Kénitra",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "fr",
+  "dir": "ltr",
+  "background_color": "#14201C",
+  "theme_color": "#14201C",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
