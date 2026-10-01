@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.11f · fiche client depuis les déclarations · années N-1 / N / N+1 collaborateur — PRODUCTION EN LIGNE";
+const VERSION = "v2026.11g · collaborateur : exercice en cours par défaut (mêmes chiffres que le cabinet) · fiche client depuis les déclarations — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -15760,30 +15760,33 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
 
 
 /* =========================== FILTRE PAR ANNÉE — ESPACE COLLABORATEUR ===========================
-   Un sélecteur « Année » (Toutes / N-1 / N) s'applique à : Déclarations (exercice), Paiements
-   d'honoraires, Frais divers, Documents scannés, Décharges, Demandes, Remarques et Mes saisies.
-   « Toutes » garde l'affichage habituel (exercice en cours + reliquat de l'an dernier). */
-SV.sy="all";
+   Un sélecteur d'année par onglet. Déclarations : par défaut l'exercice en cours (mêmes chiffres que
+   le cabinet) ; « Toutes » ajoute le reliquat non déposé de l'an dernier. Paiements : exercice.
+   Frais divers, Documents, Décharges, Demandes, Remarques, Mes saisies : par date (défaut « Toutes »). */
+SV.syt={};
+function svyCurY(){var sn=svSnap();return String((sn&&sn.y)||SV_NOW_Y);}
+function svyCur(tab){tab=tab||SV.tab;if(tab==="pay")return String(SV.py||svyCurY());var v=SV.syt[tab];if(v)return v;return tab==="decl"?svyCurY():"all";}
 function svyYears(){var sn=svSnap(),y=(sn&&sn.y)||SV_NOW_Y;return (sn&&Array.isArray(sn.ys)&&sn.ys.length)?sn.ys.slice():[y-1,y];}
-function svyOk(dateLike){if(SV.sy==="all")return true;return String(dateLike||"").slice(0,4)===SV.sy;}
-function svyKeepDecl(d){var y=d.y;if(!y){var m=/\((\d{4})\)\s*$/.exec(d.l||"");y=m?+m[1]:((svSnap()||{}).y||SV_NOW_Y);}
-  if(SV.sy==="all")return !d.o;return String(y)===SV.sy;}
-function svyWith(obj,prop,pred,fn){var saved=obj[prop];if(SV.sy==="all"||!Array.isArray(saved))return fn();obj[prop]=saved.filter(pred);try{return fn();}finally{obj[prop]=saved;}}
+function svyOk(dateLike){var v=svyCur();if(v==="all")return true;return String(dateLike||"").slice(0,4)===v;}
+function svyKeepDecl(d){var y=d.y;if(!y){var m=/\((\d{4})\)\s*$/.exec(d.l||"");y=m?+m[1]:+svyCurY();}
+  var v=svyCur("decl");if(v==="all")return !d.o;return String(y)===v;}
+function svyWith(obj,prop,pred,fn){var saved=obj[prop];if(svyCur()==="all"||!Array.isArray(saved))return fn();obj[prop]=saved.filter(pred);try{return fn();}finally{obj[prop]=saved;}}
 var SVY_TABS={decl:"Exercice",pay:"Exercice",frais:"Année",scans:"Année",dech:"Année",docs:"Année",notes:"Année",mine:"Année"};
-function svyBar(){var lbl=SVY_TABS[SV.tab];if(!lbl)return '';var ys=svyYears();
+function svyBar(){var lbl=SVY_TABS[SV.tab];if(!lbl)return '';var ys=svyYears(),cur=svyCur(),Y=svyCurY();
+  var opts=(SV.tab==="pay"?[]:[["all",SV.tab==="decl"?"Toutes (+ reste "+(+Y-1)+")":"Toutes"]]).concat(ys.map(function(y){return [String(y),String(y)];}));
   return '<div id="svs_years" style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap"><span style="font-size:12px;color:var(--muted);font-weight:600">'+lbl+' :</span><div class="seg">'
-    +[["all","Toutes"]].concat(ys.map(function(y){return [String(y),String(y)];})).map(function(a){return '<button data-act="svy_set" data-v="'+a[0]+'" style="'+(SV.sy===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>'
-    +(SV.sy!=="all"?'<span style="font-size:11.5px;color:#6B3FA0">Affichage limité à '+SV.sy+'</span>':'')+'</div>';}
+    +opts.map(function(a){return '<button data-act="svy_set" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>'
+    +(SV.tab==="decl"&&cur===Y?'<span style="font-size:11.5px;color:var(--muted)">Mêmes chiffres que le cabinet pour '+Y+'</span>':(cur!=="all"&&SV.tab!=="pay"?'<span style="font-size:11.5px;color:#6B3FA0">Affichage limité à '+cur+'</span>':''))+'</div>';}
 var _svySR=svStaffRender;svStaffRender=function(k){var r=_svySR.apply(this,arguments);try{var root=document.getElementById("svStaff");if(!root)return r;var old=root.querySelector("#svs_years");var tb=root.querySelector(".svs-tabs");var h=svyBar();
   if(old)old.outerHTML=h||"";else if(tb&&h)tb.insertAdjacentHTML("afterend",h);}catch(e){}return r;};
-/* sources filtrées */
-var _svyFR=frStaffRows;frStaffRows=function(){if(SV.sy==="all")return _svyFR();var _it=frStaffItems;frStaffItems=function(){return _it().filter(function(f){return svyOk(f.dt);});};try{return _svyFR();}finally{frStaffItems=_it;}};
+var _svyFR=frStaffRows;frStaffRows=function(){if(svyCur()==="all")return _svyFR();var _it=frStaffItems;frStaffItems=function(){return _it().filter(function(f){return svyOk(f.dt);});};try{return _svyFR();}finally{frStaffItems=_it;}};
 var _svyDH=svStaffDocsHtml;svStaffDocsHtml=function(){return svyWith(SV,"myDocs",function(d){return svyOk(d.created_at);},_svyDH);};
 var _svyML=svStaffMineList;svStaffMineList=function(){return svyWith(SV,"mine",function(r){return svyOk(r.created_at);},_svyML);};
 var _svyDR=svDechRows;svDechRows=function(admin){if(admin)return _svyDR(admin);return svyWith(SV,"dechs",function(r){return svyOk((r.data||{}).date||r.created_at);},function(){return _svyDR(admin);});};
 var _svyNF=svNotesFeed;svNotesFeed=function(admin){if(admin)return _svyNF(admin);return svyWith(SV,"notes",function(n){return svyOk(n.created_at);},function(){return _svyNF(admin);});};
-var _svyDS=svStaffDocsSection;svStaffDocsSection=function(c){if(SV.sy==="all"||!c)return _svyDS(c);var cc=Object.assign({},c,{docs:(c.docs||[]).filter(function(m){return svyOk(m.d);})});return _svyDS(cc);};
-document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t||t.dataset.act!=="svy_set")return;SV.sy=t.dataset.v;if(SV.sy!=="all")SV.py=+SV.sy;svStaffRender();});
+var _svyDS=svStaffDocsSection;svStaffDocsSection=function(c){if(svyCur()==="all"||!c)return _svyDS(c);var cc=Object.assign({},c,{docs:(c.docs||[]).filter(function(m){return svyOk(m.d);})});return _svyDS(cc);};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t||t.dataset.act!=="svy_set")return;var v=t.dataset.v;
+  if(SV.tab==="pay"){SV.py=+v;}else SV.syt[SV.tab]=v;if(SV.tab==="decl"&&v!=="all")SV.py=+v;svStaffRender();});
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
