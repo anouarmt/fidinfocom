@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.11g · collaborateur : exercice en cours par défaut (mêmes chiffres que le cabinet) · fiche client depuis les déclarations — PRODUCTION EN LIGNE";
+const VERSION = "v2026.11h · dépôts protégés (plusieurs appareils) + réintégration auto des dépôts du collaborateur — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -15787,6 +15787,52 @@ var _svyNF=svNotesFeed;svNotesFeed=function(admin){if(admin)return _svyNF(admin)
 var _svyDS=svStaffDocsSection;svStaffDocsSection=function(c){if(svyCur()==="all"||!c)return _svyDS(c);var cc=Object.assign({},c,{docs:(c.docs||[]).filter(function(m){return svyOk(m.d);})});return _svyDS(cc);};
 document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t||t.dataset.act!=="svy_set")return;var v=t.dataset.v;
   if(SV.tab==="pay"){SV.py=+v;}else SV.syt[SV.tab]=v;if(SV.tab==="decl"&&v!=="all")SV.py=+v;svStaffRender();});
+
+/* =========================== DÉPÔTS : ENREGISTREMENT FUSIONNÉ (plusieurs appareils) + AUTO-RÉPARATION ===========================
+   Avant : chaque appareil renvoyait SA liste complète des dépôts ; un onglet resté ouvert ou l'application
+   du téléphone revenue d'arrière-plan pouvait écraser les dépôts plus récents (ex. ceux du collaborateur).
+   Maintenant : on relit la version en ligne et on n'y applique que NOS changements (ajouts / suppressions).
+   Et à chaque ouverture, les dépôts validés du collaborateur absents sont remis automatiquement. */
+var DONE_SYNC={base:null,chain:Promise.resolve()};
+function doneClone(o){try{return JSON.parse(JSON.stringify(o||{}));}catch(e){return {};}}
+var _dsPA=pullAll;pullAll=async function(){await _dsPA.apply(this,arguments);if(!SV.staff)DONE_SYNC.base=doneClone(S.done);};
+async function doneMergeSave(localRef){var local=doneClone(localRef),base=DONE_SYNC.base,adds={},dels=[];
+  Object.keys(local).forEach(function(k){if(!base||JSON.stringify(local[k])!==JSON.stringify(base[k]))adds[k]=local[k];});
+  if(base)Object.keys(base).forEach(function(k){if(!(k in local))dels.push(k);});
+  var cloud=null;try{var r=await sb.from("app_data").select("v").eq("user_id",session.user.id).eq("k","done").maybeSingle();if(!r.error&&r.data&&r.data.v&&typeof r.data.v==="object")cloud=r.data.v;}catch(e){}
+  if(!cloud){_dsCU("done",localRef);DONE_SYNC.base=local;return;}
+  var merged=Object.assign({},cloud,adds);dels.forEach(function(k){delete merged[k];});
+  var extra=Object.keys(cloud).some(function(k){return !(k in local)&&dels.indexOf(k)<0;});
+  /* changements faits pendant l'attente : conservés (ils partent au prochain enregistrement) */
+  var cur=S.done||{},view=Object.assign({},merged);Object.keys(cur).forEach(function(k){if(JSON.stringify(cur[k])!==JSON.stringify(local[k]))view[k]=cur[k];});Object.keys(local).forEach(function(k){if(!(k in cur))delete view[k];});
+  S.done=view;try{localStorage.setItem(LS.done,JSON.stringify(view));}catch(e){}
+  _dsCU("done",merged);DONE_SYNC.base=merged;
+  if(dels.length)doneRejectStaff(dels);
+  if(extra){var ae=document.activeElement;if(!S.modal&&!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||""))){try{renderNav();renderView();}catch(e){}}}}
+/* le cabinet annule un dépôt saisi par le collaborateur : la saisie passe « rejetée » (sinon elle serait remise) */
+function doneRejectStaff(keys){var now=new Date().toISOString();(SV.rows||[]).forEach(function(r){if(r.type!=="declaration"||r.statut!=="valide"||keys.indexOf(r.decl_key)<0)return;
+  r.statut="rejete";r.admin_note="Dépôt annulé par le cabinet";r.traite_at=now;try{sb.from("staff_saisies").update({statut:"rejete",admin_note:"Dépôt annulé par le cabinet",traite_at:now}).eq("id",r.id).then(function(){});}catch(e){}});}
+var _dsCU=cloudUpsert;
+cloudUpsert=function(k,v){if(k!=="done"||SV.staff||!sb||typeof session==="undefined"||!session||!session.user)return _dsCU(k,v);
+  setSync("saving");DONE_SYNC.chain=DONE_SYNC.chain.then(function(){return doneMergeSave(v);}).catch(function(){_dsCU(k,v);});return DONE_SYNC.chain;};
+/* auto-réparation : dépôts validés du collaborateur absents de la liste du cabinet */
+function doneHeal(){if(SV.staff||!Array.isArray(SV.rows))return 0;var n=0;
+  SV.rows.forEach(function(r){if(r.type!=="declaration"||r.statut!=="valide"||!r.decl_key||S.done[r.decl_key])return;var d=r.data||{};
+    S.done[r.decl_key]={d:d.date||String(r.created_at||"").slice(0,10),ref:d.ref||"",m:+d.montant||0,note:d.note||"",by:r.author_name||r.email||"Collaborateur",src:"equipe",at:r.traite_at||new Date().toISOString()};n++;});
+  if(n){save("done");try{renderNav();if(!S.modal)renderView();}catch(e){}showOk(n+" dépôt(s) du collaborateur réintégré(s) dans la liste.");}return n;}
+var _dsL=svLoad;svLoad=async function(){var r=await _dsL.apply(this,arguments);try{doneHeal();}catch(e){}return r;};
+
+/* remise à jour automatique quand on revient sur l'application (téléphone sorti de veille, onglet resté ouvert) */
+var DS_LAST=Date.now();
+async function dsRefreshAll(){if(SV.staff||!CLOUD||!sb||typeof session==="undefined"||!session||!session.user)return;DS_LAST=Date.now();
+  try{var res=await sb.from("app_data").select("k,v").eq("user_id",session.user.id);if(res.error||!res.data||!res.data.length)return;
+    res.data.forEach(function(r){if(KEYS.indexOf(r.k)<0||r.v==null)return;S[r.k]=r.v;try{localStorage.setItem(LS[r.k],JSON.stringify(r.v));}catch(e){}});
+    DONE_SYNC.base=doneClone(S.done);ensureYears();
+    var ae=document.activeElement;if(!S.modal&&!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||""))){renderNav();renderView();}
+    try{if(typeof svLoad==="function")svLoad();}catch(e){}}catch(e){}}
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"&&Date.now()-DS_LAST>60000)dsRefreshAll();});
+window.addEventListener("online",function(){dsRefreshAll();});
+window.addEventListener("focus",function(){if(Date.now()-DS_LAST>300000)dsRefreshAll();});
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
