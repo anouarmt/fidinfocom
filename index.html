@@ -326,13 +326,13 @@ select.ipt{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xm
   .svx,.svscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 @media(display-mode:standalone){body{-webkit-user-select:none;user-select:none}input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text}}
-#fidInstall{position:fixed;left:10px;right:10px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;background:#14201C;color:#E8EDEA;border-radius:16px;padding:12px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:13px;line-height:1.35;max-width:520px;margin:0 auto}
-#fidInstall img{width:42px;height:42px;border-radius:10px;flex-shrink:0}
-#fidInstall b{color:#EBC873}
-#fidInstall button{border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;white-space:nowrap}
-#fidInstall .ok{background:#0E7A5F;color:#fff}
-#fidInstall .no{color:#A9B8B2;padding:8px 6px}
-@media(min-width:641px){#fidInstall{bottom:20px;left:auto;right:20px}}
+#fidInstall{position:fixed;left:12px;bottom:calc(80px + env(safe-area-inset-bottom));z-index:60;display:flex;align-items:center;gap:2px;background:#14201C;color:#EBC873;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.25);font-size:12.5px;font-weight:600;padding:3px}
+#fidInstall .go{display:flex;align-items:center;gap:6px;padding:6px 10px 6px 6px;color:#EBC873;font-weight:600;font-size:12.5px;background:none;border:0;cursor:pointer}
+#fidInstall .go img{width:22px;height:22px;border-radius:6px}
+#fidInstall .x{color:#A9B8B2;font-size:15px;line-height:1;padding:6px 9px 6px 4px;background:none;border:0;cursor:pointer}
+#fidInstallTip{position:fixed;left:12px;right:12px;max-width:340px;bottom:calc(126px + env(safe-area-inset-bottom));z-index:61;background:#14201C;color:#E8EDEA;border-radius:14px;padding:12px 14px;font-size:12.5px;line-height:1.45;box-shadow:0 10px 26px rgba(0,0,0,.3)}
+#fidInstallTip b{color:#fff}
+@media(min-width:641px){#fidInstall{bottom:18px;left:18px}#fidInstallTip{bottom:64px;left:18px}}
 </style>
 </head>
 <body>
@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10y · accès SIMPL par client · remarques par déclaration · nouveau client (collaborateur et frais divers) — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10z · petit bouton « Installer l'app » · accès SIMPL · remarques par déclaration — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -15613,18 +15613,19 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
 var FIDAPP={prompt:null};
 function fidIsStandalone(){try{return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;}catch(e){return false;}}
 function fidIsIOS(){var u=navigator.userAgent||"";return /iPhone|iPad|iPod/i.test(u)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);}
-function fidInstallHide(forever){var b=document.getElementById("fidInstall");if(b)b.remove();if(forever){try{localStorage.setItem("fid_install_no",String(Date.now()));}catch(e){}}}
+function fidInstallHide(forever){["fidInstall","fidInstallTip"].forEach(function(id){var b=document.getElementById(id);if(b)b.remove();});if(forever){try{localStorage.setItem("fid_install_no",String(Date.now()));}catch(e){}}}
 function fidInstallShow(){if(fidIsStandalone()||document.getElementById("fidInstall"))return;
   try{var no=+localStorage.getItem("fid_install_no")||0;if(no&&Date.now()-no<14*864e5)return;}catch(e){}
   var small=window.matchMedia&&window.matchMedia("(max-width: 900px)").matches;if(!FIDAPP.prompt&&!(fidIsIOS()&&small))return;
   var d=document.createElement("div");d.id="fidInstall";
-  d.innerHTML='<img src="apple-touch-icon.png" alt=""><div style="flex:1"><b>Installer l\'application</b><br><span style="color:#A9B8B2;font-size:12px">'+(FIDAPP.prompt?'Icône sur l\'écran d\'accueil, ouverture en plein écran.':'Touchez <b style="color:#fff">Partager</b> ⬆ puis <b style="color:#fff">« Sur l\'écran d\'accueil »</b>.')+'</span></div>'
-    +(FIDAPP.prompt?'<button class="ok" data-fidapp="install">Installer</button>':'')+'<button class="no" data-fidapp="later">Plus tard</button>';
+  d.innerHTML='<button class="go" data-fidapp="go" title="Installer l\'application sur cet appareil"><img src="apple-touch-icon.png" alt="">Installer l\'app</button><button class="x" data-fidapp="later" title="Masquer">×</button>';
   document.body.appendChild(d);}
+function fidInstallTip(){var t=document.getElementById("fidInstallTip");if(t){t.remove();return;}t=document.createElement("div");t.id="fidInstallTip";
+  t.innerHTML='Dans <b>Safari</b> : touchez <b>Partager</b> ⬆ en bas de l\'écran, puis <b>« Sur l\'écran d\'accueil »</b> et <b>Ajouter</b>.';document.body.appendChild(t);setTimeout(function(){var x=document.getElementById("fidInstallTip");if(x)x.remove();},12000);}
 window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();FIDAPP.prompt=e;setTimeout(fidInstallShow,1500);});
 window.addEventListener("appinstalled",function(){FIDAPP.prompt=null;fidInstallHide(false);try{showOk("Application installée. Retrouvez « FID INFO COM » sur votre écran d'accueil.");}catch(e){}});
 document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-fidapp]");if(!t)return;var a=t.dataset.fidapp;
-  if(a==="install"&&FIDAPP.prompt){var p=FIDAPP.prompt;FIDAPP.prompt=null;p.prompt();(p.userChoice||Promise.resolve()).then(function(){fidInstallHide(false);});}
+  if(a==="go"){if(FIDAPP.prompt){var p=FIDAPP.prompt;FIDAPP.prompt=null;p.prompt();(p.userChoice||Promise.resolve()).then(function(){fidInstallHide(false);});}else fidInstallTip();}
   else if(a==="later"){fidInstallHide(true);}});
 if("serviceWorker" in navigator&&location.protocol==="https:"){window.addEventListener("load",function(){navigator.serviceWorker.register("./sw.js").catch(function(){});});}
 setTimeout(function(){if(fidIsIOS())fidInstallShow();},4000);
