@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.11d · RAS revenus fonciers : mensuelle seulement (société) · filtre par année collaborateur — PRODUCTION EN LIGNE";
+const VERSION = "v2026.11f · fiche client depuis les déclarations · années N-1 / N / N+1 collaborateur — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -11367,7 +11367,7 @@ function echRows(){
     const done=!!S.done[d.key];
     const ni=notifSentInfo(d.key);
     return '<div class="trow" style="grid-template-columns:'+cols+'">'+
-      '<div style="min-width:0"><div class="dossier">'+esc(d.client.dossier)+'</div><div class="tel">'+ic("phone")+esc(d.client.tel||"—")+'</div></div>'+
+      '<div style="min-width:0"><button data-act="sv_fiche" data-cid="'+d.client.id+'" title="Voir la fiche du client" style="text-align:left;padding:0"><div class="dossier" style="text-decoration:underline;text-decoration-color:#d6d3c8">'+esc(d.client.dossier)+'</div></button><div class="tel">'+ic("phone")+esc(d.client.tel||"—")+'</div></div>'+
       '<div style="color:#57534e;min-width:0">'+esc(d.label)+drLine(d.key,d.client.id,d.label,d.client.dossier)+'</div>'+
       '<div class="mono" style="color:#57534e">'+fmtDate(d.date)+'</div>'+
       '<div class="mono" style="color:'+d.u.color+'">'+(done?"—":(d.u.j<0?d.u.j+" j":"+"+d.u.j+" j"))+'</div>'+
@@ -13979,14 +13979,17 @@ function svSubAdmin(){if(SV.ch)return;try{SV.ch=sb.channel("sv_admin_"+session.u
 function svAdminInit(){if(!svAdmin())return;svLoad();svSubAdmin();setTimeout(function(){svPushAll(false);},4000);}
 
 /* ---------- publication des données vers l'espace collaborateur ---------- */
+/* années publiées pour le collaborateur : N-1, N, N+1 (+ les années plus anciennes ajoutées avec « - » dans le cabinet, jusqu'à N-3) */
+function svSnapYears(){var Y=SV_NOW_Y,set={};[Y-1,Y,Y+1].forEach(function(y){set[y]=1;});(S.years||[]).forEach(function(y){y=+y;if(y>=Y-3&&y<=Y+1)set[y]=1;});
+  return Object.keys(set).map(Number).sort(function(a,b){return a-b;});}
 function svBuildSnapshot(s){var scope=s.saisie||"all";if(scope==="none")return null;
   var ids=scope==="assigned"?(s.dossiers||[]).map(Number):null,Y=SV_NOW_Y,out=[];
   clients().forEach(function(c){if(ids&&ids.indexOf(+c.id)<0)return;var o={id:c.id,n:c.dossier,d:[],pay:{},i:svClientInfo(c),docs:((S.docs||{})[String(c.id)]||[]).filter(function(m){return m&&m.path;}).slice(-30).map(function(m){return {id:m.id,n:m.name,c:m.cat||"",s:m.size||0,d:m.date||"",p:m.path,by:m.by||""};}),docsN:((S.docs||{})[String(c.id)]||[]).filter(function(m){return m&&m.path;}).length};
-    [Y-1,Y].forEach(function(y){svWithYear(y,function(){
-      buildDeadlines(c).forEach(function(dl){var done=!!S.done[dl.key],old=y<Y&&(done||svIso(dl.date)<Y+"-01-01");var e={key:dl.key,l:dl.label+(y<Y?" ("+y+")":""),dt:svIso(dl.date),done:done,y:y};if(old)e.o=1;o.d.push(e);});
+    svSnapYears().forEach(function(y){svWithYear(y,function(){
+      buildDeadlines(c).forEach(function(dl){var done=!!S.done[dl.key],old=(y<Y&&(done||svIso(dl.date)<Y+"-01-01"))||y<Y-1||y>Y;var e={key:dl.key,l:dl.label+(y!==Y?" ("+y+")":""),dt:svIso(dl.date),done:done,y:y};if(old)e.o=1;o.d.push(e);});
       if(svHon(c)>0)o.pay[y]={exp:expectedFor(c),col:collFor(c),p:payPlan(c).map(function(p){return {k:p.k,l:p.label,paid:+S.pay[y+"|"+c.id+"|"+p.k]||0,due:svPeriodDue(c,p.k)};}),h:(S.paylog||[]).filter(function(p){return +p.cid===+c.id&&+p.y===y&&p.k!=="FRAIS";}).slice(0,20).map(function(p){return {d:p.date,m:p.montant,mo:p.mode,ref:p.ref,rc:p.rcNo,k:p.k};})};});});
     out.push(o);});
-  return {gen:new Date().toISOString(),y:Y,clients:out,cab:svCabHead()};}
+  return {gen:new Date().toISOString(),y:Y,ys:svSnapYears(),clients:out,cab:svCabHead()};}
 var _svTBP=teamBuildPayload;
 teamBuildPayload=function(s){var p=_svTBP(s)||{};try{p.gen=new Date().toISOString();p.saisie=s.saisie||"all";p.suivi=svBuildSnapshot(s);var all=teamGet().tasks;p.tasks=(p.tasks||[]).map(function(t){var o=all.find(function(k){return String(k.id)===String(t.id);})||{};t.stAt=o.stAt||o.created||"";t.obs=o.obs||"";return t;});}catch(e){}return p;};
 function svSchedulePush(fast){if(!svAdmin())return;clearTimeout(SV.pushT);SV.pushT=setTimeout(function(){svPushAll(false);},fast?1500:5000);}
@@ -14158,7 +14161,7 @@ function svStaffDeclList(){var rows=svStaffDeclRows();
   var more=rows.length>300?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:12px;font-size:12px">'+(rows.length-300)+' ligne(s) de plus — affinez la recherche.</td></tr>':'';
   var ST={done:["🟢 Déposée","#0E7A5F","#E3F1EB"],retard:["🔴 En retard","#B42318","#FBEAE8"],urgent:["🟠 Urgent","#B5530A","#FCEEE0"],venir:["🟡 À venir","#9A7610","#FAF3DD"],planif:["⚪ Planifiée","#5C6B66","#EEF1EF"]};
   return rows.slice(0,300).map(function(x){var s=ST[x.k];
-    return '<tr><td><div class="dossier" style="font-size:13px">'+esc(x.c.n)+'</div></td><td>'+esc(x.d.l)+drLine(x.d.key,x.c.id,x.d.l,x.c.n)+(x.rej?'<div class="sub" style="color:#B42318">↺ Rejetée'+(x.rej.admin_note?' : '+esc(x.rej.admin_note):'')+'</div>':'')+'</td><td class="mono" style="white-space:nowrap">'+svD(x.d.dt)+'</td>'
+    return '<tr><td><button data-act="sv_s_cli" data-cid="'+x.c.id+'" title="Voir la fiche du client" style="text-align:left;padding:0"><div class="dossier" style="font-size:13px;text-decoration:underline;text-decoration-color:#d6d3c8">'+esc(x.c.n)+'</div></button></td><td>'+esc(x.d.l)+drLine(x.d.key,x.c.id,x.d.l,x.c.n)+(x.rej?'<div class="sub" style="color:#B42318">↺ Rejetée'+(x.rej.admin_note?' : '+esc(x.rej.admin_note):'')+'</div>':'')+'</td><td class="mono" style="white-space:nowrap">'+svD(x.d.dt)+'</td>'
       +'<td><span class="svst" style="background:'+s[2]+';color:'+s[1]+'">'+s[0]+'</span></td>'
       +'<td style="text-align:right;white-space:nowrap;min-width:150px"><div style="display:inline-flex;gap:6px;align-items:center">'+drBtn(x.d.key,x.c.id,x.d.l,x.c.n)+((x.k==="done"||x.k==="pend")?'':'<button class="btn-primary" data-act="sv_s_decl" data-cid="'+x.c.id+'" data-key="'+esc(x.d.key)+'" style="padding:6px 12px;font-size:12px">'+ic("check","width:13px;height:13px")+' Déposer</button>')+'</div></td></tr>';}).join("")+more;}
 function svStaffPayList(){var snap=svSnap();if(!snap)return '';var y=SV.py||snap.y;
@@ -14192,7 +14195,7 @@ function svStaffRender(keepFocus){var root=document.getElementById("svStaff");if
       +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th>Déclaration</th><th>Échéance</th><th>Statut</th><th></th></tr></thead><tbody id="svs_list">'+svStaffDeclList()+'</tbody></table></div></div>';}
   else if(SV.tab==="frais"){body=frStaffHtml();}
   else if(SV.tab==="pay"){var y=SV.py||snap.y;body='<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_pq" placeholder="Rechercher un dossier…" value="'+esc(SV.pq)+'"></div>'
-      +seg([[snap.y-1,String(snap.y-1)],[snap.y,String(snap.y)]],y,"sv_s_py")+'<button class="btn-primary" data-act="fr_s_newcli" data-ty="Honoraires / avance (nouveau client)" style="margin-left:auto;width:auto;flex:0 0 auto">'+ic("plus","width:14px;height:14px")+' Paiement d\'un nouveau client</button></div>'
+      +seg(svyYears().map(function(v){return [v,String(v)];}),y,"sv_s_py")+'<button class="btn-primary" data-act="fr_s_newcli" data-ty="Honoraires / avance (nouveau client)" style="margin-left:auto;width:auto;flex:0 0 auto">'+ic("plus","width:14px;height:14px")+' Paiement d\'un nouveau client</button></div>'
       +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Dossier</th><th style="text-align:right">Attendu '+y+'</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Reste</th><th></th></tr></thead><tbody id="svs_plist">'+svStaffPayList()+'</tbody></table></div></div>';}
   else{body='<div class="card mt5" style="padding:0;overflow:hidden"><div class="svx"><table class="svt"><thead><tr><th>Saisie le</th><th>Type</th><th>Dossier</th><th>Détail</th><th>Statut</th><th></th></tr></thead><tbody>'+svStaffMineList()+'</tbody></table></div></div>';}
   root.innerHTML='<div class="svs-top"><div class="svs-brand">FID INFO COM<span>Espace collaborateur</span></div>'
@@ -15638,8 +15641,8 @@ setTimeout(function(){if(fidIsIOS())fidInstallShow();},4000);
    Visibles par le cabinet et le collaborateur ; le mot de passe est masqué (bouton 👁 / Copier),
    jamais imprimé. */
 function dgiPwHtml(v){if(!v)return '<span style="color:var(--faint)">—</span>';
-  return '<span class="dgipw" data-pw="'+esc(v)+'" style="font-family:\'JetBrains Mono\',monospace;letter-spacing:.06em">••••••</span> <button class="iconbtn" data-pwshow title="Afficher / masquer" style="padding:2px 4px;font-size:13px">👁</button><button class="iconbtn" data-pwcopy="'+esc(v)+'" title="Copier le mot de passe" style="padding:2px 4px;font-size:11px">⧉</button>';}
-function dgiLoginHtml(v){if(!v)return '<span style="color:var(--faint)">—</span>';return '<span class="mono">'+esc(v)+'</span> <button class="iconbtn" data-pwcopy="'+esc(v)+'" title="Copier l\'identifiant" style="padding:2px 4px;font-size:11px">⧉</button>';}
+  return '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap"><span class="dgipw" data-pw="'+esc(v)+'" style="font-family:\'JetBrains Mono\',monospace;letter-spacing:.06em">••••••</span><button class="iconbtn" data-pwshow title="Afficher / masquer" style="padding:2px 4px;font-size:13px;display:inline-flex">👁</button><button class="iconbtn" data-pwcopy="'+esc(v)+'" title="Copier le mot de passe" style="padding:2px 4px;font-size:11px;display:inline-flex">⧉</button></span>';}
+function dgiLoginHtml(v){if(!v)return '<span style="color:var(--faint)">—</span>';return '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap"><span class="mono">'+esc(v)+'</span><button class="iconbtn" data-pwcopy="'+esc(v)+'" title="Copier l\'identifiant" style="padding:2px 4px;font-size:11px;display:inline-flex">⧉</button></span>';}
 function dgiBlock(so){so=so||{};if(!so.dgiLogin&&!so.dgiPass)return '';
   return '<div style="margin:12px 0;padding:10px 12px;border:1px solid #D9CBEE;background:#F7F3FC;border-radius:10px;font-size:13px"><div class="flbl" style="margin:0 0 6px;text-transform:uppercase;letter-spacing:.05em;font-size:10.5px;color:#6B3FA0">Accès portail des impôts (SIMPL)</div>'
     +'<div style="display:grid;grid-template-columns:110px 1fr;gap:6px 10px;align-items:center"><span style="color:var(--muted)">Identifiant</span><span>'+dgiLoginHtml(so.dgiLogin)+'</span><span style="color:var(--muted)">Mot de passe</span><span>'+dgiPwHtml(so.dgiPass)+'</span></div></div>';}
@@ -15761,7 +15764,7 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
    d'honoraires, Frais divers, Documents scannés, Décharges, Demandes, Remarques et Mes saisies.
    « Toutes » garde l'affichage habituel (exercice en cours + reliquat de l'an dernier). */
 SV.sy="all";
-function svyYears(){var sn=svSnap(),y=(sn&&sn.y)||SV_NOW_Y;return [y-1,y];}
+function svyYears(){var sn=svSnap(),y=(sn&&sn.y)||SV_NOW_Y;return (sn&&Array.isArray(sn.ys)&&sn.ys.length)?sn.ys.slice():[y-1,y];}
 function svyOk(dateLike){if(SV.sy==="all")return true;return String(dateLike||"").slice(0,4)===SV.sy;}
 function svyKeepDecl(d){var y=d.y;if(!y){var m=/\((\d{4})\)\s*$/.exec(d.l||"");y=m?+m[1]:((svSnap()||{}).y||SV_NOW_Y);}
   if(SV.sy==="all")return !d.o;return String(y)===SV.sy;}
