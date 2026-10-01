@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.12b · relance groupée des demandes de documents · sauvegarde quotidienne auto · historique · dépôt en lot — PRODUCTION EN LIGNE";
+const VERSION = "v2026.12d · exonérations : cotisation minimale 36 mois, taxe professionnelle 5 ans · relance groupée des demandes — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais","histlog"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -11757,6 +11757,7 @@ function modalInfos(id){
    +'<div class="grid g3">'+fld("ice","ICE")+fld("idf","Identifiant fiscal (IF)")+fld("rc","Registre Commerce (RC)")+'</div>'
    +'<div class="grid g3 mt3">'+fld("tp","Taxe Prof. (TP)")+fld("cnss","N° CNSS")+fld("capital","Capital (DH)")+'</div>'
    +'<div class="grid g2 mt3">'+fld("dateConst","Date de constitution (les échéances antérieures sont ignorées)","jj/mm/aaaa")+fld("adresse","Siège social")+'</div>'
+   +'<div class="grid g2 mt3">'+fld("dateDebut","Date de début d'activité / d'exploitation (si différente de la constitution)","jj/mm/aaaa")+'<div id="cm_info" style="font-size:12px;color:#0E7A5F;background:#F2FAF6;border-radius:8px;padding:8px 10px;align-self:end;white-space:pre-line">'+esc(exoInfo(c)||"Renseignez la date de constitution ou de début d'activité : les exonérations (cotisation minimale 36 mois, taxe professionnelle 5 ans) seront calculées automatiquement.")+'</div></div>'
    +'<div class="grid g2 mt3">'+fld("ville","Ville (pour « Fait à … » de tous les documents)")+'<div></div></div>'
    +'<div class="sectit mb3" style="color:#6B3FA0;margin-top:22px">ACCÈS PORTAIL DES IMPÔTS (SIMPL)</div>'
    +'<div class="grid g2">'+fld("dgiLogin","Identifiant SIMPL")+'<div><div class="flbl">Mot de passe SIMPL</div><div style="display:flex;gap:6px;align-items:center"><input class="ipt" type="password" autocomplete="new-password" data-soc="dgiPass" value="'+esc(soc.dgiPass||"")+'"><button class="iconbtn" data-pweye title="Afficher / masquer" style="font-size:15px">👁</button></div></div></div>'
@@ -14299,8 +14300,24 @@ function svDlDue(dl,dc){var Y=+String(dl.key).split("|")[0]||S.year,cy=dc.getFul
   if(dl.type==="BILAN")return (+p||Y-1)>=cy;            // bilan de l'exercice N-1
   return Y>cy;                                           // déclarations annuelles portant sur N-1 (salaires, CM, IR, fonciers, AGO…)
 }
+/* Cotisation minimale : exonération pendant les 36 premiers mois suivant le début d'exploitation
+   (sociétés : au plus tard 60 mois après la constitution). La CM d'un exercice n'est due que si
+   cet exercice se termine après la fin de l'exonération. */
+function cmAddMonths(d,n){var x=new Date(d.getFullYear(),d.getMonth()+n,d.getDate());return x;}
+function cmIsSoc(c){var f=String((c&&c.forme)||"").toLowerCase();return !(f.indexOf("physique")>=0||f==="particulier"||f==="cpu");}
+function cmExoEnd(c){if(!c)return null;var soc=(c.societe)||((S.flags[c.id]||{}).societe)||{};var dc=svDateConst(c),dd=svParseDate(soc.dateDebut);if(!(dd&&!isNaN(dd)))dd=dc;if(!dd)return null;
+  var E=cmAddMonths(dd,36);if(cmIsSoc(c)&&dc){var cap=cmAddMonths(dc,60);if(cap<E)E=cap;}return E;}
+function cmDueDl(c,dl){if(dl.type!=="CMPM"&&dl.type!=="CMPP")return true;var E=cmExoEnd(c);if(!E)return true;var ex=(+String(dl.key).split("|")[0]||S.year)-1;return new Date(ex,11,31,23,59)>E;}
+function cmInfo(c){var E=cmExoEnd(c);if(!E)return "";var ex=E.getFullYear();if(new Date(ex,11,31,23,59)<=E)ex++;var soc=cmIsSoc(c);
+  return "Cotisation minimale exonérée jusqu'au "+fmtDate(E)+" (36 mois après le début d'activité"+(soc?", 60 mois max. après la constitution":"")+"). Première CM due : exercice "+ex+", à payer avant le "+(soc?"31/03/":"31/01/")+(ex+1)+".";}
+/* Taxe professionnelle : exonération totale pendant 5 ans (60 mois) à compter de l'année du début
+   d'activité (loi 47-06 sur la fiscalité locale) — la première TP est due la 6e année. */
+function tpStart(c){if(!c)return null;var soc=(c.societe)||((S.flags[c.id]||{}).societe)||{};var dd=svParseDate(soc.dateDebut);if(!(dd&&!isNaN(dd)))dd=svDateConst(c);return dd||null;}
+function tpDueDl(c,dl){if(dl.type!=="TP")return true;var d=tpStart(c);if(!d)return true;var Y=+String(dl.key).split("|")[0]||S.year;return Y>=d.getFullYear()+5;}
+function tpInfo(c){var d=tpStart(c);if(!d)return "";var y=d.getFullYear();return "Taxe professionnelle exonérée de "+y+" à "+(y+4)+" (5 ans à compter de l'année du début d'activité). Première TP due en "+(y+5)+".";}
+function exoInfo(c){return [cmInfo(c),tpInfo(c)].filter(Boolean).join("\n");}
 var _svBD=buildDeadlines;
-buildDeadlines=function(c){var out=_svBD(c),dc=svDateConst(c);if(!dc)return out;return out.filter(function(dl){return svDlDue(dl,dc);});};
+buildDeadlines=function(c){var out=_svBD(c).filter(function(dl){return cmDueDl(c,dl)&&tpDueDl(c,dl);}),dc=svDateConst(c);if(!dc)return out;return out.filter(function(dl){return svDlDue(dl,dc);});};
 
 
 /* ---------- FICHE CLIENT publiée vers l'Espace collaborateur ---------- */
@@ -16166,6 +16183,8 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
   else if(a==="drg_send"){drgSend(+t.dataset.cid);}
   else if(a==="drg_next"){var x=drgGroups().find(function(g){return g.ok&&!RG.done[g.cid];});if(x)drgSend(x.cid);}});
 
+document.addEventListener("change",function(e){var t=e.target;if(!t||!t.dataset||(t.dataset.soc!=="dateConst"&&t.dataset.soc!=="dateDebut"))return;
+  setTimeout(function(){try{var m=S.modal;if(!m||m.type!=="infos")return;var c=clients().find(function(x){return x.id===m.id;});var el=document.getElementById("cm_info");if(el&&c)el.textContent=exoInfo(c)||"";if(t.dataset.soc==="dateDebut")renderView();}catch(_e){}},50);});
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
   if(SV.staff&&e.target.classList&&e.target.classList.contains("ov")&&e.target.closest("#svOv")){SV.modal=null;svStaffModal();return;}
