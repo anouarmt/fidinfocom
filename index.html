@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.11c · RAS revenus fonciers mensuelle au calendrier fiscal · filtre par année collaborateur — PRODUCTION EN LIGNE";
+const VERSION = "v2026.11d · RAS revenus fonciers : mensuelle seulement (société) · filtre par année collaborateur — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -728,9 +728,8 @@ function buildDeadlines(c){
   if(c.hasTiers) add("TIERS","Rémunérations versées à des tiers",""+Y,new Date(Y,2,31),"tiers"); // avec les résultats (à confirmer)
   if(c.hasTP) add("TP","Taxe professionnelle / TSC (selon avis)",""+Y,new Date(Y,5,30),"tp");     // selon rôle/avis d'imposition
   if(c.hasRAS) add("RAS","Retenue à la source (à vérifier)",""+Y,new Date(Y,2,31),"ras");          // déclaration annuelle (à confirmer)
-  if(c.hasRasFonc){ // RAS sur revenus fonciers (loyers versés à des personnes physiques) : versement avant la fin du mois suivant le paiement
+  if(c.hasRasFonc){ // RAS sur revenus fonciers retenue par la société locataire : déclaration/versement mensuel avant la fin du mois suivant le paiement (la déclaration annuelle est celle du particulier bailleur : case « Revenus fonciers »)
     for(let m=0;m<12;m++) add("RASF","RAS rev. fonciers "+MONTHS[m],"M"+(m+1),new Date(Y,m+2,0),"rasf");
-    add("RASF","RAS rev. fonciers — déclaration annuelle des loyers","AN",new Date(Y+1,2,0),"rasf"); // avant le 1er mars N+1 (à vérifier)
   }
   if(c.hasDelais){ // loi 69-21 : CA HT > 2 MDH — déclaration trimestrielle SIMPL avant la fin du mois suivant le trimestre
     add("DELAIS","Délais de paiement T1 (Jan-Mar)","T1",new Date(Y,4,0),"delais");
