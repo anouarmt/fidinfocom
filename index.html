@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.11a · remarque par demande de documents · petit bouton « Installer l'app » · accès SIMPL — PRODUCTION EN LIGNE";
+const VERSION = "v2026.11c · RAS revenus fonciers mensuelle au calendrier fiscal · filtre par année collaborateur — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -728,6 +728,10 @@ function buildDeadlines(c){
   if(c.hasTiers) add("TIERS","Rémunérations versées à des tiers",""+Y,new Date(Y,2,31),"tiers"); // avec les résultats (à confirmer)
   if(c.hasTP) add("TP","Taxe professionnelle / TSC (selon avis)",""+Y,new Date(Y,5,30),"tp");     // selon rôle/avis d'imposition
   if(c.hasRAS) add("RAS","Retenue à la source (à vérifier)",""+Y,new Date(Y,2,31),"ras");          // déclaration annuelle (à confirmer)
+  if(c.hasRasFonc){ // RAS sur revenus fonciers (loyers versés à des personnes physiques) : versement avant la fin du mois suivant le paiement
+    for(let m=0;m<12;m++) add("RASF","RAS rev. fonciers "+MONTHS[m],"M"+(m+1),new Date(Y,m+2,0),"rasf");
+    add("RASF","RAS rev. fonciers — déclaration annuelle des loyers","AN",new Date(Y+1,2,0),"rasf"); // avant le 1er mars N+1 (à vérifier)
+  }
   if(c.hasDelais){ // loi 69-21 : CA HT > 2 MDH — déclaration trimestrielle SIMPL avant la fin du mois suivant le trimestre
     add("DELAIS","Délais de paiement T1 (Jan-Mar)","T1",new Date(Y,4,0),"delais");
     add("DELAIS","Délais de paiement T2 (Avr-Jun)","T2",new Date(Y,7,0),"delais");
@@ -11381,7 +11385,7 @@ function vEch(){
   const dls=allDeadlines();
   const c=k=>dls.filter(d=>d.u.key===k).length;
   const urgs=[["active","À traiter"],["retard","En retard ("+c("retard")+")"],["urgent","Urgent ("+c("urgent")+")"],["venir","À venir ("+c("venir")+")"],["depose","Déposé ("+c("depose")+")"],["all","Tout"]];
-  const cats=[["all","Tous"],["tva","TVA"],["sal","Salaires"],["bilan","Bilan"],["is","Acomptes IS"],["foncier","Fonciers"],["cm","Cot. min."],["ir","Rev. IR"],["tiers","Rém. tiers"],["tp","Taxe pro."],["ras","Ret. source"],["delais","Délais paiement"],["cpu","CPU"],["jur","Juridique"]];
+  const cats=[["all","Tous"],["tva","TVA"],["sal","Salaires"],["bilan","Bilan"],["is","Acomptes IS"],["foncier","Fonciers"],["cm","Cot. min."],["ir","Rev. IR"],["tiers","Rém. tiers"],["tp","Taxe pro."],["ras","Ret. source"],["rasf","RAS fonciers"],["delais","Délais paiement"],["cpu","CPU"],["jur","Juridique"]];
   const mois=[["all","Toutes périodes"],["this","Ce mois-ci"],["next","Mois prochain"]];
   const regs=[["all","Tous régimes"],["mensuelle","Mensuel"],["trimestrielle","Trimestriel"],["neant","Néant"]];
   const seg=(arr,act,cur,onc)=>'<div class="seg">'+arr.map(a=>'<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:'+onc+';color:#fff':'')+'">'+a[1]+'</button>').join("")+'</div>';
@@ -11736,7 +11740,7 @@ function modalCEdit(id){
       '<div class="grid g2 mt3"><div><div class="flbl">Régime TVA (déclaration)</div><select class="ipt" id="cf_reg">'+REGS.map(r=>'<option value="'+r[0]+'"'+(c.reg===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div>'+
       '<div><div class="flbl">Régime d\'exigibilité</div><select class="ipt" id="cf_regtva">'+REGS_TVA.map(r=>'<option value="'+r[0]+'"'+(regTvaOf(c)===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div></div>'+
       '<div class="mt3"><div class="cklist">'+ck("cf_cash","Achats réglés en espèces par défaut (pré-coche le règlement caisse à l\'import)",c.cashDefault)+'</div></div>'+
-      '<div class="mt3"><div class="flbl">Obligations (cochez ce qui s\'applique)</div><div class="cklist">'+ck("cf_bilan","Bilan",c.hasBilan)+ck("cf_sal","Salaires",c.hasSal)+ck("cf_dp","Acomptes IS",c.hasDp)+ck("cf_foncier","Revenus fonciers",c.hasFoncier)+ck("cf_cmpm","Cotis. min. sociétés (mois 3)",c.hasCMpm)+ck("cf_cmpp","Cotis. min. P. physique (mois 1)",c.hasCMpp)+ck("cf_ir","Revenu global IR (30 avr)",c.hasIR)+ck("cf_tiers","Rémunérations à des tiers (31 mars)",c.hasTiers)+ck("cf_tp","Taxe pro. / TSC (selon avis)",c.hasTP)+ck("cf_ras","Retenue à la source (à vérifier)",c.hasRAS)+ck("cf_delais","Délais de paiement loi 69-21 (CA > 2 MDH, trimestriel)",c.hasDelais)+'</div></div>'+
+      '<div class="mt3"><div class="flbl">Obligations (cochez ce qui s\'applique)</div><div class="cklist">'+ck("cf_bilan","Bilan",c.hasBilan)+ck("cf_sal","Salaires",c.hasSal)+ck("cf_dp","Acomptes IS",c.hasDp)+ck("cf_foncier","Revenus fonciers",c.hasFoncier)+ck("cf_cmpm","Cotis. min. sociétés (mois 3)",c.hasCMpm)+ck("cf_cmpp","Cotis. min. P. physique (mois 1)",c.hasCMpp)+ck("cf_ir","Revenu global IR (30 avr)",c.hasIR)+ck("cf_tiers","Rémunérations à des tiers (31 mars)",c.hasTiers)+ck("cf_tp","Taxe pro. / TSC (selon avis)",c.hasTP)+ck("cf_ras","Retenue à la source (à vérifier)",c.hasRAS)+ck("cf_rasfonc","RAS revenus fonciers — loyers versés (mensuelle)",c.hasRasFonc)+ck("cf_delais","Délais de paiement loi 69-21 (CA > 2 MDH, trimestriel)",c.hasDelais)+'</div></div>'+
       '<div class="mt3"><div class="flbl">Commentaire</div><input class="ipt" id="cf_comment" value="'+esc(c.comment)+'"></div>'+
       '<button class="btn-primary" data-act="csave" data-id="'+(isNew?"":id)+'">'+ic("plus","width:16px;height:16px")+' '+(isNew?"Créer le client":"Enregistrer")+'</button>'+(isNew?'':svDocsSection(id))+
     '</div></div></div>';
@@ -13842,7 +13846,7 @@ function submitClient(id){
     cashDefault:(g("cf_cash")?g("cf_cash").checked:false),
     hasBilan:g("cf_bilan").checked,hasSal:g("cf_sal").checked,hasDp:g("cf_dp").checked,
     hasFoncier:g("cf_foncier").checked,hasCMpm:(g("cf_cmpm")?g("cf_cmpm").checked:false),hasCMpp:(g("cf_cmpp")?g("cf_cmpp").checked:false),
-    hasIR:(g("cf_ir")?g("cf_ir").checked:false),hasTiers:(g("cf_tiers")?g("cf_tiers").checked:false),hasTP:(g("cf_tp")?g("cf_tp").checked:false),hasRAS:(g("cf_ras")?g("cf_ras").checked:false),hasDelais:(g("cf_delais")?g("cf_delais").checked:false),
+    hasIR:(g("cf_ir")?g("cf_ir").checked:false),hasTiers:(g("cf_tiers")?g("cf_tiers").checked:false),hasTP:(g("cf_tp")?g("cf_tp").checked:false),hasRAS:(g("cf_ras")?g("cf_ras").checked:false),hasRasFonc:(g("cf_rasfonc")?g("cf_rasfonc").checked:false),hasDelais:(g("cf_delais")?g("cf_delais").checked:false),
     comment:g("cf_comment").value.trim()};if(g("cf_statut"))data.statut=g("cf_statut").value==="—"?"":g("cf_statut").value;
   if(id==null){
     const nid=Date.now();S.custom.push(Object.assign({id:nid},data));save("custom");
@@ -13980,7 +13984,7 @@ function svBuildSnapshot(s){var scope=s.saisie||"all";if(scope==="none")return n
   var ids=scope==="assigned"?(s.dossiers||[]).map(Number):null,Y=SV_NOW_Y,out=[];
   clients().forEach(function(c){if(ids&&ids.indexOf(+c.id)<0)return;var o={id:c.id,n:c.dossier,d:[],pay:{},i:svClientInfo(c),docs:((S.docs||{})[String(c.id)]||[]).filter(function(m){return m&&m.path;}).slice(-30).map(function(m){return {id:m.id,n:m.name,c:m.cat||"",s:m.size||0,d:m.date||"",p:m.path,by:m.by||""};}),docsN:((S.docs||{})[String(c.id)]||[]).filter(function(m){return m&&m.path;}).length};
     [Y-1,Y].forEach(function(y){svWithYear(y,function(){
-      buildDeadlines(c).forEach(function(dl){var done=!!S.done[dl.key];if(y<Y&&(done||svIso(dl.date)<Y+"-01-01"))return;o.d.push({key:dl.key,l:dl.label+(y<Y?" ("+y+")":""),dt:svIso(dl.date),done:done});});
+      buildDeadlines(c).forEach(function(dl){var done=!!S.done[dl.key],old=y<Y&&(done||svIso(dl.date)<Y+"-01-01");var e={key:dl.key,l:dl.label+(y<Y?" ("+y+")":""),dt:svIso(dl.date),done:done,y:y};if(old)e.o=1;o.d.push(e);});
       if(svHon(c)>0)o.pay[y]={exp:expectedFor(c),col:collFor(c),p:payPlan(c).map(function(p){return {k:p.k,l:p.label,paid:+S.pay[y+"|"+c.id+"|"+p.k]||0,due:svPeriodDue(c,p.k)};}),h:(S.paylog||[]).filter(function(p){return +p.cid===+c.id&&+p.y===y&&p.k!=="FRAIS";}).slice(0,20).map(function(p){return {d:p.date,m:p.montant,mo:p.mode,ref:p.ref,rc:p.rcNo,k:p.k};})};});});
     out.push(o);});
   return {gen:new Date().toISOString(),y:Y,clients:out,cab:svCabHead()};}
@@ -14143,7 +14147,7 @@ function svStaffSub(){try{sb.channel("sv_mine").on("postgres_changes",{event:"*"
 function svSnap(){return ((SV.me&&SV.me.payload)||{}).suivi||null;}
 function svMineFor(key){return SV.mine.filter(function(r){return r.decl_key===key;});}
 function svStaffDeclRows(){var snap=svSnap();if(!snap)return [];var out=[],t=todayISO(),lim=svIso(new Date(Date.now()+45*86400000));
-  snap.clients.forEach(function(c){c.d.forEach(function(d){var mine=svMineFor(d.key),pend=mine.find(function(r){return r.statut==="en_attente";}),
+  snap.clients.forEach(function(c){c.d.forEach(function(d){if(!svyKeepDecl(d))return;var mine=svMineFor(d.key),pend=mine.find(function(r){return r.statut==="en_attente";}),
       val=mine.find(function(r){return r.statut==="valide";}),rej=mine.find(function(r){return r.statut==="rejete";});
       var done=d.done||!!val||!!pend,k=done?"done":(d.dt<t?"retard":(d.dt<=svIso(new Date(Date.now()+10*86400000))?"urgent":(d.dt<=svIso(new Date(Date.now()+30*86400000))?"venir":"planif")));
       out.push({c:c,d:d,k:k,pend:pend,rej:(!done&&!pend)?rej:null,soon:d.dt<=lim});});});
@@ -14299,7 +14303,7 @@ buildDeadlines=function(c){var out=_svBD(c),dc=svDateConst(c);if(!dc)return out;
 
 /* ---------- FICHE CLIENT publiée vers l'Espace collaborateur ---------- */
 function svClientInfo(c){var f=S.flags[c.id]||{},soc=f.societe||{},pick=function(o,ks){var r={};ks.forEach(function(k){if(o[k]!=null&&String(o[k]).trim()!=="")r[k]=String(o[k]).trim();});return r;};
-  var obl=[];[["hasBilan","Bilan"],["hasSal","Salaires"],["hasDp","Acomptes IS"],["hasFoncier","Revenus fonciers"],["hasCMpm","Cotisation min. sociétés"],["hasCMpp","Cotisation min. P. physique"],["hasIR","Revenu global IR"],["hasTiers","Rémunérations tiers"],["hasTP","Taxe professionnelle"],["hasRAS","Retenue à la source"],["hasDelais","Délais de paiement (loi 69-21)"]].forEach(function(x){if(c[x[0]])obl.push(x[1]);});
+  var obl=[];[["hasBilan","Bilan"],["hasSal","Salaires"],["hasDp","Acomptes IS"],["hasFoncier","Revenus fonciers"],["hasCMpm","Cotisation min. sociétés"],["hasCMpp","Cotisation min. P. physique"],["hasIR","Revenu global IR"],["hasTiers","Rémunérations tiers"],["hasTP","Taxe professionnelle"],["hasRAS","Retenue à la source"],["hasRasFonc","RAS revenus fonciers (mensuelle)"],["hasDelais","Délais de paiement (loi 69-21)"]].forEach(function(x){if(c[x[0]])obl.push(x[1]);});
   return {forme:c.forme||"",reg:c.reg||"",regTva:regTvaOf(c),tel:c.tel||"",statut:c.statut||"",comment:c.comment||"",
     soc:pick(soc,["ice","idf","rc","tp","cnss","capital","dateConst","adresse","ville","email","activite","dgiLogin","dgiPass"]),
     gers:(f.gerants||[]).filter(function(g){return g&&g.nom;}).map(function(g){return pick(g,["nom","cin","qualite"]);}),
@@ -14964,7 +14968,7 @@ var _svMC2=modalClient;modalClient=function(c){var h=_svMC2(c);if(!c||c.sortant)
 
 /* ---------- Filtres des déclarations (collaborateur) : mêmes boutons que le compte cabinet ---------- */
 SV.scat="all";if(SV.sf==="todo"||!SV.sf)SV.sf="todo";
-var SV_DCATS=[["all","Tous"],["TVA","TVA"],["SALAIRES","Salaires"],["BILAN","Bilan"],["IS","Acomptes IS"],["FONCIER","Fonciers"],["CM","Cot. min."],["IR","Rev. IR"],["TIERS","Rém. tiers"],["TP","Taxe pro."],["RAS","Ret. source"],["DELAIS","Délais paiement"],["CPU","CPU"],["AGO","Juridique"]];
+var SV_DCATS=[["all","Tous"],["TVA","TVA"],["SALAIRES","Salaires"],["BILAN","Bilan"],["IS","Acomptes IS"],["FONCIER","Fonciers"],["CM","Cot. min."],["IR","Rev. IR"],["TIERS","Rém. tiers"],["TP","Taxe pro."],["RAS","Ret. source"],["RASF","RAS fonciers"],["DELAIS","Délais paiement"],["CPU","CPU"],["AGO","Juridique"]];
 function svDeclCat(key){var t=String(key||"").split("|")[2]||"";return (t==="CMPM"||t==="CMPP")?"CM":t;}
 function svStaffDeclFilters(){var all=svStaffDeclRows().filter(function(x){return smartMatch(SV.sq,x.c.n)&&(SV.scat==="all"||svDeclCat(x.d.key)===SV.scat);});
   var n=function(k){return all.filter(function(x){return x.k===k;}).length;};
@@ -15752,6 +15756,32 @@ var _ncFS=frSave;frSave=function(btn){var cb=document.getElementById("fr_isnew")
 document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t)return;var a=t.dataset.act;
   if(a==="nc_s_open"){SV.modal={type:"nc"};svStaffModal();}else if(a==="nc_s_save"){ncStaffSave(t);}});
 
+
+/* =========================== FILTRE PAR ANNÉE — ESPACE COLLABORATEUR ===========================
+   Un sélecteur « Année » (Toutes / N-1 / N) s'applique à : Déclarations (exercice), Paiements
+   d'honoraires, Frais divers, Documents scannés, Décharges, Demandes, Remarques et Mes saisies.
+   « Toutes » garde l'affichage habituel (exercice en cours + reliquat de l'an dernier). */
+SV.sy="all";
+function svyYears(){var sn=svSnap(),y=(sn&&sn.y)||SV_NOW_Y;return [y-1,y];}
+function svyOk(dateLike){if(SV.sy==="all")return true;return String(dateLike||"").slice(0,4)===SV.sy;}
+function svyKeepDecl(d){var y=d.y;if(!y){var m=/\((\d{4})\)\s*$/.exec(d.l||"");y=m?+m[1]:((svSnap()||{}).y||SV_NOW_Y);}
+  if(SV.sy==="all")return !d.o;return String(y)===SV.sy;}
+function svyWith(obj,prop,pred,fn){var saved=obj[prop];if(SV.sy==="all"||!Array.isArray(saved))return fn();obj[prop]=saved.filter(pred);try{return fn();}finally{obj[prop]=saved;}}
+var SVY_TABS={decl:"Exercice",pay:"Exercice",frais:"Année",scans:"Année",dech:"Année",docs:"Année",notes:"Année",mine:"Année"};
+function svyBar(){var lbl=SVY_TABS[SV.tab];if(!lbl)return '';var ys=svyYears();
+  return '<div id="svs_years" style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap"><span style="font-size:12px;color:var(--muted);font-weight:600">'+lbl+' :</span><div class="seg">'
+    +[["all","Toutes"]].concat(ys.map(function(y){return [String(y),String(y)];})).map(function(a){return '<button data-act="svy_set" data-v="'+a[0]+'" style="'+(SV.sy===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>'
+    +(SV.sy!=="all"?'<span style="font-size:11.5px;color:#6B3FA0">Affichage limité à '+SV.sy+'</span>':'')+'</div>';}
+var _svySR=svStaffRender;svStaffRender=function(k){var r=_svySR.apply(this,arguments);try{var root=document.getElementById("svStaff");if(!root)return r;var old=root.querySelector("#svs_years");var tb=root.querySelector(".svs-tabs");var h=svyBar();
+  if(old)old.outerHTML=h||"";else if(tb&&h)tb.insertAdjacentHTML("afterend",h);}catch(e){}return r;};
+/* sources filtrées */
+var _svyFR=frStaffRows;frStaffRows=function(){if(SV.sy==="all")return _svyFR();var _it=frStaffItems;frStaffItems=function(){return _it().filter(function(f){return svyOk(f.dt);});};try{return _svyFR();}finally{frStaffItems=_it;}};
+var _svyDH=svStaffDocsHtml;svStaffDocsHtml=function(){return svyWith(SV,"myDocs",function(d){return svyOk(d.created_at);},_svyDH);};
+var _svyML=svStaffMineList;svStaffMineList=function(){return svyWith(SV,"mine",function(r){return svyOk(r.created_at);},_svyML);};
+var _svyDR=svDechRows;svDechRows=function(admin){if(admin)return _svyDR(admin);return svyWith(SV,"dechs",function(r){return svyOk((r.data||{}).date||r.created_at);},function(){return _svyDR(admin);});};
+var _svyNF=svNotesFeed;svNotesFeed=function(admin){if(admin)return _svyNF(admin);return svyWith(SV,"notes",function(n){return svyOk(n.created_at);},function(){return _svyNF(admin);});};
+var _svyDS=svStaffDocsSection;svStaffDocsSection=function(c){if(SV.sy==="all"||!c)return _svyDS(c);var cc=Object.assign({},c,{docs:(c.docs||[]).filter(function(m){return svyOk(m.d);})});return _svyDS(cc);};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t||t.dataset.act!=="svy_set")return;SV.sy=t.dataset.v;if(SV.sy!=="all")SV.py=+SV.sy;svStaffRender();});
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
