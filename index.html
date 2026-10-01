@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.10x · application mobile Android / iPhone · nouveau client au paiement · frais divers — PRODUCTION EN LIGNE";
+const VERSION = "v2026.10y · accès SIMPL par client · remarques par déclaration · nouveau client (collaborateur et frais divers) — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -11258,7 +11258,7 @@ function urgentDashPanel(){
     const ni=notifSentInfo(d.key);
     return '<div class="trow" style="grid-template-columns:'+cols+'">'+
       '<div style="min-width:0"><div class="dossier">'+esc(d.client.dossier)+'</div><div class="tel">'+ic("phone")+esc(d.client.tel||"—")+'</div></div>'+
-      '<div style="color:#57534e;font-size:12px">'+esc(d.label)+'</div>'+
+      '<div style="color:#57534e;font-size:12px">'+esc(d.label)+drLine(d.key,d.client.id,d.label,d.client.dossier)+'</div>'+
       '<div class="mono" style="color:#57534e;font-size:12px">'+fmtDate(d.date)+'</div>'+
       '<div class="mono" style="color:'+d.u.color+'">'+(d.u.j<0?d.u.j+" j":"+"+d.u.j+" j")+'</div>'+
       '<div>'+badge(d.u.color,d.u.bg,d.u.dot+" "+d.u.label)+'</div>'+
@@ -11359,19 +11359,19 @@ function echSummary(){
 function echRows(){
   const dls=echFiltered();
   if(!dls.length)return '<div class="empty">Aucune échéance pour ce filtre.</div>';
-  const cols="1fr 170px 120px 90px 140px 92px";
+  const cols="1fr 200px 120px 90px 140px 124px";
   return dls.map(d=>{
     const done=!!S.done[d.key];
     const ni=notifSentInfo(d.key);
     return '<div class="trow" style="grid-template-columns:'+cols+'">'+
       '<div style="min-width:0"><div class="dossier">'+esc(d.client.dossier)+'</div><div class="tel">'+ic("phone")+esc(d.client.tel||"—")+'</div></div>'+
-      '<div style="color:#57534e">'+esc(d.label)+'</div>'+
+      '<div style="color:#57534e;min-width:0">'+esc(d.label)+drLine(d.key,d.client.id,d.label,d.client.dossier)+'</div>'+
       '<div class="mono" style="color:#57534e">'+fmtDate(d.date)+'</div>'+
       '<div class="mono" style="color:'+d.u.color+'">'+(done?"—":(d.u.j<0?d.u.j+" j":"+"+d.u.j+" j"))+'</div>'+
       '<div>'+badge(d.u.color,d.u.bg,d.u.dot+" "+d.u.label)+'</div>'+
       '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
         (ni?'<span title="Notifié le '+fmtDate(new Date(ni.ts))+' ('+esc(canalLabel(ni.canal))+')" style="color:#0E7A5F;display:inline-flex">'+ic("check","width:14px;height:14px")+'</span>':'')+
-        '<button class="iconbtn" data-act="notify" data-key="'+d.key+'" title="Notifier le client (WhatsApp / SMS)" style="color:#0E7A5F">'+ic("whatsapp")+'</button>'+
+        drBtn(d.key,d.client.id,d.label,d.client.dossier)+'<button class="iconbtn" data-act="notify" data-key="'+d.key+'" title="Notifier le client (WhatsApp / SMS)" style="color:#0E7A5F">'+ic("whatsapp")+'</button>'+
         '<button class="iconbtn" data-act="toggle" data-key="'+d.key+'" title="Marquer comme déposé" style="color:'+(done?"#0E7A5F":"#d6d3c8")+'">'+ic(done?"check":"dashed")+'</button>'+
       '</div>'+
     '</div>';
@@ -11385,7 +11385,7 @@ function vEch(){
   const mois=[["all","Toutes périodes"],["this","Ce mois-ci"],["next","Mois prochain"]];
   const regs=[["all","Tous régimes"],["mensuelle","Mensuel"],["trimestrielle","Trimestriel"],["neant","Néant"]];
   const seg=(arr,act,cur,onc)=>'<div class="seg">'+arr.map(a=>'<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:'+onc+';color:#fff':'')+'">'+a[1]+'</button>').join("")+'</div>';
-  const cols="1fr 170px 120px 90px 140px 92px";
+  const cols="1fr 200px 120px 90px 140px 124px";
   return '<div class="wrap">'+header("Échéances &amp; Notifications","Calculées automatiquement selon les règles du cabinet")+
     '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mt5 mb4">'+
       '<div class="search">'+ic("search")+'<input id="echq" placeholder="Rechercher un dossier…" value="'+esc(S.echq)+'"></div>'+
@@ -11755,6 +11755,8 @@ function modalInfos(id){
    +'<div class="grid g3 mt3">'+fld("tp","Taxe Prof. (TP)")+fld("cnss","N° CNSS")+fld("capital","Capital (DH)")+'</div>'
    +'<div class="grid g2 mt3">'+fld("dateConst","Date de constitution (les échéances antérieures sont ignorées)","jj/mm/aaaa")+fld("adresse","Siège social")+'</div>'
    +'<div class="grid g2 mt3">'+fld("ville","Ville (pour « Fait à … » de tous les documents)")+'<div></div></div>'
+   +'<div class="sectit mb3" style="color:#6B3FA0;margin-top:22px">ACCÈS PORTAIL DES IMPÔTS (SIMPL)</div>'
+   +'<div class="grid g2">'+fld("dgiLogin","Identifiant SIMPL")+'<div><div class="flbl">Mot de passe SIMPL</div><div style="display:flex;gap:6px;align-items:center"><input class="ipt" type="password" autocomplete="new-password" data-soc="dgiPass" value="'+esc(soc.dgiPass||"")+'"><button class="iconbtn" data-pweye title="Afficher / masquer" style="font-size:15px">👁</button></div></div></div>'
    +'<div style="margin-top:22px"><div class="flbl">Emails autorisés pour l\'import automatique (factures/relevés reçus par email — un par ligne ou séparés par des virgules)</div><textarea class="ipt" data-soc="emailsImport" rows="2" style="resize:vertical" placeholder="comptable@'+esc((c.dossier||"societe").toLowerCase().replace(/[^a-z0-9]/g,""))+'.ma">'+esc(soc.emailsImport||"")+'</textarea><p style="font-size:11px;color:var(--faint);margin-top:4px">Un document reçu par email depuis une de ces adresses est rattaché directement à ce dossier, même si le nom du fichier ou l\'objet du mail ne mentionne pas la société.</p></div>'
    +'<div class="grid g2 mt3"><div><div class="flbl">Secteur d\'activité (sert à la détection automatique des comptes)</div><select class="ipt" data-soc="secteur">'
      +'<option value="">— choisir le secteur —</option>'
@@ -14153,9 +14155,9 @@ function svStaffDeclList(){var rows=svStaffDeclRows();
   var more=rows.length>300?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:12px;font-size:12px">'+(rows.length-300)+' ligne(s) de plus — affinez la recherche.</td></tr>':'';
   var ST={done:["🟢 Déposée","#0E7A5F","#E3F1EB"],retard:["🔴 En retard","#B42318","#FBEAE8"],urgent:["🟠 Urgent","#B5530A","#FCEEE0"],venir:["🟡 À venir","#9A7610","#FAF3DD"],planif:["⚪ Planifiée","#5C6B66","#EEF1EF"]};
   return rows.slice(0,300).map(function(x){var s=ST[x.k];
-    return '<tr><td><div class="dossier" style="font-size:13px">'+esc(x.c.n)+'</div></td><td>'+esc(x.d.l)+(x.rej?'<div class="sub" style="color:#B42318">↺ Rejetée'+(x.rej.admin_note?' : '+esc(x.rej.admin_note):'')+'</div>':'')+'</td><td class="mono" style="white-space:nowrap">'+svD(x.d.dt)+'</td>'
+    return '<tr><td><div class="dossier" style="font-size:13px">'+esc(x.c.n)+'</div></td><td>'+esc(x.d.l)+drLine(x.d.key,x.c.id,x.d.l,x.c.n)+(x.rej?'<div class="sub" style="color:#B42318">↺ Rejetée'+(x.rej.admin_note?' : '+esc(x.rej.admin_note):'')+'</div>':'')+'</td><td class="mono" style="white-space:nowrap">'+svD(x.d.dt)+'</td>'
       +'<td><span class="svst" style="background:'+s[2]+';color:'+s[1]+'">'+s[0]+'</span></td>'
-      +'<td style="text-align:right;white-space:nowrap">'+((x.k==="done"||x.k==="pend")?'':'<button class="btn-primary" data-act="sv_s_decl" data-cid="'+x.c.id+'" data-key="'+esc(x.d.key)+'" style="padding:6px 12px;font-size:12px">'+ic("check","width:13px;height:13px")+' Déposer</button>')+'</td></tr>';}).join("")+more;}
+      +'<td style="text-align:right;white-space:nowrap;min-width:150px"><div style="display:inline-flex;gap:6px;align-items:center">'+drBtn(x.d.key,x.c.id,x.d.l,x.c.n)+((x.k==="done"||x.k==="pend")?'':'<button class="btn-primary" data-act="sv_s_decl" data-cid="'+x.c.id+'" data-key="'+esc(x.d.key)+'" style="padding:6px 12px;font-size:12px">'+ic("check","width:13px;height:13px")+' Déposer</button>')+'</div></td></tr>';}).join("")+more;}
 function svStaffPayList(){var snap=svSnap();if(!snap)return '';var y=SV.py||snap.y;
   var rows=snap.clients.filter(function(c){return c.pay&&c.pay[y]&&smartMatch(SV.pq,c.n);});
   if(!rows.length)return '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:26px">Aucun dossier avec honoraires pour '+y+'.</td></tr>';
@@ -14217,7 +14219,7 @@ async function svStaffInsert(row,btn){if(btn){btn.disabled=true;btn.style.opacit
   var r=await sb.from("staff_saisies").insert(row);
   if(btn){btn.disabled=false;btn.style.opacity="";}
   if(r.error){showErr("Envoi impossible : "+r.error.message);return false;}
-  SV.modal=null;showOk(row.type==="paiement"?"Paiement enregistré.":"Déclaration déposée.");await svStaffLoad();svStaffRender();return true;}
+  SV.modal=null;showOk(row.type==="client"?"Client ajouté — il apparaîtra dans la liste dès que le cabinet l'aura intégré.":row.type==="paiement"?"Paiement enregistré.":"Déclaration déposée.");await svStaffLoad();svStaffRender();return true;}
 async function svStaffDeclSave(btn){var m=SV.modal,snap=svSnap(),c=snap.clients.find(function(x){return +x.id===+m.cid;}),d=c&&c.d.find(function(x){return x.key===m.key;});if(!d)return;
   if(SV.mine.some(function(r){return r.decl_key===d.key&&r.statut==="en_attente";})){showErr("Une saisie est déjà en attente pour cette déclaration.");return;}
   var date=svVal("svm_date");if(!date){showErr("Indiquez la date de dépôt.");return;}
@@ -14299,24 +14301,24 @@ buildDeadlines=function(c){var out=_svBD(c),dc=svDateConst(c);if(!dc)return out;
 function svClientInfo(c){var f=S.flags[c.id]||{},soc=f.societe||{},pick=function(o,ks){var r={};ks.forEach(function(k){if(o[k]!=null&&String(o[k]).trim()!=="")r[k]=String(o[k]).trim();});return r;};
   var obl=[];[["hasBilan","Bilan"],["hasSal","Salaires"],["hasDp","Acomptes IS"],["hasFoncier","Revenus fonciers"],["hasCMpm","Cotisation min. sociétés"],["hasCMpp","Cotisation min. P. physique"],["hasIR","Revenu global IR"],["hasTiers","Rémunérations tiers"],["hasTP","Taxe professionnelle"],["hasRAS","Retenue à la source"],["hasDelais","Délais de paiement (loi 69-21)"]].forEach(function(x){if(c[x[0]])obl.push(x[1]);});
   return {forme:c.forme||"",reg:c.reg||"",regTva:regTvaOf(c),tel:c.tel||"",statut:c.statut||"",comment:c.comment||"",
-    soc:pick(soc,["ice","idf","rc","tp","cnss","capital","dateConst","adresse","ville","email","activite"]),
+    soc:pick(soc,["ice","idf","rc","tp","cnss","capital","dateConst","adresse","ville","email","activite","dgiLogin","dgiPass"]),
     gers:(f.gerants||[]).filter(function(g){return g&&g.nom;}).map(function(g){return pick(g,["nom","cin","qualite"]);}),
     asos:(f.associes||[]).filter(function(a){return a&&a.nom;}).map(function(a){return pick(a,["nom","cin","parts"]);}),
     obl:obl,hon:svHon(c)?{trim:+c.honTrim||0,bilan:+c.honBilan||0,rythme:payRythme(c)}:null};}
 SV.cq="";
 function svStaffClientsList(){var snap=svSnap();if(!snap)return '';
   var rows=snap.clients.filter(function(c){var i=c.i||{},so=i.soc||{};return smartMatch(SV.cq,c.n+" "+(i.tel||"")+" "+(so.ice||"")+" "+(so.idf||"")+" "+(so.rc||"")+" "+(i.gers||[]).map(function(g){return g.nom;}).join(" "));});
-  if(!rows.length)return '<tr><td colspan="7" style="text-align:center;color:var(--faint);padding:26px">Aucun client.</td></tr>';
+  if(!rows.length)return '<tr><td colspan="9" style="text-align:center;color:var(--faint);padding:26px">Aucun client.</td></tr>';
   return rows.map(function(c){var i=c.i||{},so=i.soc||{},wa=waNumbers(i.tel||"")[0];
     var reg=i.reg==="mensuelle"?"TVA mensuelle":i.reg==="trimestrielle"?"TVA trimestrielle":"Hors TVA";
     return '<tr><td style="min-width:180px"><button data-act="sv_s_cli" data-cid="'+c.id+'" style="text-align:left;padding:0"><div class="dossier" style="font-size:13px;text-decoration:underline;text-decoration-color:#d6d3c8">'+esc(c.n)+'</div></button><div class="sub">'+esc(i.forme||"")+((i.gers||[])[0]?' · '+esc(i.gers[0].nom):'')+'</div></td>'
       +'<td style="white-space:nowrap">'+(i.tel?esc(i.tel):'<span style="color:var(--faint)">—</span>')+(wa?' <a href="https://wa.me/'+wa+'" target="_blank" rel="noopener" title="WhatsApp" style="color:#0E7A5F;display:inline-flex;vertical-align:-3px">'+ic("whatsapp","width:16px;height:16px")+'</a>':'')+'</td>'
       +'<td>'+(so.email?'<a href="mailto:'+esc(so.email)+'" style="color:#1D6FB8">'+esc(so.email)+'</a>':'<span style="color:var(--faint)">—</span>')+'</td>'
       +'<td class="mono" style="white-space:nowrap">'+esc(so.ice||"—")+'</td><td class="mono">'+esc(so.idf||"—")+'</td><td class="mono">'+esc(so.rc||"—")+'</td>'
-      +'<td style="white-space:nowrap;font-size:12px">'+reg+'</td></tr>';}).join("");}
+      +'<td style="white-space:nowrap;font-size:12px">'+reg+'</td><td style="white-space:nowrap">'+dgiLoginHtml(so.dgiLogin)+'</td><td style="white-space:nowrap">'+dgiPwHtml(so.dgiPass)+'</td></tr>';}).join("");}
 function svStaffClientsHtml(){var snap=svSnap();if(!snap)return '';
   return '<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_cq" placeholder="Nom, téléphone, ICE, IF, gérant…" value="'+esc(SV.cq)+'"></div><span style="font-size:12px;color:var(--muted)">Cliquez sur un nom pour la fiche complète.</span><div style="margin-left:auto;display:flex;gap:8px"><button class="chip" data-act="sv_s_printlist">'+ic("printer","width:13px;height:13px")+' Imprimer la liste</button><button class="chip" data-act="sv_s_printall">'+ic("printer","width:13px;height:13px")+' Imprimer les fiches</button></div></div>'
-    +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Client</th><th>Téléphone</th><th>E-mail</th><th>ICE</th><th>IF</th><th>RC</th><th>Régime</th></tr></thead><tbody id="svs_clist">'+svStaffClientsList()+'</tbody></table></div></div>';}
+    +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Client</th><th>Téléphone</th><th>E-mail</th><th>ICE</th><th>IF</th><th>RC</th><th>Régime</th><th>Identifiant SIMPL</th><th>Mot de passe SIMPL</th></tr></thead><tbody id="svs_clist">'+svStaffClientsList()+'</tbody></table></div></div>';}
 function svStaffCliModal(cid){var snap=svSnap(),c=snap&&snap.clients.find(function(x){return +x.id===+cid;});if(!c)return '';
   var i=c.i||{},so=i.soc||{},wa=waNumbers(i.tel||"")[0];
   var kv=function(arr){arr=arr.filter(function(r){return r[1];});return arr.length?'<div class="svkv">'+arr.map(function(r){return '<div class="k">'+esc(r[0])+'</div><div'+(r[2]?' class="mono"':'')+'>'+esc(r[1])+'</div>';}).join("")+'</div>':'<div class="note" style="font-size:12px;color:var(--faint);margin-top:6px">Non renseigné.</div>';};
@@ -14394,21 +14396,21 @@ function svCabItems(){return clients().filter(function(c){var i=svClientInfo(c),
     return smartMatch(SV.fq,c.dossier+" "+(i.tel||"")+" "+(so.ice||"")+" "+(so.idf||"")+" "+(so.rc||"")+" "+(so.email||"")+" "+(so.ville||"")+" "+i.gers.map(function(g){return g.nom+" "+(g.cin||"");}).join(" "));})
   .map(function(c){return {id:c.id,n:c.dossier,i:svClientInfo(c)};});}
 function svCabRows(){var items=svCabItems();
-  if(!items.length)return '<tr><td colspan="11" style="text-align:center;color:var(--faint);padding:26px">Aucune société.</td></tr>';
+  if(!items.length)return '<tr><td colspan="13" style="text-align:center;color:var(--faint);padding:26px">Aucune société.</td></tr>';
   var miss='<span style="color:#C0392B;font-size:11px">manquant</span>';
   return items.map(function(x){var i=x.i,so=i.soc,wa=waNumbers(i.tel||"")[0];
     return '<tr><td style="min-width:180px"><button data-act="sv_fiche" data-cid="'+x.id+'" style="text-align:left;padding:0"><div class="dossier" style="font-size:13px;text-decoration:underline;text-decoration-color:#d6d3c8">'+esc(x.n)+'</div></button><div class="sub">'+esc(i.forme||"")+(so.activite?' · '+esc(so.activite):'')+'</div></td>'
       +'<td style="white-space:nowrap">'+(i.tel?esc(i.tel):miss)+(wa?' <a href="https://wa.me/'+wa+'" target="_blank" rel="noopener" style="color:#0E7A5F;display:inline-flex;vertical-align:-3px">'+ic("whatsapp","width:15px;height:15px")+'</a>':'')+'<div class="sub">'+esc(so.email||"")+'</div></td>'
       +'<td class="mono" style="white-space:nowrap">'+(so.ice?esc(so.ice):miss)+'</td><td class="mono">'+(so.idf?esc(so.idf):miss)+'</td><td class="mono">'+(so.rc?esc(so.rc):miss)+'</td><td class="mono">'+esc(so.tp||"—")+'</td><td class="mono">'+esc(so.cnss||"—")+'</td>'
       +'<td class="mono" style="white-space:nowrap">'+esc(so.dateConst||"—")+'</td><td style="min-width:150px">'+esc([so.adresse,so.ville].filter(Boolean).join(", ")||"—")+'</td>'
-      +'<td style="min-width:140px">'+esc(i.gers.map(function(g){return g.nom+(g.cin?" ("+g.cin+")":"");}).join(", ")||"—")+'<div class="sub">'+esc(svRegLabel(i.reg))+'</div></td>'
+      +'<td style="min-width:140px">'+esc(i.gers.map(function(g){return g.nom+(g.cin?" ("+g.cin+")":"");}).join(", ")||"—")+'<div class="sub">'+esc(svRegLabel(i.reg))+'</div></td>'+dgiInputs(x.id,so)
       +'<td style="white-space:nowrap;text-align:right"><button class="iconbtn" data-act="sv_fiche_print" data-cid="'+x.id+'" title="Imprimer la fiche">'+ic("printer","width:15px;height:15px")+'</button><button class="iconbtn" data-act="infos" data-id="'+x.id+'" title="Modifier les informations">'+ic("pencil","width:15px;height:15px")+'</button></td></tr>';}).join("");}
 function vFiches(){var all=clients().length,items=svCabItems(),inc=clients().filter(function(c){var i=svClientInfo(c),so=i.soc;return !(so.ice&&so.idf&&so.rc&&i.tel);}).length;
   var seg='<div class="seg">'+[["all","Toutes ("+all+")"],["incomplet","Fiches incomplètes ("+inc+")"]].map(function(a){return '<button data-act="sv_ff" data-v="'+a[0]+'" style="'+(SV.ff===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
   return '<div class="wrap">'+header("Fiches sociétés","Coordonnées, identifiants fiscaux, régime, gérants et associés de tous les dossiers")
     +'<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mt5 mb4"><div class="search" style="flex:1;min-width:240px;max-width:420px">'+ic("search")+'<input id="svf_q" placeholder="Nom, téléphone, ICE, IF, RC, gérant, CIN, ville…" value="'+esc(SV.fq)+'" style="width:100%"></div>'+seg
     +'<div style="margin-left:auto;display:flex;gap:8px"><button class="chip" data-act="sv_fiche_printlist" style="white-space:nowrap">'+ic("printer","width:13px;height:13px")+' Imprimer la liste</button><button class="btn-primary" data-act="sv_fiche_printall">'+ic("printer","width:14px;height:14px")+' Imprimer les fiches ('+items.length+')</button></div></div>'
-    +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Société</th><th>Contact</th><th>ICE</th><th>IF</th><th>RC</th><th>TP</th><th>CNSS</th><th>Constitution</th><th>Adresse</th><th>Gérant(s) · régime</th><th></th></tr></thead><tbody id="svf_tbody">'+svCabRows()+'</tbody></table></div></div>'
+    +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Société</th><th>Contact</th><th>ICE</th><th>IF</th><th>RC</th><th>TP</th><th>CNSS</th><th>Constitution</th><th>Adresse</th><th>Gérant(s) · régime</th><th>Identifiant SIMPL</th><th>Mot de passe SIMPL</th><th></th></tr></thead><tbody id="svf_tbody">'+svCabRows()+'</tbody></table></div></div>'
     +'<p style="font-size:11px;color:var(--faint);margin-top:10px">Les informations se modifient dans la fiche « Infos société » de chaque client (icône crayon). « manquant » signale un ICE, IF, RC ou téléphone non renseigné.</p></div>';}
 function svModalFiche(){var c=clients().find(function(x){return x.id===S.modal.cid;});if(!c)return '';var i=svClientInfo(c);
   return '<div class="ov"><div class="modal" data-stop style="max-width:680px"><div class="mh"><div><h3 class="ff">'+esc(c.dossier)+'</h3><div class="meta"><span>Fiche société</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
@@ -14661,7 +14663,7 @@ function svUndoPay(cid,y,k,montant,rcNo,plId){var key=y+"|"+cid+"|"+k,v=Math.rou
   if(rcNo&&Array.isArray(S.receipts)){var b2=S.receipts.length;S.receipts=S.receipts.filter(function(r){return r.no!==rcNo;});if(S.receipts.length!==b2)save("receipts");}}
 async function svDeleteRow(id){var r=SV.rows.find(function(x){return x.id===id;});if(!r)return;var d=r.data||{};
   var msg="Supprimer définitivement cette saisie de "+(r.author_name||r.email)+" ("+(r.client_name||"")+") ?";
-  if(r.type==="document")msg+="\n\nLe fichier sera aussi supprimé du dossier.";else if(r.statut==="valide")msg+=r.type==="paiement"?"\n\nL'encaissement de "+svMoney(d.montant)+" sera aussi retiré des honoraires, du journal"+(d.rcNo?" et le reçu "+d.rcNo+" annulé":"")+".":"\n\nLa déclaration repassera en « non déposée ».";
+  if(r.type==="document")msg+="\n\nLe fichier sera aussi supprimé du dossier.";else if(r.statut==="valide")msg+=r.type==="client"?"\n\nLe client créé sera retiré de la liste s'il n'a ni frais ni paiement.":r.type==="paiement"?"\n\nL'encaissement de "+svMoney(d.montant)+" sera aussi retiré des honoraires, du journal"+(d.rcNo?" et le reçu "+d.rcNo+" annulé":"")+".":"\n\nLa déclaration repassera en « non déposée ».";
   if(!window.confirm(msg))return;
   var res=await sb.from("staff_saisies").delete().eq("id",id);if(res.error){showErr("Suppression impossible : "+res.error.message);return;}
   if(r.type==="document"){var dk=String(r.client_id);if(S.docs&&S.docs[dk]){S.docs[dk]=S.docs[dk].filter(function(m){return m.path!==d.path;});save("docs");}try{await sb.storage.from(DOC_BUCKET).remove([d.path]);}catch(_e){}}
@@ -14681,7 +14683,7 @@ function svCleanClone(node){var c=node.cloneNode(true);
     var sp=document.createElement("span");sp.textContent=t;if(b.classList.contains("svp"))sp.className=b.className;b.parentNode&&b.parentNode.replaceChild(sp,b);sp.insertAdjacentText("afterend"," ");});
   Array.prototype.forEach.call(c.querySelectorAll("th"),function(th){th.textContent=(th.textContent||"").replace(/\s*\((cliquez|clic)[^)]*\)/i,"");});
   Array.prototype.forEach.call(c.querySelectorAll("svg,.svbar,.progress,input[type=checkbox],input[type=file]"),function(el){el.parentNode&&el.parentNode.removeChild(el);});
-  Array.prototype.forEach.call(c.querySelectorAll("input,select,textarea"),function(el){var v=el.tagName==="SELECT"?(((el.options&&el.options[el.selectedIndex])||{}).text||""):(el.value||"");var sp=document.createElement("span");sp.textContent=v;el.parentNode&&el.parentNode.replaceChild(sp,el);});
+  Array.prototype.forEach.call(c.querySelectorAll("input,select,textarea"),function(el){var v=el.tagName==="SELECT"?(((el.options&&el.options[el.selectedIndex])||{}).text||""):(el.value||"");if(el.type==="password"||el.getAttribute("data-dgi")==="dgiPass")v=v?"••••••":"";var sp=document.createElement("span");sp.textContent=v;el.parentNode&&el.parentNode.replaceChild(sp,el);});
   if(c.tagName==="TABLE"){var rows=c.querySelectorAll("tr"),n=rows.length?rows[0].children.length:0;
     for(var j=n-1;j>=0;j--){var empty=true;Array.prototype.forEach.call(rows,function(r){var cell=r.children[j];if(cell&&(cell.textContent||"").trim())empty=false;});
       if(empty)Array.prototype.forEach.call(rows,function(r){var cell=r.children[j];if(cell)cell.parentNode.removeChild(cell);});}}
@@ -15267,8 +15269,8 @@ function svReadableBook(p){var D=p.data||{},C=p.cloud||{},wb=XLSX.utils.book_new
   var byId={};all.forEach(function(c){byId[String(c.id)]=c.dossier;});var nm=function(id){return byId[String(id)]||("#"+id);};
   var d=function(iso){return iso?svD(String(iso).slice(0,10)):"";},dt=function(iso){return iso?svDT(iso):"";};
   /* 1. Clients */
-  add("Clients",["N°","Dossier","Forme","Téléphone","E-mail","ICE","IF","RC","Taxe prof.","CNSS","Capital","Constitution","Adresse","Ville","Régime TVA","Gérant(s)","CIN gérant(s)","Hon. trimestriel","Hon. bilan","Situation"],
-    all.map(function(c){var i=svClientInfo(c),so=i.soc,g=i.gers;return [c.id,c.dossier,c.forme||"",c.tel||"",so.email||"",so.ice||"",so.idf||"",so.rc||"",so.tp||"",so.cnss||"",so.capital||"",so.dateConst||"",so.adresse||"",so.ville||"",svRegLabel(c.reg),g.map(function(x){return x.nom;}).join(", "),g.map(function(x){return x.cin||"";}).filter(Boolean).join(", "),+c.honTrim||0,+c.honBilan||0,c.sortant?("SORTANT depuis le "+d(c.sortant.date)+(c.sortant.motif?" — "+c.sortant.motif:"")):"Actif"];}));
+  add("Clients",["N°","Dossier","Forme","Téléphone","E-mail","ICE","IF","RC","Taxe prof.","CNSS","Capital","Constitution","Adresse","Ville","Régime TVA","Gérant(s)","CIN gérant(s)","Hon. trimestriel","Hon. bilan","Situation","Identifiant SIMPL"],
+    all.map(function(c){var i=svClientInfo(c),so=i.soc,g=i.gers;return [c.id,c.dossier,c.forme||"",c.tel||"",so.email||"",so.ice||"",so.idf||"",so.rc||"",so.tp||"",so.cnss||"",so.capital||"",so.dateConst||"",so.adresse||"",so.ville||"",svRegLabel(c.reg),g.map(function(x){return x.nom;}).join(", "),g.map(function(x){return x.cin||"";}).filter(Boolean).join(", "),+c.honTrim||0,+c.honBilan||0,c.sortant?("SORTANT depuis le "+d(c.sortant.date)+(c.sortant.motif?" — "+c.sortant.motif:"")):"Actif",so.dgiLogin||""];}));
   /* 2. Déclarations (exercice en cours et précédent) */
   var ys=[SV_NOW_Y-1,SV_NOW_Y],rowsD=[],done=D.done||S.done||{};
   all.forEach(function(c){ys.forEach(function(y){svWithYear(y,function(){buildDeadlines(c).forEach(function(dl){var x=done[dl.key],st=x?"Déposée":(dl.date<new Date()?"En retard":"À venir");
@@ -15584,7 +15586,7 @@ function frEnsureClient(row){var nc=(row.data||{}).newClient,id=+row.client_id;i
   if(!Array.isArray(S.custom))S.custom=[];if(S.custom.some(function(c){return +c.id===id;}))return;
   var by=row.author_name||row.email||"le collaborateur",now=new Date().toISOString();
   S.custom.push({id:id,dossier:String(nc.nom||("Client "+id)).trim(),forme:nc.forme||"personne morale",tel:nc.tel||"",honTrim:0,honBilan:0,pvDepot:0,reg:"neant",hasBilan:false,hasSal:false,hasDp:false,hasFoncier:false,
-    comment:"Ajouté par "+by+" le "+svDT(now)+" lors d'un paiement — fiche à compléter"+(nc.note?" · "+nc.note:""),staffNew:{by:by,at:now,sid:row.id,todo:true}});
+    comment:"Ajouté par "+by+" le "+svDT(now)+" — fiche à compléter"+(nc.note?" · "+nc.note:""),staffNew:{by:by,at:now,sid:row.id,todo:true}});
   save("custom");if(S.deleted&&S.deleted[id]){delete S.deleted[id];save("deleted");}
   if(nc.ice){S.flags[id]=Object.assign({},S.flags[id]);S.flags[id].societe=Object.assign({},S.flags[id].societe);if(/^\d{15}$/.test(String(nc.ice).replace(/\s/g,"")))S.flags[id].societe.ice=String(nc.ice).replace(/\s/g,"");else S.flags[id].societe.cinRef=String(nc.ice);save("flags");}}
 function frCleanupClient(cid,sid){var c=(S.custom||[]).find(function(x){return +x.id===+cid&&x.staffNew&&x.staffNew.sid===sid;});if(!c)return;
@@ -15592,7 +15594,7 @@ function frCleanupClient(cid,sid){var c=(S.custom||[]).find(function(x){return +
   S.custom=S.custom.filter(function(x){return x!==c;});save("custom");}
 function frNewClientsTodo(){return (S.custom||[]).filter(function(c){return c.staffNew&&c.staffNew.todo&&!(S.deleted||{})[c.id];});}
 function frNewCliAlert(){var l=frNewClientsTodo();if(!l.length)return '';
-  return '<div class="card mt4" style="padding:12px 18px;border-left:4px solid #1D6FB8;background:#F3F8FD"><div style="font-size:13px;margin-bottom:6px"><b>'+l.length+' nouveau(x) client(s) ajouté(s) par le collaborateur</b> <span style="color:var(--muted)">— complétez leur fiche (forme, régime TVA, honoraires…)</span></div>'
+  return '<div class="card mt4" style="padding:12px 18px;border-left:4px solid #1D6FB8;background:#F3F8FD"><div style="font-size:13px;margin-bottom:6px"><b>'+l.length+' nouveau(x) client(s) à compléter</b> <span style="color:var(--muted)">— complétez leur fiche (forme, régime TVA, honoraires…)</span></div>'
     +l.map(function(c){return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 0;border-top:1px solid var(--line-soft);font-size:12.5px"><b style="flex:1;min-width:160px">'+esc(c.dossier)+'</b><span style="color:var(--muted)">par '+esc(c.staffNew.by)+' · '+svDT(c.staffNew.at)+'</span>'
       +'<button class="chip" data-act="client" data-id="'+c.id+'" style="padding:3px 10px;font-size:11.5px">'+ic("pencil","width:12px;height:12px")+' Compléter la fiche</button><button class="chip" data-act="fr_nc_ok" data-id="'+c.id+'" style="padding:3px 10px;font-size:11.5px">✓ Fiche vérifiée</button></div>';}).join("")+'</div>';}
 var _frAR2=svApplyRow;svApplyRow=function(row){try{if((row.data||{}).newClient)frEnsureClient(row);}catch(e){}return _frAR2(row);};
@@ -15626,6 +15628,124 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
   else if(a==="later"){fidInstallHide(true);}});
 if("serviceWorker" in navigator&&location.protocol==="https:"){window.addEventListener("load",function(){navigator.serviceWorker.register("./sw.js").catch(function(){});});}
 setTimeout(function(){if(fidIsIOS())fidInstallShow();},4000);
+
+/* =========================== ACCÈS PORTAIL DES IMPÔTS (SIMPL) PAR CLIENT ===========================
+   Identifiant et mot de passe enregistrés dans la fiche société (S.flags[id].societe.dgiLogin / dgiPass).
+   Visibles par le cabinet et le collaborateur ; le mot de passe est masqué (bouton 👁 / Copier),
+   jamais imprimé. */
+function dgiPwHtml(v){if(!v)return '<span style="color:var(--faint)">—</span>';
+  return '<span class="dgipw" data-pw="'+esc(v)+'" style="font-family:\'JetBrains Mono\',monospace;letter-spacing:.06em">••••••</span> <button class="iconbtn" data-pwshow title="Afficher / masquer" style="padding:2px 4px;font-size:13px">👁</button><button class="iconbtn" data-pwcopy="'+esc(v)+'" title="Copier le mot de passe" style="padding:2px 4px;font-size:11px">⧉</button>';}
+function dgiLoginHtml(v){if(!v)return '<span style="color:var(--faint)">—</span>';return '<span class="mono">'+esc(v)+'</span> <button class="iconbtn" data-pwcopy="'+esc(v)+'" title="Copier l\'identifiant" style="padding:2px 4px;font-size:11px">⧉</button>';}
+function dgiBlock(so){so=so||{};if(!so.dgiLogin&&!so.dgiPass)return '';
+  return '<div style="margin:12px 0;padding:10px 12px;border:1px solid #D9CBEE;background:#F7F3FC;border-radius:10px;font-size:13px"><div class="flbl" style="margin:0 0 6px;text-transform:uppercase;letter-spacing:.05em;font-size:10.5px;color:#6B3FA0">Accès portail des impôts (SIMPL)</div>'
+    +'<div style="display:grid;grid-template-columns:110px 1fr;gap:6px 10px;align-items:center"><span style="color:var(--muted)">Identifiant</span><span>'+dgiLoginHtml(so.dgiLogin)+'</span><span style="color:var(--muted)">Mot de passe</span><span>'+dgiPwHtml(so.dgiPass)+'</span></div></div>';}
+function dgiSave(cid,k,v){S.flags[cid]=Object.assign({},S.flags[cid]);S.flags[cid].societe=Object.assign({},S.flags[cid].societe);S.flags[cid].societe[k]=String(v||"").trim();save("flags");}
+function dgiInputs(cid,so){so=so||{};
+  return '<td style="min-width:150px"><input class="ipt" data-dgi="dgiLogin" data-cid="'+cid+'" value="'+esc(so.dgiLogin||"")+'" placeholder="Identifiant" style="padding:6px 8px;font-size:12.5px"></td>'
+    +'<td style="min-width:170px;white-space:nowrap"><input class="ipt" type="password" autocomplete="new-password" data-dgi="dgiPass" data-cid="'+cid+'" value="'+esc(so.dgiPass||"")+'" placeholder="Mot de passe" style="padding:6px 8px;font-size:12.5px;width:120px;display:inline-block"> <button class="iconbtn" data-pweye title="Afficher / masquer" style="padding:2px 4px;font-size:13px">👁</button></td>';}
+/* fiche (cabinet) et fiche (collaborateur) : bloc d'accès en tête */
+var _dgMF=svModalFiche;svModalFiche=function(){var h=_dgMF();try{var c=clients().find(function(x){return x.id===S.modal.cid;});var b=c?dgiBlock(svClientInfo(c).soc):'';
+  if(b){var i=h.indexOf('<div class="mb"');var j=i>=0?h.indexOf('>',i):-1;if(j>0)h=h.slice(0,j+1)+b+h.slice(j+1);}}catch(e){}return h;};
+var _dgSCM=svStaffCliModal;svStaffCliModal=function(cid){var h=_dgSCM(cid);try{var sn=svSnap(),c=sn&&sn.clients.find(function(x){return +x.id===+cid;});var b=c?dgiBlock((c.i||{}).soc):'';
+  if(b){var i=h.indexOf('<div class="mb"');var j=i>=0?h.indexOf('>',i):-1;if(j>0)h=h.slice(0,j+1)+b+h.slice(j+1);}}catch(e){}return h;};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-pwshow],[data-pwcopy],[data-pweye]");if(!t)return;
+  if(t.hasAttribute("data-pwshow")){var sp=t.previousElementSibling;if(sp&&sp.classList.contains("dgipw")){var on=sp.dataset.on==="1";sp.textContent=on?"••••••":sp.dataset.pw;sp.dataset.on=on?"0":"1";}}
+  else if(t.hasAttribute("data-pweye")){var inp=t.previousElementSibling;while(inp&&inp.tagName!=="INPUT")inp=inp.previousElementSibling;if(inp)inp.type=inp.type==="password"?"text":"password";}
+  else{var v=t.getAttribute("data-pwcopy");try{navigator.clipboard.writeText(v).then(function(){showOk("Copié.");},function(){window.prompt("Copiez :",v);});}catch(_e){window.prompt("Copiez :",v);}}});
+document.addEventListener("change",function(e){var t=e.target;if(!t||!t.dataset||!t.dataset.dgi)return;dgiSave(+t.dataset.cid,t.dataset.dgi,t.value);showOk("Accès SIMPL enregistré.");});
+
+/* =========================== REMARQUES PAR DÉCLARATION ===========================
+   Table Supabase decl_remarks : historique horodaté (date + heure + auteur), visible par le cabinet
+   et le collaborateur. Le collaborateur ajoute ; seul le cabinet peut supprimer. */
+var DR={rows:[],byKey:{},loaded:false};
+function drIndex(){DR.byKey={};DR.rows.forEach(function(r){(DR.byKey[r.decl_key]=DR.byKey[r.decl_key]||[]).push(r);});}
+async function drLoad(){if(!sb||!(typeof session!=="undefined"&&session))return;try{var r=await sb.from("decl_remarks").select("*").order("created_at",{ascending:false}).limit(5000);
+  if(!r.error&&r.data){DR.rows=r.data;DR.loaded=true;drIndex();drRefresh();}}catch(e){}}
+function drRefresh(){try{if(SV.staff){svStaffLists();if(SV.modal&&SV.modal.type==="dr")svStaffModal();}else{var el=document.getElementById("echlist");if(el&&typeof echRows==="function")el.innerHTML=echRows();if(S.modal&&S.modal.type==="dr")renderModal();}}catch(e){}}
+function drSub(){try{sb.channel("decl_remarks_rt").on("postgres_changes",{event:"*",schema:"public",table:"decl_remarks"},function(){clearTimeout(DR.t);DR.t=setTimeout(drLoad,500);}).subscribe();}catch(e){}}
+function drLine(key,cid,label,cname){var l=DR.byKey[key];if(!l||!l.length)return '';var r=l[0];
+  return '<div data-act="dr_open" data-key="'+esc(key)+'" data-cid="'+(cid||"")+'" data-l="'+esc(label||"")+'" data-n="'+esc(cname||"")+'" style="cursor:pointer;margin-top:3px;font-size:11.5px;line-height:1.35;color:#6B3FA0;background:#F7F3FC;border-radius:7px;padding:3px 7px;display:inline-block;max-width:100%">💬 '+esc(String(r.note).length>90?String(r.note).slice(0,90)+"…":r.note)+' <span style="color:var(--muted)">— '+esc(r.author_name||r.email||"")+', '+svDT(r.created_at)+(l.length>1?' · '+l.length+' remarques':'')+'</span></div>';}
+function drBtn(key,cid,label,cname){var n=(DR.byKey[key]||[]).length;
+  return '<button class="iconbtn" data-act="dr_open" data-key="'+esc(key)+'" data-cid="'+(cid||"")+'" data-l="'+esc(label||"")+'" data-n="'+esc(cname||"")+'" title="Remarques sur cette déclaration" style="color:'+(n?"#6B3FA0":"#9AA5A0")+';position:relative">'+ic("msg","width:15px;height:15px")+(n?'<span style="position:absolute;top:-3px;right:-3px;background:#6B3FA0;color:#fff;border-radius:9px;font-size:9px;padding:0 4px;line-height:14px">'+n+'</span>':'')+'</button>';}
+function drThreadHtml(m,admin,closeAct){var l=DR.byKey[m.key]||[];
+  var list=l.length?l.map(function(r){return '<div style="border-left:3px solid #C9B6E4;background:#FAF8F2;border-radius:0 8px 8px 0;padding:8px 10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted)"><span><b style="color:#14201C">'+esc(r.author_name||r.email||"")+'</b> · '+svDT(r.created_at)+'</span>'
+      +(admin?'<button class="iconbtn" data-act="dr_del" data-id="'+r.id+'" title="Supprimer cette remarque" style="color:#C0392B;padding:0">'+ic("trash","width:12px;height:12px")+'</button>':'')+'</div><div style="font-size:13px;margin-top:3px;white-space:pre-wrap">'+esc(r.note)+'</div></div>';}).join("")
+    :'<div class="note" style="font-size:12px;color:var(--faint);margin-bottom:10px">Aucune remarque pour cette déclaration.</div>';
+  return '<div class="ov"><div class="modal" data-stop style="max-width:520px"><div class="mh"><div><h3 class="ff">Remarques</h3><div class="meta"><span>'+esc((m.n||"")+(m.l?" · "+m.l:""))+'</span></div></div><button class="xbtn" data-act="'+closeAct+'">'+ic("x")+'</button></div><div class="mb" style="padding:18px 22px;max-height:76vh;overflow:auto">'
+    +'<textarea class="ipt" id="dr_txt" rows="3" placeholder="Ex. : en attente des factures d\'achat du client, relancé le…" style="resize:vertical"></textarea>'
+    +'<button class="btn-primary" data-act="dr_add" style="margin:10px 0 16px;width:100%;justify-content:center">'+ic("plus","width:14px;height:14px")+' Ajouter la remarque</button>'
+    +'<div class="flbl" style="margin-bottom:8px">Historique ('+l.length+')</div>'+list+'</div></div></div>';}
+var _drRM=renderModal;renderModal=function(){if(S.modal&&S.modal.type==="dr"){document.getElementById("overlay").innerHTML=drThreadHtml(S.modal,true,"close");return;}_drRM();};
+var _drSM=svStaffModal;svStaffModal=function(){var o=document.getElementById("svOv"),m=SV.modal;if(o&&m&&m.type==="dr"){o.innerHTML=drThreadHtml(m,false,"sv_s_close");return;}return _drSM();};
+async function drAdd(btn){var m=SV.staff?SV.modal:S.modal;if(!m)return;var txt=(svVal("dr_txt")||"").trim();if(!txt){showErr("Écrivez la remarque.");return;}
+  if(!sb){showErr("Connexion au cloud nécessaire.");return;}if(btn)btn.disabled=true;
+  var row={decl_key:m.key,client_id:+m.cid||null,client_name:m.n||"",decl_label:m.l||"",note:txt,author_name:SV.staff?((SV.me&&SV.me.name)||svEmail()):"Cabinet"};
+  var r=await sb.from("decl_remarks").insert(row).select("*");if(btn)btn.disabled=false;
+  if(r.error){showErr("Remarque non enregistrée : "+r.error.message);return;}
+  if(r.data&&r.data[0]){DR.rows.unshift(r.data[0]);drIndex();}showOk("Remarque ajoutée.");
+  if(SV.staff){svStaffModal();svStaffLists();}else{renderModal();var el=document.getElementById("echlist");if(el)el.innerHTML=echRows();}}
+async function drDel(id){if(SV.staff)return;if(!window.confirm("Supprimer définitivement cette remarque ?"))return;var r=await sb.from("decl_remarks").delete().eq("id",id);if(r.error){showErr(r.error.message);return;}
+  DR.rows=DR.rows.filter(function(x){return x.id!==id;});drIndex();renderModal();var el=document.getElementById("echlist");if(el)el.innerHTML=echRows();showOk("Remarque supprimée.");}
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t)return;var a=t.dataset.act;
+  if(a==="dr_open"){var m={type:"dr",key:t.dataset.key,cid:t.dataset.cid,l:t.dataset.l,n:t.dataset.n};if(SV.staff){SV.modal=m;svStaffModal();}else{S.modal=m;renderModal();}setTimeout(function(){var x=document.getElementById("dr_txt");if(x)x.focus();},50);}
+  else if(a==="dr_add"){drAdd(t);}else if(a==="dr_del"){drDel(t.dataset.id);}});
+var _drAI=svAdminInit;svAdminInit=function(){_drAI();if(svAdmin()){drLoad();drSub();}};
+var _drSB=svStaffBoot;svStaffBoot=async function(){await _drSB();drLoad();drSub();};
+/* dans la fenêtre d'une déclaration (Suivi des dossiers) */
+var _drMD=svModalDecl;svModalDecl=function(){var h=_drMD();try{var m=S.modal,c=clients().find(function(x){return x.id===m.cid;}),dl=svFindDl(m.cid,m.key);if(!c||!dl)return h;
+  var add='<div style="margin-top:16px;border-top:1px solid var(--line-soft);padding-top:10px"><div style="display:flex;justify-content:space-between;align-items:center"><div class="flbl" style="margin:0">Remarques ('+((DR.byKey[m.key]||[]).length)+')</div><button class="chip" data-act="dr_open" data-key="'+esc(m.key)+'" data-cid="'+c.id+'" data-l="'+esc(dl.label)+'" data-n="'+esc(c.dossier)+'">'+ic("msg","width:12px;height:12px")+' Voir / ajouter</button></div>'+drLine(m.key,c.id,dl.label,c.dossier)+'</div>';
+  var k=h.lastIndexOf('</div></div></div>');if(k>0)h=h.slice(0,k)+add+h.slice(k);}catch(e){}return h;};
+
+/* =========================== NOUVEAU CLIENT : COLLABORATEUR (onglet Clients) & CABINET (frais divers) =========================== */
+var _ncAR=svApplyRow;svApplyRow=function(row){if(row.type==="client"){frEnsureClient(row);return;}return _ncAR(row);};
+var _ncRD=svRowDetail;svRowDetail=function(r){if(r.type==="client"){var nc=(r.data||{}).newClient||{};return '<span class="svst" style="background:#E8F0FB;color:#1D6FB8">Nouveau client : '+esc(nc.nom||"")+'</span> '+esc([nc.forme,nc.tel,nc.ice?"ICE "+nc.ice:"",nc.ville].filter(Boolean).join(" · "))+(nc.note?'<div class="sub">'+esc(nc.note)+'</div>':'');}return _ncRD(r);};
+var _ncTB=svTypeBadge;svTypeBadge=function(t){return t==="client"?'<span class="svst" style="background:#E8F0FB;color:#1D6FB8">Client</span>':_ncTB(t);};
+function ncFormHtml(pre){var formes=typeof svFormeOpts==="function"?svFormeOpts("personne morale"):'';var f=function(id,l,ph,type){return '<div><div class="flbl">'+l+'</div><input class="ipt" id="'+pre+id+'"'+(type?' type="'+type+'" autocomplete="new-password"':'')+(ph?' placeholder="'+ph+'"':'')+'></div>';};
+  return '<div class="grid g2">'+f("nom","Nom / raison sociale *","ex. SARL AU ALPHA")+'<div><div class="flbl">Forme</div><select class="ipt" id="'+pre+'forme">'+formes+'</select></div></div>'
+    +'<div class="grid g2 mt3">'+f("tel","Téléphone")+f("email","E-mail")+'</div>'
+    +'<div class="grid g3 mt3">'+f("ice","ICE")+f("idf","IF")+f("rc","RC")+'</div>'
+    +'<div class="grid g2 mt3">'+f("adresse","Adresse")+f("ville","Ville")+'</div>'
+    +'<div class="grid g2 mt3">'+f("gerant","Gérant (nom)")+f("cin","CIN du gérant")+'</div>'
+    +'<div class="grid g2 mt3">'+f("dgiLogin","Identifiant SIMPL (impôts)")+f("dgiPass","Mot de passe SIMPL","","password")+'</div>'
+    +'<div class="mt3">'+f("note","Remarque","facultatif")+'</div>';}
+function ncRead(pre){var v=function(k){return (svVal(pre+k)||"").trim();};var nc={nom:v("nom"),forme:svVal(pre+"forme")||"personne morale",tel:v("tel"),email:v("email"),ice:v("ice"),idf:v("idf"),rc:v("rc"),adresse:v("adresse"),ville:v("ville"),gerant:v("gerant"),cin:v("cin"),dgiLogin:v("dgiLogin"),dgiPass:v("dgiPass"),note:v("note"),full:true};
+  Object.keys(nc).forEach(function(k){if(nc[k]===""||nc[k]==null)delete nc[k];});return nc;}
+/* création effective (cabinet) : complète frEnsureClient avec toutes les informations saisies */
+var _ncEC=frEnsureClient;frEnsureClient=function(row){var nc=(row.data||{}).newClient,id=+row.client_id,existed=(S.custom||[]).some(function(c){return +c.id===id;});_ncEC(row);
+  if(!nc||existed)return;var c=(S.custom||[]).find(function(x){return +x.id===id;});if(!c)return;
+  S.flags[id]=Object.assign({},S.flags[id]);var so=S.flags[id].societe=Object.assign({},S.flags[id].societe);
+  if(nc.full){delete so.cinRef;if(nc.ice)so.ice=nc.ice;}
+  ["idf","rc","adresse","ville","email","dgiLogin","dgiPass"].forEach(function(k){if(nc[k])so[k]=nc[k];});
+  if(nc.gerant)S.flags[id].gerants=[{nom:nc.gerant,cin:nc.cin||"",qualite:"Gérant"}];save("flags");};
+/* collaborateur : bouton « Nouveau client » + clients en cours d'ajout dans la liste */
+var _ncSCH=svStaffClientsHtml;svStaffClientsHtml=function(){var h=_ncSCH();var mk='<span style="font-size:12px;color:var(--muted)">Cliquez sur un nom pour la fiche complète.</span>';
+  return h.replace(mk,mk+'<button class="btn-primary" data-act="nc_s_open" style="margin-left:auto;width:auto;flex:0 0 auto">'+ic("plus","width:14px;height:14px")+' Nouveau client</button>');};
+var _ncSCL=svStaffClientsList;svStaffClientsList=function(){var h=_ncSCL(),p=frStaffPendingClients().filter(function(c){return smartMatch(SV.cq||"",c.n);});if(!p.length)return h;
+  return p.map(function(c){return '<tr style="background:#F3F8FD"><td colspan="9"><b>'+esc(c.n)+'</b> <span class="svst" style="background:#E8F0FB;color:#1D6FB8">nouveau — en cours d\'ajout par le cabinet</span></td></tr>';}).join("")+(h.indexOf("Aucun client.")>=0?'':h);};
+var _ncSM=svStaffModal;svStaffModal=function(){var o=document.getElementById("svOv"),m=SV.modal;if(!(o&&m&&m.type==="nc"))return _ncSM();
+  o.innerHTML='<div class="ov"><div class="modal" data-stop style="max-width:560px"><div class="mh"><div><h3 class="ff">Nouveau client</h3><div class="meta"><span>Il sera ajouté à la liste des clients par le cabinet</span></div></div><button class="xbtn" data-act="sv_s_close">'+ic("x")+'</button></div><div class="mb" style="padding:20px 22px;max-height:78vh;overflow:auto">'
+    +ncFormHtml("nc_")+'<button class="btn-primary" data-act="nc_s_save" style="margin-top:16px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Ajouter le client</button>'
+    +'<div class="note" style="font-size:11px;margin-top:8px">Pour encaisser un paiement de ce client, utilisez ensuite « Frais divers » ou « Paiements d\'honoraires ».</div></div></div></div>';
+  setTimeout(function(){var n=document.getElementById("nc_nom");if(n)n.focus();},50);};
+async function ncStaffSave(btn){var nc=ncRead("nc_");if(!nc.nom){showErr("Saisissez le nom du client.");return;}
+  var snap=svSnap(),dup=((snap&&snap.clients)||[]).concat(frStaffPendingClients()).find(function(c){return String(c.n).trim().toLowerCase()===nc.nom.toLowerCase();});
+  if(dup&&!window.confirm("Un client « "+dup.n+" » existe déjà. L'ajouter quand même ?"))return;
+  await svStaffInsert({type:"client",client_id:Date.now(),client_name:nc.nom,data:{newClient:nc}},btn);}
+/* cabinet : « Nouveau client » dans la fenêtre Nouveau frais */
+var _ncFM=frModal;frModal=function(){var h=_ncFM(),m=S.modal;if(!m||m.type!=="fr_new"||m.id)return h;
+  var blk='<label style="display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer;background:#F3EEFB;border:1px solid #D9CBEE;border-radius:10px;padding:9px 12px;margin-bottom:10px"><input type="checkbox" id="fr_isnew"> <span><b>Nouveau client</b> — il n\'existe pas encore : il sera créé dans la liste des clients</span></label><div id="fr_newblk" style="display:none;border:1px dashed #C9B6E4;border-radius:10px;padding:12px;margin-bottom:10px">'+ncFormHtml("frn_")+'</div>';
+  var k=h.indexOf('<div><div class="flbl">Client</div>');return k>0?h.slice(0,k)+blk+h.slice(k):h;};
+document.addEventListener("change",function(e){if(e.target&&e.target.id==="fr_isnew"){var on=e.target.checked,b=document.getElementById("fr_newblk"),s=document.getElementById("fr_client");if(b)b.style.display=on?"block":"none";if(s&&s.parentNode)s.parentNode.style.display=on?"none":"";if(on){var n=document.getElementById("frn_nom");if(n)n.focus();}}});
+var _ncFS=frSave;frSave=function(btn){var cb=document.getElementById("fr_isnew");if(cb&&cb.checked&&S.modal&&!S.modal.id){var nc=ncRead("frn_");if(!nc.nom){showErr("Saisissez le nom du nouveau client.");var n=document.getElementById("frn_nom");if(n)n.focus();return;}
+    var total=+svVal("fr_total")||0,pm=+svVal("fr_pmt")||0;if(!(total>0)&&!(pm>0)){showErr("Indiquez le montant convenu (ou le montant reçu).");return;}
+    var id=Date.now();frEnsureClient({id:"cab-"+id,client_id:id,author_name:"Cabinet (frais divers)",data:{newClient:nc}});
+    var c=(S.custom||[]).find(function(x){return +x.id===id;});if(c&&c.staffNew){c.staffNew.sid="";save("custom");}
+    var sel=document.getElementById("fr_client");if(sel){if(!Array.prototype.some.call(sel.options,function(o){return +o.value===id;})){var op=document.createElement("option");op.value=id;op.textContent=nc.nom;sel.appendChild(op);}sel.value=String(id);}
+    cb.checked=false;}
+  return _ncFS(btn);};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t)return;var a=t.dataset.act;
+  if(a==="nc_s_open"){SV.modal={type:"nc"};svStaffModal();}else if(a==="nc_s_save"){ncStaffSave(t);}});
+
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
