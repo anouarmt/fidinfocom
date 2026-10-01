@@ -363,9 +363,9 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.11h · dépôts protégés (plusieurs appareils) + réintégration auto des dépôts du collaborateur — PRODUCTION EN LIGNE";
+const VERSION = "v2026.12b · relance groupée des demandes de documents · sauvegarde quotidienne auto · historique · dépôt en lot — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
-const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais"];
+const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais","histlog"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
 
 /* ---------- ICONS ---------- */
@@ -425,12 +425,12 @@ const MOIS_FULL=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Ao�
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---------- STATE ---------- */
-const LS={flags:"fid_flags",done:"fid_done",pay:"fid_pay",jur:"fid_jur",custom:"fid_custom",deleted:"fid_deleted",years:"fid_years",receipts:"fid_receipts",tva:"fid_tva",sal:"fid_sal",liasse:"fid_liasse",docs:"fid_docs",compta:"fid_compta",emprunts:"fid_emprunts",factures:"fid_factures",cabinet:"fid_cabinet",paie:"fid_paie",portal:"fid_portal",team:"fid_team",paylog:"fid_paylog",honrel:"fid_honrel",frais:"fid_frais",notiflog:"fid_notiflog",controle:"fid_controle",relancelog:"fid_relancelog"};
+const LS={flags:"fid_flags",done:"fid_done",pay:"fid_pay",jur:"fid_jur",custom:"fid_custom",deleted:"fid_deleted",years:"fid_years",receipts:"fid_receipts",tva:"fid_tva",sal:"fid_sal",liasse:"fid_liasse",docs:"fid_docs",compta:"fid_compta",emprunts:"fid_emprunts",factures:"fid_factures",cabinet:"fid_cabinet",paie:"fid_paie",portal:"fid_portal",team:"fid_team",paylog:"fid_paylog",honrel:"fid_honrel",frais:"fid_frais",histlog:"fid_histlog",notiflog:"fid_notiflog",controle:"fid_controle",relancelog:"fid_relancelog"};
 function ld(k){try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){return {}}}
 function lda(k){try{const v=JSON.parse(localStorage.getItem(k));return Array.isArray(v)?v:[]}catch(e){return []}}
 const S={tab:"dash",flags:ld(LS.flags),done:ld(LS.done),pay:ld(LS.pay),jur:ld(LS.jur),
   custom:lda(LS.custom),deleted:ld(LS.deleted),years:lda(LS.years),receipts:lda(LS.receipts),tva:ld(LS.tva),sal:ld(LS.sal),liasse:ld(LS.liasse),docs:ld(LS.docs),compta:ld(LS.compta),emprunts:ld(LS.emprunts),factures:lda(LS.factures),cabinet:ld(LS.cabinet),paie:ld(LS.paie),portal:ld(LS.portal),team:ld(LS.team),paieSel:{id:null,mois:null,emp:null},paieView:"bulletins",facSel:{id:null},facDraft:null,year:YEAR,curClient:(function(){try{var v=localStorage.getItem("fid_curclient");return v?+v:null;}catch(e){return null;}})(),comptaView:"saisie",comptaList:{type:null,statut:"",q:"",dmin:"",dmax:"",mmin:"",mmax:""},ageRef:"",cptFilter:{q:"",cpt:"",jrn:"",dmin:"",dmax:"",mmin:"",mmax:"",sens:"",hideZero:false},tvaSel:{id:null,period:null},salSel:{id:null},liasseSel:{id:null},liasseView:"is",docsSel:{id:null},empSel:{id:null},
-  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",echMois:"all",echReg:"all",gq:"",modal:null,jurForm:null,grpSel:{},grpTpl:null,notiflog:lda(LS.notiflog),controle:ld(LS.controle),relancelog:lda(LS.relancelog),paylog:lda(LS.paylog),honrel:lda(LS.honrel),frais:lda(LS.frais),tsType:"tva",tsPeriod:null};
+  echq:"",cliq:"",honq:"",echCat:"all",echUrg:"active",echMois:"all",echReg:"all",gq:"",modal:null,jurForm:null,grpSel:{},grpTpl:null,notiflog:lda(LS.notiflog),controle:ld(LS.controle),relancelog:lda(LS.relancelog),paylog:lda(LS.paylog),honrel:lda(LS.honrel),frais:lda(LS.frais),histlog:lda(LS.histlog),tsType:"tva",tsPeriod:null};
 /* Restaure le dernier onglet / exercice / sous-vue (sinon une actualisation (F5)
    ramène toujours au tableau de bord). L'onglet sera revalidé dans renderView. */
 (function restoreUI(){ try{ var u=JSON.parse(localStorage.getItem("fid_ui")||"null");
@@ -982,7 +982,7 @@ async function exportFullBackup(){
       var roots=await ls("");
       for(var i=0;i<roots.length;i++){
         var rt=roots[i];
-        if(isFile(rt)){ out.push(rt.name); continue; }
+        if(rt.name==="_sauvegardes")continue; if(isFile(rt)){ out.push(rt.name); continue; }
         var lvl1=await ls(rt.name);
         for(var j=0;j<lvl1.length;j++){
           var e=lvl1[j];
@@ -11367,8 +11367,8 @@ function echRows(){
     const done=!!S.done[d.key];
     const ni=notifSentInfo(d.key);
     return '<div class="trow" style="grid-template-columns:'+cols+'">'+
-      '<div style="min-width:0"><button data-act="sv_fiche" data-cid="'+d.client.id+'" title="Voir la fiche du client" style="text-align:left;padding:0"><div class="dossier" style="text-decoration:underline;text-decoration-color:#d6d3c8">'+esc(d.client.dossier)+'</div></button><div class="tel">'+ic("phone")+esc(d.client.tel||"—")+'</div></div>'+
-      '<div style="color:#57534e;min-width:0">'+esc(d.label)+drLine(d.key,d.client.id,d.label,d.client.dossier)+'</div>'+
+      '<div style="min-width:0;display:flex;gap:8px;align-items:flex-start">'+(done?'<span style="width:15px;flex-shrink:0"></span>':'<input type="checkbox" class="ech_sel" data-key="'+d.key+'"'+(ECH_SEL[d.key]?" checked":"")+' style="margin-top:4px;flex-shrink:0" title="Sélectionner pour un dépôt en lot">')+'<div style="min-width:0"><button data-act="sv_fiche" data-cid="'+d.client.id+'" title="Voir la fiche du client" style="text-align:left;padding:0"><div class="dossier" style="text-decoration:underline;text-decoration-color:#d6d3c8">'+esc(d.client.dossier)+'</div></button><div class="tel">'+ic("phone")+esc(d.client.tel||"—")+'</div></div></div>'+
+      '<div style="color:#57534e;min-width:0">'+esc(d.label)+(accFor(d.client.id,d.key).length?' '+accLinks(d.client.id,d.key):'')+drLine(d.key,d.client.id,d.label,d.client.dossier)+'</div>'+
       '<div class="mono" style="color:#57534e">'+fmtDate(d.date)+'</div>'+
       '<div class="mono" style="color:'+d.u.color+'">'+(done?"—":(d.u.j<0?d.u.j+" j":"+"+d.u.j+" j"))+'</div>'+
       '<div>'+badge(d.u.color,d.u.bg,d.u.dot+" "+d.u.label)+'</div>'+
@@ -11870,7 +11870,7 @@ function vFac(){if(S.facDraft)return header("Facturation","STE FIDUCIAIRE FID IN
 
 
 // Libellés courts des modules (utilisés dans la barre de sous-onglets d'un volet).
-const TAB_LABELS={dash:"Tableau de bord",suivi:"Suivi des dossiers",frais:"Frais divers",saisies:"Saisies équipe",fiches:"Fiches sociétés",notes:"Remarques équipe",decharges:"Décharges",activite:"Activité équipe",sante:"Santé des dossiers",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",relances:"Relances groupées",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
+const TAB_LABELS={dash:"Tableau de bord",suivi:"Suivi des dossiers",histo:"Historique",frais:"Frais divers",saisies:"Saisies équipe",fiches:"Fiches sociétés",notes:"Remarques équipe",decharges:"Décharges",activite:"Activité équipe",sante:"Santé des dossiers",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",relances:"Relances groupées",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
 // Volets de navigation : chaque volet regroupe des modules qui se ressemblent.
 // Pour déplacer un module d'un volet à l'autre, change simplement sa place dans "tabs".
 const GROUPS=[
@@ -11881,7 +11881,7 @@ const GROUPS=[
   {id:"g_paie",label:"Paie · Social",icon:"users",tabs:["paie"]},
   {id:"g_fac",label:"Facturation",icon:"receipt",tabs:["fac","hon"]},
   {id:"g_clients",label:"Clients",icon:"user",tabs:["cli","fiches","decharges","portal","delais","relances"]},
-  {id:"g_cabinet",label:"Cabinet",icon:"folder",tabs:["team","notes","saisies","activite","docs","jur"]}
+  {id:"g_cabinet",label:"Cabinet",icon:"folder",tabs:["team","notes","saisies","activite","histo","docs","jur"]}
 ];
 function groupOf(tab){return GROUPS.find(function(g){return g.tabs.indexOf(tab)>=0;})||GROUPS[0];}
 // Barre de sous-onglets affichée en haut d'un volet qui contient plusieurs modules.
@@ -13178,7 +13178,7 @@ function renderView(){
   if(S.tab==="emprunts"){S.tab="compta";S.comptaView="emprunts";}   // module Emprunts intégré dans la Comptabilité
   try{if(S.curClient!=null)localStorage.setItem("fid_curclient",String(S.curClient));}catch(e){}
   try{localStorage.setItem("fid_ui",JSON.stringify({tab:S.tab,year:S.year,comptaView:S.comptaView,liasseView:S.liasseView,paieView:S.paieView,tvaPeriod:(S.tvaSel||{}).period||null}));}catch(e){}
-  const vmap={dash:vDash,sante:vSante,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,controle:vControle,jur:vJur,delais:vDelais,relances:vRelances,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse,suivi:vSuivi,frais:vFrais,saisies:vSaisies,fiches:vFiches,activite:vActivite,decharges:vDecharges,notes:vNotes};
+  const vmap={dash:vDash,sante:vSante,ech:vEch,cli:vCli,hon:vHon,fac:vFac,tva:vTVA,sal:vSal,paie:vPaie,liasse:vLiasse,docs:vDocs,compta:vCompta,controle:vControle,jur:vJur,delais:vDelais,relances:vRelances,emprunts:vEmprunts,portal:vPortal,team:vTeam,teledec:vTeledec,analyse:vAnalyse,suivi:vSuivi,frais:vFrais,histo:vHisto,saisies:vSaisies,fiches:vFiches,activite:vActivite,decharges:vDecharges,notes:vNotes};
   if(typeof vmap[S.tab]!=="function")S.tab="dash";   // onglet restauré inconnu -> retour sûr au tableau de bord
   const v=vmap[S.tab]();
   document.getElementById("view").innerHTML=voletToggle()+v;
@@ -14161,7 +14161,7 @@ function svStaffDeclList(){var rows=svStaffDeclRows();
   var more=rows.length>300?'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:12px;font-size:12px">'+(rows.length-300)+' ligne(s) de plus — affinez la recherche.</td></tr>':'';
   var ST={done:["🟢 Déposée","#0E7A5F","#E3F1EB"],retard:["🔴 En retard","#B42318","#FBEAE8"],urgent:["🟠 Urgent","#B5530A","#FCEEE0"],venir:["🟡 À venir","#9A7610","#FAF3DD"],planif:["⚪ Planifiée","#5C6B66","#EEF1EF"]};
   return rows.slice(0,300).map(function(x){var s=ST[x.k];
-    return '<tr><td><button data-act="sv_s_cli" data-cid="'+x.c.id+'" title="Voir la fiche du client" style="text-align:left;padding:0"><div class="dossier" style="font-size:13px;text-decoration:underline;text-decoration-color:#d6d3c8">'+esc(x.c.n)+'</div></button></td><td>'+esc(x.d.l)+drLine(x.d.key,x.c.id,x.d.l,x.c.n)+(x.rej?'<div class="sub" style="color:#B42318">↺ Rejetée'+(x.rej.admin_note?' : '+esc(x.rej.admin_note):'')+'</div>':'')+'</td><td class="mono" style="white-space:nowrap">'+svD(x.d.dt)+'</td>'
+    return '<tr><td>'+((x.k==="done"||x.k==="pend")?'':'<input type="checkbox" class="sd_sel" data-key="'+esc(x.d.key)+'"'+(SV.dsel[x.d.key]?" checked":"")+' style="margin-right:6px;vertical-align:middle" title="Sélectionner pour un dépôt en lot">')+'<button data-act="sv_s_cli" data-cid="'+x.c.id+'" title="Voir la fiche du client" style="text-align:left;padding:0"><div class="dossier" style="font-size:13px;text-decoration:underline;text-decoration-color:#d6d3c8">'+esc(x.c.n)+'</div></button></td><td>'+esc(x.d.l)+(x.d.a?' <button class="chip" data-act="acc_open" data-p="'+esc(x.d.a)+'" style="padding:1px 7px;font-size:10.5px;color:#1D6FB8">📎 Accusé</button>':'')+drLine(x.d.key,x.c.id,x.d.l,x.c.n)+(x.rej?'<div class="sub" style="color:#B42318">↺ Rejetée'+(x.rej.admin_note?' : '+esc(x.rej.admin_note):'')+'</div>':'')+'</td><td class="mono" style="white-space:nowrap">'+svD(x.d.dt)+'</td>'
       +'<td><span class="svst" style="background:'+s[2]+';color:'+s[1]+'">'+s[0]+'</span></td>'
       +'<td style="text-align:right;white-space:nowrap;min-width:150px"><div style="display:inline-flex;gap:6px;align-items:center">'+drBtn(x.d.key,x.c.id,x.d.l,x.c.n)+((x.k==="done"||x.k==="pend")?'':'<button class="btn-primary" data-act="sv_s_decl" data-cid="'+x.c.id+'" data-key="'+esc(x.d.key)+'" style="padding:6px 12px;font-size:12px">'+ic("check","width:13px;height:13px")+' Déposer</button>')+'</div></td></tr>';}).join("")+more;}
 function svStaffPayList(){var snap=svSnap();if(!snap)return '';var y=SV.py||snap.y;
@@ -14179,10 +14179,10 @@ function svStaffMineList(){if(!SV.mine.length)return '<tr><td colspan="6" style=
 function svStaffRender(keepFocus){var root=document.getElementById("svStaff");if(!root)return;
   var ae=document.activeElement;if(keepFocus&&(SV.modal||(ae&&ae.id&&/^(svs_|svn_|svtcin_)/.test(ae.id)))){svStaffLists();return;}
   var me=SV.me||{},snap=svSnap(),pendN=SV.mine.filter(function(r){return r.statut==="en_attente";}).length;
-  var openT=svStaffOpenTasks();var tabs=[["tasks","Mes tâches"+(openT?" ("+openT+")":"")],["cli","Clients"],["notes","Remarques"],["decl","Déclarations"],["pay","Paiements d'honoraires"],["frais","Frais divers"],["scans","Documents"],["dech","Décharges"],["docs","Demandes"+(SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length?" ("+SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length+")":"")],["caisse","Ma caisse"],["mine","Mes saisies"+(pendN?" ("+pendN+")":"")]].map(function(t){return '<button data-act="sv_s_tab" data-v="'+t[0]+'" class="'+(SV.tab===t[0]?"on":"")+'">'+t[1]+'</button>';}).join("");
+  var openT=svStaffOpenTasks();var tabs=[["today","☀ Ma journée"],["tasks","Mes tâches"+(openT?" ("+openT+")":"")],["cli","Clients"],["notes","Remarques"],["decl","Déclarations"],["pay","Paiements d'honoraires"],["frais","Frais divers"],["scans","Documents"],["dech","Décharges"],["docs","Demandes"+(SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length?" ("+SV.myDocs.filter(function(d){return d.statut==="envoyee";}).length+")":"")],["caisse","Ma caisse"],["mine","Mes saisies"+(pendN?" ("+pendN+")":"")]].map(function(t){return '<button data-act="sv_s_tab" data-v="'+t[0]+'" class="'+(SV.tab===t[0]?"on":"")+'">'+t[1]+'</button>';}).join("");
   var seg=function(arr,cur,act){return '<div class="seg">'+arr.map(function(a){return '<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(String(cur)===String(a[0])?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';};
   var body="";
-  if(SV.tab==="tasks"){body=svStaffTasksHtml();}
+  if(SV.tab==="today"){body=svTodayHtml();}else if(SV.tab==="tasks"){body=svStaffTasksHtml();}
   else if(SV.tab==="cli"&&snap){body=svStaffClientsHtml();}
   else if(SV.tab==="docs"){body=svStaffDocsHtml();}
   else if(SV.tab==="scans"&&snap){body=svStaffDocsTab();}
@@ -14212,7 +14212,7 @@ function svStaffModal(){var o=document.getElementById("svOv");if(!o)return;var m
   if(m.type==="decl"){var d=c.d.find(function(x){return x.key===m.key;});if(!d){o.innerHTML="";return;}title="Déposer la déclaration";sub=c.n+" · "+d.l+" · échéance "+svD(d.dt);
     body='<div class="grid g2"><div><div class="flbl">Date de dépôt</div><input class="ipt" type="date" id="svm_date" value="'+todayISO()+'"></div><div><div class="flbl">N° de dépôt / récépissé</div><input class="ipt" id="svm_ref" placeholder="facultatif"></div></div>'
       +'<div class="grid g2 mt3"><div><div class="flbl">Montant payé (DH, facultatif)</div><input class="ipt mono" type="number" step="0.01" id="svm_mt" placeholder="0"></div><div><div class="flbl">Remarque</div><input class="ipt" id="svm_note" placeholder="facultatif"></div></div>'
-      +'<button class="btn-primary" data-act="sv_s_decl_save" style="margin-top:16px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Déposer</button>';}
+      +'<div class="mt3"><div class="flbl">Accusé de dépôt SIMPL (PDF ou photo — facultatif)</div><input class="ipt" type="file" id="svm_acc" accept="application/pdf,image/*"></div>'+'<button class="btn-primary" data-act="sv_s_decl_save" style="margin-top:16px;width:100%;justify-content:center">'+ic("check","width:14px;height:14px")+' Déposer</button>';}
   else{var y=SV.py||snap.y,P=(c.pay||{})[y];if(!P){o.innerHTML="";return;}title="Paiement d'honoraires";sub=c.n+" · exercice "+y;
     var first=null,opts=P.p.map(function(p){if(!p.paid&&first==null)first=p.k;return '<option value="'+esc(p.k)+'" data-l="'+esc(p.l)+'"'+(p.k===first?" selected":"")+'>'+esc(p.l)+(p.paid?" — déjà payé "+svMoney(p.paid):"")+'</option>';}).join("");
     body='<div class="grid g2"><div><div class="flbl">Période payée</div><select class="ipt" id="svm_k">'+opts+'</select></div><div><div class="flbl">Montant reçu (DH)</div><input class="ipt mono" type="number" step="0.01" id="svm_mt" placeholder="0"></div></div>'
@@ -14229,7 +14229,7 @@ async function svStaffInsert(row,btn){if(btn){btn.disabled=true;btn.style.opacit
 async function svStaffDeclSave(btn){var m=SV.modal,snap=svSnap(),c=snap.clients.find(function(x){return +x.id===+m.cid;}),d=c&&c.d.find(function(x){return x.key===m.key;});if(!d)return;
   if(SV.mine.some(function(r){return r.decl_key===d.key&&r.statut==="en_attente";})){showErr("Une saisie est déjà en attente pour cette déclaration.");return;}
   var date=svVal("svm_date");if(!date){showErr("Indiquez la date de dépôt.");return;}
-  await svStaffInsert({type:"declaration",client_id:+c.id,client_name:c.n,decl_key:d.key,data:{label:d.l,echeance:d.dt,date:date,ref:svVal("svm_ref").trim(),montant:+svVal("svm_mt")||0,note:svVal("svm_note").trim()}},btn);}
+  var acc=await accUploadStaff(+c.id,d.key);if(acc===false)return;await svStaffInsert({type:"declaration",client_id:+c.id,client_name:c.n,decl_key:d.key,data:{accuse:acc||undefined,label:d.l,echeance:d.dt,date:date,ref:svVal("svm_ref").trim(),montant:+svVal("svm_mt")||0,note:svVal("svm_note").trim()}},btn);}
 async function svStaffPaySave(btn){var m=SV.modal,snap=svSnap(),c=snap.clients.find(function(x){return +x.id===+m.cid;});if(!c)return;var y=SV.py||snap.y;
   var mt=+svVal("svm_mt");if(!(mt>0)){showErr("Saisissez le montant reçu.");return;}
   var sel=document.getElementById("svm_k"),k=sel?sel.value:"",l=sel&&sel.selectedOptions[0]?sel.selectedOptions[0].dataset.l:k;
@@ -14279,7 +14279,7 @@ function svStaffSubMe(){try{sb.channel("sv_me").on("postgres_changes",{event:"*"
     if(p.new&&p.new.email&&!p.new.payload){svStaffRefreshMe(false);return;}
     if(p.new&&p.new.email){var before=svStaffTasks().length;SV.me=p.new;var after=svStaffTasks().length;svStaffRender(true);if(after>before)showOk((after-before)+" nouvelle(s) tâche(s) du cabinet.");}}).subscribe();}catch(e){}}
 var _svSB=svStaffBoot;
-svStaffBoot=async function(){SV.tab="tasks";await svStaffLoadTaskStatus();svStaffSubMe();await _svSB();};
+svStaffBoot=async function(){SV.tab="today";await svStaffLoadTaskStatus();svStaffSubMe();await _svSB();};
 
 
 /* ---------- ÉCHÉANCES : pas de déclaration avant la date de constitution ---------- */
@@ -14321,7 +14321,7 @@ function svStaffClientsList(){var snap=svSnap();if(!snap)return '';
       +'<td style="white-space:nowrap">'+(i.tel?esc(i.tel):'<span style="color:var(--faint)">—</span>')+(wa?' <a href="https://wa.me/'+wa+'" target="_blank" rel="noopener" title="WhatsApp" style="color:#0E7A5F;display:inline-flex;vertical-align:-3px">'+ic("whatsapp","width:16px;height:16px")+'</a>':'')+'</td>'
       +'<td>'+(so.email?'<a href="mailto:'+esc(so.email)+'" style="color:#1D6FB8">'+esc(so.email)+'</a>':'<span style="color:var(--faint)">—</span>')+'</td>'
       +'<td class="mono" style="white-space:nowrap">'+esc(so.ice||"—")+'</td><td class="mono">'+esc(so.idf||"—")+'</td><td class="mono">'+esc(so.rc||"—")+'</td>'
-      +'<td style="white-space:nowrap;font-size:12px">'+reg+'</td><td style="white-space:nowrap">'+dgiLoginHtml(so.dgiLogin)+'</td><td style="white-space:nowrap">'+dgiPwHtml(so.dgiPass)+'</td></tr>';}).join("");}
+      +'<td style="white-space:nowrap;font-size:12px">'+reg+'</td><td style="white-space:nowrap">'+dgiLoginHtml(so.dgiLogin)+'</td><td style="white-space:nowrap">'+dgiPwCell(so)+'</td></tr>';}).join("");}
 function svStaffClientsHtml(){var snap=svSnap();if(!snap)return '';
   return '<div class="svs-bar"><div class="search">'+ic("search")+'<input id="svs_cq" placeholder="Nom, téléphone, ICE, IF, gérant…" value="'+esc(SV.cq)+'"></div><span style="font-size:12px;color:var(--muted)">Cliquez sur un nom pour la fiche complète.</span><div style="margin-left:auto;display:flex;gap:8px"><button class="chip" data-act="sv_s_printlist">'+ic("printer","width:13px;height:13px")+' Imprimer la liste</button><button class="chip" data-act="sv_s_printall">'+ic("printer","width:13px;height:13px")+' Imprimer les fiches</button></div></div>'
     +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Client</th><th>Téléphone</th><th>E-mail</th><th>ICE</th><th>IF</th><th>RC</th><th>Régime</th><th>Identifiant SIMPL</th><th>Mot de passe SIMPL</th></tr></thead><tbody id="svs_clist">'+svStaffClientsList()+'</tbody></table></div></div>';}
@@ -14583,7 +14583,7 @@ function vActivite(){var head=header("Activité de l'équipe","Travail réalisé
   var segD='<div class="seg">'+[["open","En attente ("+SV.docs.filter(function(d){return d.statut==="envoyee";}).length+")"],["recue","Reçues"],["all","Toutes"]].map(function(a){return '<button data-act="sv_df" data-v="'+a[0]+'" style="'+(SV.df===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
   return '<div class="wrap">'+head+'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center" class="mt5 mb4">'+segP+'<button class="chip" data-act="sv_team_reload" style="margin-left:auto">Actualiser</button></div>'+cards
     +'<div class="card mt5" style="padding:0;overflow:hidden"><div style="padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="sectit" style="margin:0">'+ic("clock")+' Journal d\'activité ('+ev.length+')</div><select class="ipt" id="sv_ac" style="width:auto">'+opts+'</select></div><div class="svx svscroll"><table class="svt"><thead><tr><th>Date</th><th>Collaborateur</th><th>Action</th><th>Dossier</th><th>Détail</th></tr></thead><tbody>'+evH+'</tbody></table></div></div>'
-    +'<div class="card mt5" style="padding:0;overflow:hidden"><div style="padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="sectit" style="margin:0">'+ic("folder")+' Demandes de documents aux clients</div>'+segD+'</div><div class="svx svscroll"><table class="svt"><thead><tr><th>Demandée le</th><th>Par</th><th>Client</th><th>Documents</th><th>Statut</th><th>Remarque</th><th></th></tr></thead><tbody>'+dH+'</tbody></table></div></div></div>';}
+    +'<div class="card mt5" style="padding:0;overflow:hidden"><div style="padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="sectit" style="margin:0">'+ic("folder")+' Demandes de documents aux clients</div>'+segD+drgBtn()+'</div><div class="svx svscroll"><table class="svt"><thead><tr><th>Demandée le</th><th>Par</th><th>Client</th><th>Documents</th><th>Statut</th><th>Remarque</th><th></th></tr></thead><tbody>'+dH+'</tbody></table></div></div></div>';}
 function svDocBadge(d){return d.statut==="recue"?'<span class="svst" style="background:#E3F1EB;color:#0E7A5F">✓ Reçue</span>':d.statut==="annulee"?'<span class="svst" style="background:#F1EFE8;color:#8A8678">Annulée</span>':'<span class="svst" style="background:#FFF7E0;color:#9A7610">En attente</span>';}
 function svCaisseTable(cx,admin){return '<table class="svt"><thead><tr><th>Date</th><th>Mouvement</th><th>Nature</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Remis</th>'+(admin?'<th></th>':'')+'</tr></thead><tbody>'
   +(cx.mv.map(function(m){return '<tr><td class="mono">'+svD(m.d)+'</td><td>'+esc(m.l)+(m.rc?' <span class="sub" style="display:inline">· '+esc(m.rc)+'</span>':'')+'</td><td>'+esc(m.mo)+'</td><td class="n" style="color:#0a5f4a">'+(m.t==="enc"?svMoney(m.m):"")+'</td><td class="n" style="color:#1D6FB8">'+(m.t==="rem"?svMoney(m.m):"")+'</td>'+(admin?'<td style="text-align:right">'+(m.t==="rem"?'<button class="iconbtn" data-act="sv_rem_del" data-id="'+m.id+'" style="color:#C0392B" title="Supprimer cette remise">'+ic("trash","width:13px;height:13px")+'</button>':'')+'</td>':'')+'</tr>';}).join("")||'<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--faint)">Aucun mouvement.</td></tr>')+'</tbody></table>';}
@@ -15643,9 +15643,9 @@ setTimeout(function(){if(fidIsIOS())fidInstallShow();},4000);
 function dgiPwHtml(v){if(!v)return '<span style="color:var(--faint)">—</span>';
   return '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap"><span class="dgipw" data-pw="'+esc(v)+'" style="font-family:\'JetBrains Mono\',monospace;letter-spacing:.06em">••••••</span><button class="iconbtn" data-pwshow title="Afficher / masquer" style="padding:2px 4px;font-size:13px;display:inline-flex">👁</button><button class="iconbtn" data-pwcopy="'+esc(v)+'" title="Copier le mot de passe" style="padding:2px 4px;font-size:11px;display:inline-flex">⧉</button></span>';}
 function dgiLoginHtml(v){if(!v)return '<span style="color:var(--faint)">—</span>';return '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap"><span class="mono">'+esc(v)+'</span><button class="iconbtn" data-pwcopy="'+esc(v)+'" title="Copier l\'identifiant" style="padding:2px 4px;font-size:11px;display:inline-flex">⧉</button></span>';}
-function dgiBlock(so){so=so||{};if(!so.dgiLogin&&!so.dgiPass)return '';
+function dgiBlock(so){so=so||{};if(!so.dgiLogin&&!so.dgiPass&&!so.dgiHid)return '';
   return '<div style="margin:12px 0;padding:10px 12px;border:1px solid #D9CBEE;background:#F7F3FC;border-radius:10px;font-size:13px"><div class="flbl" style="margin:0 0 6px;text-transform:uppercase;letter-spacing:.05em;font-size:10.5px;color:#6B3FA0">Accès portail des impôts (SIMPL)</div>'
-    +'<div style="display:grid;grid-template-columns:110px 1fr;gap:6px 10px;align-items:center"><span style="color:var(--muted)">Identifiant</span><span>'+dgiLoginHtml(so.dgiLogin)+'</span><span style="color:var(--muted)">Mot de passe</span><span>'+dgiPwHtml(so.dgiPass)+'</span></div></div>';}
+    +'<div style="display:grid;grid-template-columns:110px 1fr;gap:6px 10px;align-items:center"><span style="color:var(--muted)">Identifiant</span><span>'+dgiLoginHtml(so.dgiLogin)+'</span><span style="color:var(--muted)">Mot de passe</span><span>'+dgiPwCell(so)+'</span></div></div>';}
 function dgiSave(cid,k,v){S.flags[cid]=Object.assign({},S.flags[cid]);S.flags[cid].societe=Object.assign({},S.flags[cid].societe);S.flags[cid].societe[k]=String(v||"").trim();save("flags");}
 function dgiInputs(cid,so){so=so||{};
   return '<td style="min-width:150px"><input class="ipt" data-dgi="dgiLogin" data-cid="'+cid+'" value="'+esc(so.dgiLogin||"")+'" placeholder="Identifiant" style="padding:6px 8px;font-size:12.5px"></td>'
@@ -15807,7 +15807,7 @@ async function doneMergeSave(localRef){var local=doneClone(localRef),base=DONE_S
   var cur=S.done||{},view=Object.assign({},merged);Object.keys(cur).forEach(function(k){if(JSON.stringify(cur[k])!==JSON.stringify(local[k]))view[k]=cur[k];});Object.keys(local).forEach(function(k){if(!(k in cur))delete view[k];});
   S.done=view;try{localStorage.setItem(LS.done,JSON.stringify(view));}catch(e){}
   _dsCU("done",merged);DONE_SYNC.base=merged;
-  if(dels.length)doneRejectStaff(dels);
+  if(dels.length)doneRejectStaff(dels);try{histDone(adds,dels,base);}catch(e){}
   if(extra){var ae=document.activeElement;if(!S.modal&&!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||""))){try{renderNav();renderView();}catch(e){}}}}
 /* le cabinet annule un dépôt saisi par le collaborateur : la saisie passe « rejetée » (sinon elle serait remise) */
 function doneRejectStaff(keys){var now=new Date().toISOString();(SV.rows||[]).forEach(function(r){if(r.type!=="declaration"||r.statut!=="valide"||keys.indexOf(r.decl_key)<0)return;
@@ -15833,6 +15833,338 @@ async function dsRefreshAll(){if(SV.staff||!CLOUD||!sb||typeof session==="undefi
 document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"&&Date.now()-DS_LAST>60000)dsRefreshAll();});
 window.addEventListener("online",function(){dsRefreshAll();});
 window.addEventListener("focus",function(){if(Date.now()-DS_LAST>300000)dsRefreshAll();});
+
+/* ============================================================================================
+   v2026.12 — FINALISATION : sauvegarde quotidienne automatique, protection fusionnée des données,
+   historique, dépôt en lot, accusés de dépôt, Ma journée, agenda, rapport mensuel, situation
+   client, contrôle d'accès.
+   ============================================================================================ */
+function v12Now(){return new Date().toISOString();}
+function v12Clone(o){try{return JSON.parse(JSON.stringify(o));}catch(e){return o;}}
+function v12Busy(){var ae=document.activeElement;return !!(S.modal||(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||"")));}
+function v12Dev(){var u=navigator.userAgent||"";var d=/iPhone/.test(u)?"iPhone":/iPad/.test(u)?"iPad":/Android/.test(u)?"Android":/Windows/.test(u)?"Windows":/Mac OS/.test(u)?"Mac":"Autre";
+  var app=false;try{app=fidIsStandalone();}catch(e){}return d+(app?" · application":" · navigateur");}
+function v12Who(){try{return (session&&session.user&&session.user.email)||"Cabinet";}catch(e){return "Cabinet";}}
+function v12CliName(cid){var c;SV_ALL++;try{c=clients().find(function(x){return +x.id===+cid;});}finally{SV_ALL--;}if(c)return c.dossier;var cu=(S.custom||[]).find(function(x){return +x.id===+cid;});return cu?cu.dossier:"Dossier #"+cid;}
+function v12DeclLabel(key){var p=String(key).split("|");var dl=null;try{dl=svFindDl(+p[1],key);}catch(e){}return (dl?dl.label:(p[2]+" "+(p[3]||"")))+(+p[0]!==+S.year?" ("+p[0]+")":"");}
+async function v12OpenPath(path){var w=window.open("","_blank");try{var r=await sb.storage.from(DOC_BUCKET).createSignedUrl(path,3600);if(r.error)throw r.error;if(w)w.location.href=r.data.signedUrl;else window.open(r.data.signedUrl,"_blank");}catch(e){if(w)w.close();showErr("Ouverture impossible : "+(e.message||e));}}
+
+/* =========================== 1. SAUVEGARDE AUTOMATIQUE QUOTIDIENNE (30 jours) ===========================
+   Chaque jour, à la première ouverture du logiciel cabinet, une copie complète des données est déposée
+   dans votre espace de stockage en ligne (dossier _sauvegardes). Les 30 dernières sont conservées. */
+var AB={busy:false,list:null};
+var AB_DIR="_sauvegardes";
+async function abRun(force){if(SV.staff||!CLOUD||!sb||typeof session==="undefined"||!session||!session.user||AB.busy)return;
+  var today=todayISO(),cab=cabinetGet();if(!force&&cab.autoBk&&cab.autoBk.d===today)return;AB.busy=true;
+  try{var p=await svBackupPayload();var blob=new Blob([JSON.stringify(p)],{type:"application/json"});
+    var up=await sb.storage.from(DOC_BUCKET).upload(AB_DIR+"/auto-"+today+".json",blob,{upsert:true,contentType:"application/json"});if(up.error)throw up.error;
+    cabinetSet("autoBk",{d:today,at:v12Now(),size:blob.size});
+    var ls=await sb.storage.from(DOC_BUCKET).list(AB_DIR,{limit:500});var files=((ls&&ls.data)||[]).filter(function(f){return /^auto-\d{4}-\d{2}-\d{2}\.json$/.test(f.name);}).sort(function(a,b){return b.name.localeCompare(a.name);});
+    var old=files.slice(30).map(function(f){return AB_DIR+"/"+f.name;});if(old.length)await sb.storage.from(DOC_BUCKET).remove(old);
+    AB.list=null;if(force){showOk("Sauvegarde du jour enregistrée en ligne.");abShowList();}
+  }catch(e){if(force)showErr("Sauvegarde automatique impossible : "+(e.message||e));}finally{AB.busy=false;}}
+async function abLoadList(){try{var ls=await sb.storage.from(DOC_BUCKET).list(AB_DIR,{limit:500});AB.list=((ls&&ls.data)||[]).filter(function(f){return /^auto-\d{4}-\d{2}-\d{2}\.json$/.test(f.name);}).sort(function(a,b){return b.name.localeCompare(a.name);});}catch(e){AB.list=[];}return AB.list;}
+async function abShowList(){var el=document.getElementById("ab_list");if(!el)return;el.innerHTML='<div class="note" style="font-size:12px">Chargement…</div>';var l=await abLoadList();
+  el.innerHTML=l.length?'<table class="svt" style="font-size:12.5px"><thead><tr><th>Date</th><th style="text-align:right">Taille</th><th></th></tr></thead><tbody>'+l.map(function(f){var d=f.name.slice(5,15),sz=((f.metadata||{}).size)||0;
+    return '<tr><td class="mono">'+svD(d)+'</td><td class="n">'+(sz?(sz/1024/1024).toFixed(2)+" Mo":"")+'</td><td style="text-align:right;white-space:nowrap"><button class="chip" data-act="ab_dl" data-f="'+esc(f.name)+'" style="padding:3px 9px;font-size:11px">'+ic("down","width:12px;height:12px")+' Télécharger</button> <button class="chip" data-act="ab_restore" data-f="'+esc(f.name)+'" style="padding:3px 9px;font-size:11px;color:#B5530A;border-color:#B5530A">Restaurer</button></td></tr>';}).join("")+'</tbody></table>'
+    :'<div class="note" style="font-size:12px">Aucune sauvegarde automatique pour le moment (la première se fait à l\'ouverture du logiciel).</div>';}
+async function abFetch(name){var r=await sb.storage.from(DOC_BUCKET).download(AB_DIR+"/"+name);if(r.error)throw r.error;return JSON.parse(await r.data.text());}
+async function abDownload(name){try{var r=await sb.storage.from(DOC_BUCKET).download(AB_DIR+"/"+name);if(r.error)throw r.error;var url=URL.createObjectURL(r.data),a=document.createElement("a");a.href=url;a.download="fidinfocom-"+name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},3000);}catch(e){showErr("Téléchargement impossible : "+(e.message||e));}}
+async function abRestore(name){var d=name.slice(5,15);
+  if(!window.confirm("Restaurer les données du logiciel telles qu'elles étaient le "+svD(d)+" ?\n\nClients, dépôts, honoraires, frais… seront remis à cet état. Les saisies du collaborateur, remarques et documents ne sont pas touchés.\n\nConseil : une sauvegarde de l'état actuel est faite juste avant."))return;
+  try{await abRun(true);var p=await abFetch(name),data=(p&&p.data)||{};var n=0;
+    KEYS.forEach(function(k){if(data[k]!=null&&k!=="histlog"){S[k]=data[k];try{localStorage.setItem(LS[k],JSON.stringify(S[k]));}catch(e){}save(k);n++;}});
+    ensureYears();histAdd("Restauration","Données remises à l'état du "+svD(d)+" ("+n+" rubriques)");render();showOk("Données restaurées à l'état du "+svD(d)+".");}catch(e){showErr("Restauration impossible : "+(e.message||e));}}
+
+/* =========================== 2. ENREGISTREMENT FUSIONNÉ (plusieurs appareils) ===========================
+   Paiements, journal des encaissements, reçus, frais divers, clients supprimés, historique :
+   chaque appareil n'envoie plus sa liste complète mais seulement ses changements, appliqués sur la
+   version en ligne la plus récente. (Les dépôts « done » ont leur propre protection, v2026.11h.) */
+var MS={cfg:{pay:"num",paylog:"arr:id:front",receipts:"arr:no:back",frais:"arr:id:front",histlog:"arr:id:front",deleted:"obj"},last:{},q:{}};
+function msType(k){return (MS.cfg[k]||"").split(":");}
+function msInit(k){if(!MS.cfg[k])return;if(!MS.q[k])MS.last[k]=v12Clone(S[k]==null?(msType(k)[0]==="arr"?[]:{}):S[k]);}
+function msInitAll(){Object.keys(MS.cfg).forEach(msInit);}
+function msDiff(k,prev,cur){var t=msType(k);
+  if(t[0]==="num"){var inc={};prev=prev||{};cur=cur||{};var keys={};Object.keys(prev).concat(Object.keys(cur)).forEach(function(x){keys[x]=1;});
+    Object.keys(keys).forEach(function(x){var d=Math.round(((+cur[x]||0)-(+prev[x]||0))*100)/100;if(Math.abs(d)>0.004)inc[x]=d;});return {inc:inc,n:Object.keys(inc).length};}
+  if(t[0]==="obj"){var set={},del=[];prev=prev||{};cur=cur||{};Object.keys(cur).forEach(function(x){if(JSON.stringify(cur[x])!==JSON.stringify(prev[x]))set[x]=cur[x];});Object.keys(prev).forEach(function(x){if(!(x in cur))del.push(x);});return {set:set,del:del,n:Object.keys(set).length+del.length};}
+  var id=t[1],pm={},cm={},ups=[],dels=[];(prev||[]).forEach(function(it){if(it&&it[id]!=null)pm[String(it[id])]=it;});(cur||[]).forEach(function(it){if(it&&it[id]!=null)cm[String(it[id])]=it;});
+  (cur||[]).forEach(function(it){if(!it||it[id]==null)return;var p=pm[String(it[id])];if(!p||JSON.stringify(p)!==JSON.stringify(it))ups.push({it:it,isNew:!p});});
+  Object.keys(pm).forEach(function(x){if(!cm[x])dels.push(pm[x]);});return {ups:ups,dels:dels,n:ups.length+dels.length};}
+function msApply(k,cloud,op){var t=msType(k);
+  if(t[0]==="num"){var o=Object.assign({},cloud||{});Object.keys(op.inc).forEach(function(x){var v=Math.round(((+o[x]||0)+op.inc[x])*100)/100;if(v>0.004)o[x]=v;else delete o[x];});return o;}
+  if(t[0]==="obj"){var o2=Object.assign({},cloud||{},op.set);op.del.forEach(function(x){delete o2[x];});return o2;}
+  var id=t[1],front=t[2]==="front",arr=(Array.isArray(cloud)?cloud:[]).slice(),dset={};op.dels.forEach(function(it){dset[String(it[id])]=1;});
+  arr=arr.filter(function(it){return !(it&&dset[String(it[id])]);});
+  var nw=[];op.ups.forEach(function(u){var i=arr.findIndex(function(it){return it&&String(it[id])===String(u.it[id]);});if(i>=0)arr[i]=u.it;else nw.push(u.it);});
+  return front?nw.concat(arr):arr.concat(nw);}
+var _msCU=cloudUpsert;
+cloudUpsert=function(k,v){if(!MS.cfg[k]||SV.staff||!sb||typeof session==="undefined"||!session||!session.user)return _msCU(k,v);
+  var wasU=MS.last[k]===undefined;if(wasU){if(msType(k)[0]==="num")return _msCU(k,v);MS.last[k]=msType(k)[0]==="arr"?[]:{};}
+  var cur=v12Clone(v),op=msDiff(k,MS.last[k],cur);MS.last[k]=cur;if(!op.n)return;
+  if(!wasU){try{histFromOp(k,op);}catch(e){}}
+  MS.q[k]=(MS.q[k]||0)+1;setSync("saving");
+  MS.chain=(MS.chain||Promise.resolve()).then(async function(){var cloud=null;
+    try{var r=await sb.from("app_data").select("v").eq("user_id",session.user.id).eq("k",k).maybeSingle();if(!r.error&&r.data)cloud=r.data.v;}catch(e){}
+    if(cloud==null){_msCU(k,cur);}else{var merged=msApply(k,cloud,op);_msCU(k,merged);
+      if(MS.q[k]===1){var extra=JSON.stringify(merged)!==JSON.stringify(cur);S[k]=merged;MS.last[k]=v12Clone(merged);try{localStorage.setItem(LS[k],JSON.stringify(merged));}catch(e){}
+        if(extra&&!v12Busy()){try{renderNav();renderView();}catch(e){}}}}
+  }).catch(function(){try{_msCU(k,v);}catch(e){}}).then(function(){MS.q[k]=Math.max(0,(MS.q[k]||1)-1);});
+  return MS.chain;};
+var _msPA=pullAll;pullAll=async function(){await _msPA.apply(this,arguments);if(!SV.staff)msInitAll();};
+var _msRA=dsRefreshAll;dsRefreshAll=async function(){await _msRA.apply(this,arguments);if(!SV.staff)msInitAll();};
+function msSubRealtime(){try{sb.channel("ms_app_data_"+session.user.id).on("postgres_changes",{event:"*",schema:"public",table:"app_data",filter:"user_id=eq."+session.user.id},function(p){var r=p.new;if(r&&MS.cfg[r.k]&&!MS.q[r.k])MS.last[r.k]=v12Clone(r.v);}).subscribe();}catch(e){}}
+
+/* =========================== 3. HISTORIQUE DES MODIFICATIONS =========================== */
+function histAdd(a,t,cid){if(SV.staff)return;if(!Array.isArray(S.histlog))S.histlog=[];
+  S.histlog.unshift({id:"H"+Date.now()+Math.floor(Math.random()*1e4),at:v12Now(),by:v12Who(),dev:v12Dev(),a:a,t:t,cid:cid||null});
+  if(S.histlog.length>2000)S.histlog.length=2000;HIST_SKIP=true;try{save("histlog");}finally{HIST_SKIP=false;}}
+var HIST_SKIP=false;
+function histFromOp(k,op){if(HIST_SKIP||k==="histlog")return;
+  if(k==="paylog"){op.ups.forEach(function(u){if(!u.isNew)return;var p=u.it;histAdd("Encaissement",svMoney(p.montant)+" — "+v12CliName(p.cid)+" — "+(p.k==="FRAIS"?(p.lib||"Frais divers"):"honoraires "+p.k+" "+p.y)+(p.rcNo?" · reçu "+p.rcNo:"")+(p.src==="equipe"?" · saisi par "+(p.by||"le collaborateur"):""),p.cid);});
+    op.dels.forEach(function(p){histAdd("Suppression d'encaissement",svMoney(p.montant)+" — "+v12CliName(p.cid)+" — "+(p.k==="FRAIS"?(p.lib||"Frais divers"):p.k+" "+p.y)+(p.rcNo?" · reçu "+p.rcNo+" annulé":""),p.cid);});}
+  else if(k==="frais"){op.ups.forEach(function(u){if(u.isNew)histAdd("Frais divers",(u.it.type||"")+(u.it.lib?" — "+u.it.lib:"")+" · "+svMoney(u.it.montant)+" — "+v12CliName(u.it.cid),u.it.cid);});
+    op.dels.forEach(function(f){histAdd("Suppression de frais",(f.type||"")+" · "+svMoney(f.montant)+" — "+v12CliName(f.cid),f.cid);});}
+  else if(k==="deleted"){Object.keys(op.set).forEach(function(x){if(op.set[x])histAdd("Suppression de client",v12CliName(x),+x);});op.del.forEach(function(x){histAdd("Client rétabli",v12CliName(x),+x);});}}
+function histDone(adds,dels,base){if(!base)return;Object.keys(adds).forEach(function(k){if(k in base)return;var v=adds[k],p=k.split("|");
+    histAdd("Dépôt",v12DeclLabel(k)+" — "+v12CliName(p[1])+(v&&v.d?" · déposée le "+svD(v.d):"")+(v&&v.src==="equipe"?" · saisie de "+(v.by||"l'équipe"):""),+p[1]);});
+  dels.forEach(function(k){var p=k.split("|");histAdd("Dépôt annulé",v12DeclLabel(k)+" — "+v12CliName(p[1]),+p[1]);});}
+var HS={q:"",t:"all",p:"30"};
+function vHisto(){var l=(S.histlog||[]).filter(function(h){if(HS.t!=="all"&&h.a.indexOf(HS.t)<0)return false;if(HS.p!=="all"&&(Date.now()-new Date(h.at))>(+HS.p)*864e5)return false;return !HS.q||smartMatch(HS.q,h.a+" "+h.t+" "+h.by+" "+h.dev);});
+  var seg=function(arr,cur,act){return '<div class="seg">'+arr.map(function(a){return '<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';};
+  var col={"Dépôt":"#0E7A5F","Encaissement":"#1D6FB8","Frais divers":"#6B3FA0"};
+  var rows=l.slice(0,500).map(function(h){var c=col[h.a]||((/Suppression|annulé/).test(h.a)?"#B42318":"#5C6B66");return '<tr><td class="mono" style="white-space:nowrap">'+svDT(h.at)+'</td><td><span class="svst" style="background:'+c+'1a;color:'+c+'">'+esc(h.a)+'</span></td><td style="min-width:260px">'+esc(h.t)+'</td><td style="white-space:nowrap">'+esc(h.by||"")+'</td><td style="white-space:nowrap;font-size:12px;color:var(--muted)">'+esc(h.dev||"")+'</td></tr>';}).join("")
+    ||'<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--faint)">Aucune modification enregistrée pour ce filtre. L\'historique démarre avec cette version.</td></tr>';
+  return '<div class="wrap">'+header("Historique des modifications","Qui a fait quoi, quand et depuis quel appareil (dépôts, encaissements, frais, clients)")
+    +'<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mt5 mb4"><div class="search">'+ic("search")+'<input id="hs_q" placeholder="Rechercher un client, une action…" value="'+esc(HS.q)+'"></div>'
+    +seg([["all","Tout"],["Dépôt","Dépôts"],["Encaissement","Encaissements"],["Frais","Frais"],["client","Clients"],["Suppression","Suppressions"]],HS.t,"hs_t")+seg([["7","7 jours"],["30","30 jours"],["all","Tout"]],HS.p,"hs_p")+'</div>'
+    +'<div class="card" style="padding:0;overflow:hidden"><div class="svx svscroll"><table class="svt"><thead><tr><th>Date et heure</th><th>Action</th><th>Détail</th><th>Par</th><th>Appareil</th></tr></thead><tbody id="hs_body">'+rows+'</tbody></table></div></div>'
+    +'<p style="font-size:11px;color:var(--faint);margin-top:10px">Les saisies du collaborateur restent aussi visibles dans Cabinet → Saisies équipe. L\'historique garde les 2 000 dernières opérations.</p></div>';}
+
+/* =========================== 4. DÉPÔT EN LOT =========================== */
+var ECH_SEL={};
+function lotBar(n,pre){return '<div id="'+pre+'_lotbar" style="display:'+(n?"flex":"none")+';align-items:center;gap:10px;flex-wrap:wrap;background:#E3F1EB;border:1px solid #BFE0D2;border-radius:12px;padding:10px 14px;margin:0 0 12px">'
+  +'<b style="color:#0E7A5F">'+n+' déclaration(s) sélectionnée(s)</b><span style="font-size:12.5px">Date de dépôt</span><input type="date" class="ipt" id="'+pre+'_lotdate" value="'+todayISO()+'" style="width:auto;padding:6px 8px">'
+  +'<button class="btn-primary" data-act="'+pre+'_lotgo" style="width:auto;flex:0 0 auto">'+ic("check","width:14px;height:14px")+' Marquer déposées</button><button class="chip" data-act="'+pre+'_lotclear" style="width:auto;flex:0 0 auto">Vider la sélection</button></div>';}
+function echLotUpdate(){var n=Object.keys(ECH_SEL).length,b=document.getElementById("ech_lotbar");if(b){b.style.display=n?"flex":"none";var t=b.querySelector("b");if(t)t.textContent=n+" déclaration(s) sélectionnée(s)";}}
+function echLotGo(){var keys=Object.keys(ECH_SEL);if(!keys.length)return;var d=svVal("ech_lotdate")||todayISO();
+  if(!window.confirm("Marquer "+keys.length+" déclaration(s) comme déposée(s) le "+svD(d)+" ?"))return;
+  keys.forEach(function(k){if(!S.done[k])S.done[k]={d:d,ref:"",m:0,note:"Dépôt en lot",by:"Cabinet",src:"cabinet",at:v12Now()};});save("done");ECH_SEL={};renderView();showOk(keys.length+" déclaration(s) marquée(s) déposée(s).");}
+SV.dsel={};
+async function staffLotGo(btn){var keys=Object.keys(SV.dsel);if(!keys.length)return;var d=svVal("sd_lotdate")||todayISO(),snap=svSnap();if(!snap)return;
+  if(!window.confirm("Déposer "+keys.length+" déclaration(s) à la date du "+svD(d)+" ?"))return;var rows=[];
+  snap.clients.forEach(function(c){c.d.forEach(function(x){if(SV.dsel[x.key])rows.push({type:"declaration",client_id:+c.id,client_name:c.n,decl_key:x.key,author_name:(SV.me&&SV.me.name)||svEmail(),data:{label:x.l,echeance:x.dt,date:d,ref:"",montant:0,note:"Dépôt en lot"}});});});
+  if(!rows.length)return;if(btn)btn.disabled=true;var r=await sb.from("staff_saisies").insert(rows);if(btn)btn.disabled=false;
+  if(r.error){showErr("Envoi impossible : "+r.error.message);return;}SV.dsel={};showOk(rows.length+" déclaration(s) déposée(s).");await svStaffLoad();svStaffRender();}
+function staffLotUpdate(){var n=Object.keys(SV.dsel).length,b=document.getElementById("sd_lotbar");if(b){b.style.display=n?"flex":"none";var t=b.querySelector("b");if(t)t.textContent=n+" déclaration(s) sélectionnée(s)";}}
+
+/* =========================== 5. ACCUSÉ DE DÉPÔT SIMPL =========================== */
+function accFor(cid,key){return ((S.docs||{})[String(cid)]||[]).filter(function(m){return m&&m.declKey===key&&m.path;});}
+function accSafe(n){return String(n||"accuse").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-zA-Z0-9._-]+/g,"_").slice(-80);}
+async function accUpload(file,cid,key){var path=cid+"/accuses/"+Date.now()+"-"+accSafe(file.name);var up=await sb.storage.from(DOC_BUCKET).upload(path,file,{upsert:false,contentType:file.type||undefined});if(up.error)throw up.error;return {path:path,name:file.name,size:file.size,key:key};}
+async function accUploadStaff(cid,key){var f=document.getElementById("svm_acc");if(!f||!f.files||!f.files[0])return null;try{return await accUpload(f.files[0],cid,key);}catch(e){showErr("Accusé non envoyé : "+(e.message||e));return false;}}
+function accAddDoc(cid,a,by){if(!a||!a.path)return;if(!S.docs)S.docs={};var k=String(cid),arr=S.docs[k]||[];if(arr.some(function(m){return m.path===a.path;}))return;
+  S.docs[k]=arr.concat([{id:Date.now()+Math.floor(Math.random()*1000),name:a.name||"Accusé de dépôt",size:a.size||0,date:v12Now(),cat:"Accusé de dépôt",path:a.path,by:by||"Cabinet",declKey:a.key}]);save("docs");}
+var _accAR=svApplyRow;svApplyRow=function(row){var r=_accAR(row);try{var d=row.data||{};if(row.type==="declaration"&&d.accuse)accAddDoc(row.client_id,Object.assign({key:row.decl_key},d.accuse),row.author_name||row.email);}catch(e){}return r;};
+function accLinks(cid,key){var l=accFor(cid,key);return l.map(function(m){return '<button class="chip" data-act="acc_open" data-p="'+esc(m.path)+'" style="padding:2px 8px;font-size:11px;color:#1D6FB8;border-color:#BFD7EE" title="'+esc(m.name)+'">📎 Accusé</button>';}).join(" ");}
+var _accMD=svModalDecl;svModalDecl=function(){var h=_accMD();try{var m=S.modal,l=accFor(m.cid,m.key);
+  var blk='<div style="margin-top:14px;border-top:1px solid var(--line-soft);padding-top:10px"><div class="flbl" style="margin:0 0 6px">Accusé de dépôt SIMPL ('+l.length+')</div>'
+    +(l.length?l.map(function(x){return '<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;padding:4px 0"><span>📎 '+esc(x.name)+'</span><span style="color:var(--muted)">'+svDT(x.date)+(x.by?" · "+esc(x.by):"")+'</span><button class="chip" data-act="acc_open" data-p="'+esc(x.path)+'" style="padding:2px 8px;font-size:11px;margin-left:auto">Voir</button><button class="iconbtn" data-act="acc_del" data-p="'+esc(x.path)+'" title="Supprimer" style="color:#C0392B">'+ic("trash","width:12px;height:12px")+'</button></div>';}).join(""):'')
+    +'<label class="chip" style="cursor:pointer;display:inline-flex;gap:6px;align-items:center;margin-top:4px">'+ic("plus","width:12px;height:12px")+' Joindre l\'accusé (PDF ou photo)<input type="file" id="sv_d_acc" accept="application/pdf,image/*" style="display:none"></label></div>';
+  var k=h.lastIndexOf('</div></div></div>');if(k>0)h=h.slice(0,k)+blk+h.slice(k);}catch(e){}return h;};
+
+/* =========================== 6a. MA JOURNÉE (collaborateur) =========================== */
+function svTodayHtml(){var snap=svSnap();if(!snap)return '<div class="card mt5" style="padding:30px;text-align:center;color:var(--muted)">La liste n\'est pas encore publiée par le cabinet.</div>';
+  var t=todayISO(),wk=svIso(new Date(Date.now()+7*86400000)),rows=svStaffDeclRows();
+  var late=rows.filter(function(x){return x.k==="retard";}).sort(function(a,b){return a.d.dt.localeCompare(b.d.dt);}),week=rows.filter(function(x){return x.k!=="done"&&x.d.dt>=t&&x.d.dt<=wk;}).sort(function(a,b){return a.d.dt.localeCompare(b.d.dt);});
+  var tasks=svStaffTasks().filter(function(k){return svTaskEff(k)!=="done"&&(!k.echeance||k.echeance<=t);});
+  var docs=(SV.myDocs||[]).filter(function(d){return d.statut==="envoyee"&&(Date.now()-new Date(d.created_at))>5*86400000;});
+  var y=snap.y,imp=snap.clients.filter(function(c){var P=(c.pay||{})[y];return P&&P.exp-P.col>0.5;}).sort(function(a,b){return (b.pay[y].exp-b.pay[y].col)-(a.pay[y].exp-a.pay[y].col);}).slice(0,8);
+  var cx=svCaisseOf(svEmail(),SV.mine,SV.myCaisse);
+  var kpi=function(n,l,c,v){return '<button data-act="sv_s_tab" data-v="'+v+'" style="flex:1;min-width:130px;text-align:left;background:#fff;border:1px solid var(--line);border-left:4px solid '+c+';border-radius:12px;padding:12px 14px"><div class="ff" style="font-size:24px;font-weight:700;color:'+c+'">'+n+'</div><div style="font-size:12px;color:var(--muted)">'+l+'</div></button>';};
+  var dl=function(x){return '<div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line-soft);font-size:13px"><button data-act="sv_s_cli" data-cid="'+x.c.id+'" style="text-align:left;padding:0;font-weight:600;text-decoration:underline;text-decoration-color:#d6d3c8;width:190px;flex:0 0 190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.c.n)+'</button><span style="flex:1;min-width:0">'+esc(x.d.l)+'</span><span class="mono" style="color:'+(x.k==="retard"?"#B42318":"#B5530A")+'">'+svD(x.d.dt)+'</span><button class="btn-primary" data-act="sv_s_decl" data-cid="'+x.c.id+'" data-key="'+esc(x.d.key)+'" style="padding:4px 10px;font-size:11.5px;width:auto;flex:0 0 auto">Déposer</button></div>';};
+  var sec=function(tl,body,empty){return '<div class="card mt4" style="padding:14px 18px"><div class="sectit" style="margin:0 0 6px">'+tl+'</div>'+(body||'<div class="note" style="font-size:12px;color:var(--faint)">'+empty+'</div>')+'</div>';};
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap" class="mt5">'+kpi(late.length,"déclarations en retard","#B42318","decl")+kpi(week.length,"à déposer dans les 7 jours","#B5530A","decl")+kpi(tasks.length,"tâches pour aujourd'hui","#1D6FB8","tasks")+kpi(docs.length,"documents attendus (> 5 j)","#9A7610","docs")+kpi(svMoney(cx.total),"à remettre au cabinet","#0E7A5F","caisse")+'</div>'
+    +sec("📅 À déposer cette semaine ("+week.length+")",week.slice(0,15).map(dl).join(""),"Rien à déposer dans les 7 prochains jours.")
+    +sec("🔴 En retard — les plus anciennes ("+late.length+")",late.slice(0,10).map(dl).join("")+(late.length>10?'<button class="chip" data-act="sv_s_tab" data-v="decl" style="margin-top:8px">Voir les '+late.length+' déclarations en retard</button>':''),"Aucune déclaration en retard. 👏")
+    +sec("✅ Mes tâches du jour ("+tasks.length+")",tasks.slice(0,10).map(function(k){return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:13px"><b style="flex:1">'+esc(k.titre||k.title||k.objet||"Tâche")+'</b><span style="color:var(--muted)">'+esc(k.dossier||k.client||"")+'</span>'+(k.echeance?'<span class="mono" style="color:'+(k.echeance<t?"#B42318":"#5C6B66")+'">'+svD(k.echeance)+'</span>':'')+'</div>';}).join("")+(tasks.length?'<button class="chip" data-act="sv_s_tab" data-v="tasks" style="margin-top:8px">Ouvrir mes tâches</button>':''),"Aucune tâche pour aujourd'hui.")
+    +sec("📂 Documents attendus des clients ("+docs.length+")",docs.slice(0,8).map(function(d){return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:13px"><b>'+esc(d.client_name||"")+'</b><span style="flex:1">'+esc((d.types||[]).join(", "))+'</span><span style="color:var(--muted)">'+Math.floor((Date.now()-new Date(d.created_at))/86400000)+' j</span><button class="chip" data-act="sv_s_doc_rel" data-id="'+d.id+'" style="padding:3px 9px;font-size:11px;color:#0E7A5F;border-color:#0E7A5F">Relancer</button></div>';}).join("")+(docs.length?'<div style="margin-top:8px">'+drgBtn()+'</div>':''),"Aucun document en attente depuis plus de 5 jours.")
+    +sec("💰 Honoraires à encaisser "+y+" — plus gros soldes",imp.map(function(c){var P=c.pay[y];return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:13px;align-items:center"><b style="flex:1">'+esc(c.n)+'</b><span class="mono" style="color:#B5530A">'+svMoney(P.exp-P.col)+'</span><button class="chip" data-act="sv_s_pay" data-cid="'+c.id+'" style="padding:3px 9px;font-size:11px">Paiement</button></div>';}).join(""),"Aucun solde d'honoraires en attente.");}
+
+/* =========================== 6b. AGENDA (vue calendrier) =========================== */
+var AG={m:null};
+function agMonth(){if(!AG.m){var d=new Date();AG.m=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}return AG.m;}
+function agShift(n){var p=agMonth().split("-"),d=new Date(+p[0],+p[1]-1+n,1);AG.m=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}
+function agendaHtml(items,staff){var ym=agMonth(),p=ym.split("-"),Y=+p[0],M=+p[1]-1,first=new Date(Y,M,1),start=(first.getDay()+6)%7,days=new Date(Y,M+1,0).getDate(),t=todayISO();
+  var byDay={};items.forEach(function(it){if(String(it.dt).slice(0,7)!==ym)return;var d=+String(it.dt).slice(8,10);(byDay[d]=byDay[d]||[]).push(it);});
+  var mois=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"][M];
+  var cells="";for(var i=0;i<start;i++)cells+='<div class="agc agx"></div>';
+  for(var d=1;d<=days;d++){var iso=ym+"-"+String(d).padStart(2,"0"),l=byDay[d]||[],nd=l.filter(function(x){return !x.done;}).length;
+    cells+='<div class="agc'+(iso===t?' agt':'')+'"><div class="agd"><span>'+d+'</span>'+(l.length?'<span class="agn" style="background:'+(nd?(iso<t?"#B42318":"#B5530A"):"#0E7A5F")+'">'+(nd?nd:"✓")+'</span>':'')+'</div>'
+      +l.slice(0,4).map(function(x){return '<button class="agi" data-act="'+(staff?(x.done?"sv_s_cli":"sv_s_decl"):"sv_decl")+'" data-cid="'+x.cid+'" data-key="'+esc(x.key)+'" title="'+esc(x.n+" — "+x.l)+'" style="'+(x.done?"opacity:.55;text-decoration:line-through":"")+'">'+esc(x.n)+'<span> · '+esc(x.s||x.l)+'</span></button>';}).join("")
+      +(l.length>4?'<div style="font-size:10.5px;color:var(--muted);padding:1px 4px">+'+(l.length-4)+' autres</div>':'')+'</div>';}
+  return '<style>.agw{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.agh{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;text-transform:uppercase}.agc{background:#fff;border:1px solid var(--line);border-radius:8px;min-height:92px;padding:4px;overflow:hidden}.agx{background:transparent;border:0}.agt{border:2px solid #0E7A5F}.agd{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:#14201C;margin-bottom:2px}.agn{color:#fff;border-radius:9px;font-size:10px;padding:0 6px;line-height:16px}.agi{display:block;width:100%;text-align:left;font-size:10.5px;line-height:1.3;padding:2px 4px;border-radius:5px;background:#F3F1EA;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}.agi span{font-weight:400;color:var(--muted)}@media(max-width:640px){.agc{min-height:58px}.agi{font-size:9.5px}}</style>'
+    +'<div class="card" style="padding:12px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><button class="chip" data-act="ag_prev">‹</button><div class="ff" style="font-size:18px;font-weight:700;flex:1;text-align:center">'+mois+' '+Y+'</div><button class="chip" data-act="ag_today">Aujourd\'hui</button><button class="chip" data-act="ag_next">›</button></div>'
+    +'<div class="agw">'+["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"].map(function(x){return '<div class="agh">'+x+'</div>';}).join("")+cells+'</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-top:8px">Pastille rouge = en retard · orange = à venir · ✓ vert = tout déposé. Cliquez sur une déclaration pour la déposer.</div></div>';}
+function agCabItems(){return echFiltered().map(function(d){return {dt:svIso(d.date),l:d.label,s:svShort?svShort(d):d.label,n:d.client.dossier,cid:d.client.id,key:d.key,done:!!S.done[d.key]};});}
+function agStaffItems(){var rows=svStaffDeclRows().filter(function(x){if(!smartMatch(SV.sq,x.c.n))return false;if(SV.scat&&SV.scat!=="all"&&svDeclCat(x.d.key)!==SV.scat)return false;return true;});
+  return rows.map(function(x){return {dt:x.d.dt,l:x.d.l,n:x.c.n,cid:x.c.id,key:x.d.key,done:x.k==="done"};});}
+function viewToggle(cur,act){return '<div class="seg">'+[["list","☰ Liste"],["agenda","📅 Agenda"]].map(function(a){return '<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';}
+
+/* =========================== 7a. RAPPORT MENSUEL =========================== */
+function repMonths(){var out=[],d=new Date();for(var i=0;i<12;i++){var x=new Date(d.getFullYear(),d.getMonth()-i,1);out.push(x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0"));}return out;}
+function repLabel(ym){var p=ym.split("-");return ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][+p[1]-1]+" "+p[0];}
+function repDefault(){var d=new Date();if(d.getDate()<=7){var x=new Date(d.getFullYear(),d.getMonth()-1,1);return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0");}return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}
+function repData(ym){var R={ym:ym,dep:{},depN:0,ech:{tot:0,ok:0,list:[]},enc:{hon:0,frais:0,modes:{},n:0},staff:{decl:0,pay:0,doc:0,client:0,rem:0,dem:0},newCli:[]};
+  Object.keys(S.done||{}).forEach(function(k){var v=S.done[k];if(v&&typeof v==="object"&&String(v.d||"").slice(0,7)===ym){var t=k.split("|")[2];R.dep[t]=(R.dep[t]||0)+1;R.depN++;}});
+  var y=+ym.slice(0,4);[y-1,y].forEach(function(yy){svWithYear(yy,function(){clients().forEach(function(c){buildDeadlines(c).forEach(function(dl){if(svIso(dl.date).slice(0,7)!==ym)return;R.ech.tot++;if(S.done[dl.key])R.ech.ok++;else R.ech.list.push({n:c.dossier,l:dl.label+(yy!==y?" ("+yy+")":""),dt:svIso(dl.date)});});});});});
+  (S.paylog||[]).forEach(function(p){if(String(p.date||"").slice(0,7)!==ym)return;var m=+p.montant||0;if(p.k==="FRAIS")R.enc.frais+=m;else R.enc.hon+=m;R.enc.n++;var mo=p.mode||"—";R.enc.modes[mo]=(R.enc.modes[mo]||0)+m;});
+  (SV.rows||[]).forEach(function(r){if(String(r.created_at||"").slice(0,7)!==ym||r.statut==="rejete")return;if(r.type==="declaration")R.staff.decl++;else if(r.type==="paiement")R.staff.pay++;else if(r.type==="document")R.staff.doc++;else if(r.type==="client")R.staff.client++;});
+  (DR.rows||[]).forEach(function(r){if(String(r.created_at||"").slice(0,7)===ym)R.staff.rem++;});(SV.docs||[]).forEach(function(d){if(String(d.created_at||"").slice(0,7)===ym)R.staff.dem++;});
+  (S.custom||[]).forEach(function(c){var at=(c.staffNew&&c.staffNew.at)||(+c.id>1e12?new Date(+c.id).toISOString():"");if(String(at).slice(0,7)===ym)R.newCli.push(c.dossier);});
+  var rows=svComputeRows(),exp=0,col=0,ret=0;rows.forEach(function(x){exp+=x.e;col+=x.cl;ret+=x.r;});R.reste=Math.max(0,exp-col);R.retard=ret;
+  R.frReste=(S.frais||[]).reduce(function(s,f){return s+frReste(f);},0);return R;}
+function repHtml(R){var tl={TVA:"TVA",SALAIRES:"Salaires",BILAN:"Bilan",IS:"Acomptes IS",FONCIER:"Revenus fonciers",CMPM:"Cot. min. sociétés",CMPP:"Cot. min. P. physique",IR:"IR",TIERS:"Rém. tiers",TP:"Taxe pro.",RAS:"Ret. source",RASF:"RAS fonciers",DELAIS:"Délais paiement",CPU:"CPU",AGO:"AGO"};
+  var cab=svCabHead(),tr=function(a,b){return '<tr><td>'+a+'</td><td class="r"><b>'+b+'</b></td></tr>';};
+  return '<div class="fiche"><div class="fh"><div><div class="nm">Rapport mensuel — '+esc(repLabel(R.ym))+'</div><div class="sb">Établi le '+fmtDate(new Date())+'</div></div><div class="cab">'+esc(cab.raison||"FID INFO COM")+'</div></div>'
+    +'<h3>Déclarations</h3><table class="pp">'+tr("Déposées pendant le mois",R.depN)+Object.keys(R.dep).sort().map(function(t){return tr("&nbsp;&nbsp;· "+esc(tl[t]||t),R.dep[t]);}).join("")+tr("Échéances du mois",R.ech.tot)+tr("&nbsp;&nbsp;· déposées",R.ech.ok)+tr("&nbsp;&nbsp;· non déposées",R.ech.list.length)+tr("Total en retard à ce jour (exercice "+S.year+")",R.retard)+'</table>'
+    +(R.ech.list.length?'<h3>Échéances du mois non déposées</h3><table class="pp"><tr><th>Dossier</th><th>Déclaration</th><th>Échéance</th></tr>'+R.ech.list.slice(0,60).map(function(x){return '<tr><td>'+esc(x.n)+'</td><td>'+esc(x.l)+'</td><td>'+svD(x.dt)+'</td></tr>';}).join("")+'</table>':'')
+    +'<h3>Encaissements</h3><table class="pp">'+tr("Honoraires encaissés",svMoney(R.enc.hon))+tr("Frais divers encaissés",svMoney(R.enc.frais))+tr("Total encaissé ("+R.enc.n+" opérations)",svMoney(R.enc.hon+R.enc.frais))+Object.keys(R.enc.modes).map(function(m){return tr("&nbsp;&nbsp;· "+esc(m),svMoney(R.enc.modes[m]));}).join("")+tr("Reste à encaisser — honoraires "+S.year,svMoney(R.reste))+tr("Reste à encaisser — frais divers",svMoney(R.frReste))+'</table>'
+    +'<h3>Activité du collaborateur</h3><table class="pp">'+tr("Déclarations déposées",R.staff.decl)+tr("Paiements encaissés",R.staff.pay)+tr("Documents scannés déposés",R.staff.doc)+tr("Nouveaux clients proposés",R.staff.client)+tr("Remarques sur déclarations",R.staff.rem)+tr("Demandes de documents envoyées",R.staff.dem)+'</table>'
+    +(R.newCli.length?'<h3>Nouveaux clients</h3><p style="font-size:12.5px">'+R.newCli.map(esc).join(", ")+'</p>':'')+'</div>';}
+function repModal(){var m=S.modal,R=repData(m.ym);var opts=repMonths().map(function(x){return '<option value="'+x+'"'+(x===m.ym?" selected":"")+'>'+repLabel(x)+'</option>';}).join("");
+  return '<div class="ov"><div class="modal" data-stop style="max-width:760px"><div class="mh"><div><h3 class="ff">Rapport mensuel</h3><div class="meta"><span>Déclarations, encaissements et activité de l\'équipe</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="padding:16px 22px;max-height:78vh;overflow:auto"><div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><select class="ipt" id="rep_ym" style="width:auto">'+opts+'</select><button class="btn-primary" data-act="rep_print">'+ic("printer","width:14px;height:14px")+' Imprimer / PDF</button></div><style>#overlay .fiche h3{margin:14px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#0E7A5F}#overlay .pp{width:100%;border-collapse:collapse;font-size:12.5px}#overlay .pp td,#overlay .pp th{padding:5px 6px;border-bottom:1px solid #eee;text-align:left}#overlay .pp .r{text-align:right}#overlay .fh{display:flex;justify-content:space-between}#overlay .nm{font-weight:700;font-size:16px}</style>'+repHtml(R)+'</div></div></div>';}
+
+/* =========================== 7b. SITUATION CLIENT (WhatsApp / impression) =========================== */
+function sitCab(cid){var c;SV_ALL++;try{c=clients().find(function(x){return +x.id===+cid;});}finally{SV_ALL--;}if(!c)return null;var t=todayISO(),dl=buildDeadlines(c);
+  var due=dl.filter(function(d){return svIso(d.date)<=t;}),ok=due.filter(function(d){return S.done[d.key];}),miss=due.filter(function(d){return !S.done[d.key];});
+  var exp=0,col=0;try{exp=expectedFor(c);col=collFor(c);}catch(e){}var ft=frClientTot(c.id);
+  return {n:c.dossier,tel:c.tel||"",y:S.year,ok:ok.length,due:due.length,miss:miss.map(function(d){return {l:d.label,dt:svIso(d.date)};}),exp:exp,col:col,fr:ft.r};}
+function sitStaff(cid){var sn=svSnap(),c=sn&&(sn.clients.find(function(x){return +x.id===+cid;}));if(!c)return null;var t=todayISO(),y=sn.y;
+  var d=(c.d||[]).filter(function(x){return (x.y||y)==y&&x.dt<=t;}),ok=d.filter(function(x){return x.done||svMineFor(x.key).some(function(r){return r.statut!=="rejete";});});
+  var P=(c.pay||{})[y]||{exp:0,col:0},fr=frStaffItems().filter(function(f){return +f.cid===+cid;}).reduce(function(s,f){return s+f.r;},0);
+  return {n:c.n,tel:(c.i||{}).tel||"",y:y,ok:ok.length,due:d.length,miss:d.filter(function(x){return ok.indexOf(x)<0;}).map(function(x){return {l:x.l,dt:x.dt};}),exp:P.exp,col:P.col,fr:fr};}
+function sitMsg(s){var cab=SV.staff?((svSnap()||{}).cab||{}):svCabHead(),r=Math.max(0,s.exp-s.col);
+  var txt="Bonjour "+s.n+",\n\nVoici la situation de votre dossier au "+fmtDate(new Date())+" :\n\n📋 Déclarations "+s.y+" échues : "+s.ok+" déposée(s) sur "+s.due+".";
+  if(s.miss.length)txt+="\nÀ régulariser :\n"+s.miss.slice(0,10).map(function(m){return "• "+m.l+" (échéance "+svD(m.dt)+")";}).join("\n")+(s.miss.length>10?"\n• … et "+(s.miss.length-10)+" autre(s)":"");
+  txt+="\n\n💰 Honoraires "+s.y+" : "+svMoney(s.exp)+" — réglé "+svMoney(s.col)+" — reste "+svMoney(r)+".";if(s.fr>0.5)txt+="\nFrais divers restant dus : "+svMoney(s.fr)+".";
+  txt+="\n\nPour toute question"+(cab.tel?" : "+cab.tel:", n'hésitez pas à nous contacter")+".\nCordialement,\n"+(cab.raison||"FID INFO COM");return txt;}
+function sitSend(s){var txt=sitMsg(s),n=waNumbers(s.tel||"")[0];svOpen("https://wa.me/"+(n||"")+"?text="+encodeURIComponent(txt));}
+function sitPrint(s){var r=Math.max(0,s.exp-s.col);svPrintDoc("Situation "+s.n,'<div class="fiche"><div class="fh"><div><div class="nm">Situation du dossier — '+esc(s.n)+'</div><div class="sb">au '+fmtDate(new Date())+'</div></div></div>'
+  +'<h3>Déclarations '+s.y+' échues</h3><p>'+s.ok+' déposée(s) sur '+s.due+'</p>'+(s.miss.length?'<table class="pp"><tr><th>À régulariser</th><th>Échéance</th></tr>'+s.miss.map(function(m){return '<tr><td>'+esc(m.l)+'</td><td>'+svD(m.dt)+'</td></tr>';}).join("")+'</table>':'<p>Aucune déclaration en retard.</p>')
+  +'<h3>Honoraires '+s.y+'</h3><table class="pp"><tr><td>Honoraires dus</td><td class="r">'+svMoney(s.exp)+'</td></tr><tr><td>Réglé</td><td class="r">'+svMoney(s.col)+'</td></tr><tr><td><b>Reste</b></td><td class="r"><b>'+svMoney(r)+'</b></td></tr>'+(s.fr>0.5?'<tr><td>Frais divers restant dus</td><td class="r">'+svMoney(s.fr)+'</td></tr>':'')+'</table></div>');}
+function sitBar(cid,staff){return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px"><button class="chip" data-act="sit_wa" data-cid="'+cid+'" data-s="'+(staff?1:0)+'" style="color:#0E7A5F;border-color:#0E7A5F">'+ic("whatsapp","width:13px;height:13px")+' Envoyer la situation (WhatsApp)</button><button class="chip" data-act="sit_print" data-cid="'+cid+'" data-s="'+(staff?1:0)+'">'+ic("printer","width:13px;height:13px")+' Imprimer la situation</button></div>';}
+function v12InjectTop(h,blk){var i=h.indexOf('<div class="mb"');var j=i>=0?h.indexOf('>',i):-1;return j>0?h.slice(0,j+1)+blk+h.slice(j+1):h;}
+var _sitMF=svModalFiche;svModalFiche=function(){var h=_sitMF();try{h=v12InjectTop(h,sitBar(S.modal.cid,false));}catch(e){}return h;};
+var _sitSC=svStaffCliModal;svStaffCliModal=function(cid){var h=_sitSC(cid);try{if(h)h=v12InjectTop(h,sitBar(cid,true));}catch(e){}return h;};
+
+/* =========================== 8. CONTRÔLE D'ACCÈS =========================== */
+function dgiPwCell(so){so=so||{};return so.dgiHid?'<span style="color:var(--muted);font-size:12px">🔒 masqué par le cabinet</span>':dgiPwHtml(so.dgiPass);}
+var _acSB=svBuildSnapshot;svBuildSnapshot=function(s){var r=_acSB(s);try{if(r&&r.clients)r.clients.forEach(function(c){(c.d||[]).forEach(function(e){var a=accFor(c.id,e.key);if(a.length)e.a=a[a.length-1].path;});});}catch(e){}return r;};
+var _acTBP=teamBuildPayload;teamBuildPayload=function(s){var p=_acTBP(s)||{};try{var cab=cabinetGet();p.idle=cab.staffIdle==null?30:+cab.staffIdle;}catch(e){}return p;};
+var IDLE={last:Date.now()};
+["mousemove","keydown","touchstart","click","scroll"].forEach(function(ev){window.addEventListener(ev,function(){IDLE.last=Date.now();},{passive:true});});
+setInterval(function(){try{if(typeof session==="undefined"||!session||!sb)return;var lim=SV.staff?(((SV.me||{}).payload||{}).idle):(cabinetGet().cabIdle||0);if(lim==null)lim=30;lim=+lim||0;
+  if(lim>0&&Date.now()-IDLE.last>lim*60000){IDLE.last=Date.now();try{localStorage.setItem("fid_idle_msg","1");}catch(e){}sb.auth.signOut().then(function(){location.reload();},function(){location.reload();});}}catch(e){}},30000);
+setTimeout(function(){try{if(localStorage.getItem("fid_idle_msg")){localStorage.removeItem("fid_idle_msg");showOk("Déconnexion automatique après inactivité. Reconnectez-vous.");}}catch(e){}},2500);
+/* encadré sauvegarde + sécurité sur le tableau de bord */
+var _v12DBC=dataBackupCard;dataBackupCard=function(){var h=_v12DBC(),cab=cabinetGet(),ab=cab.autoBk;
+  var sel=function(id,cur,opts){return '<select class="ipt" id="'+id+'" style="width:auto;padding:6px 8px">'+opts.map(function(o){return '<option value="'+o[0]+'"'+(String(cur)===String(o[0])?" selected":"")+'>'+o[1]+'</option>';}).join("")+'</select>';};
+  var add='<div style="margin-top:14px;padding:14px 16px;border:1px solid #BFE0D2;background:#F2FAF6;border-radius:12px"><div style="font-weight:700;font-size:13.5px;color:#0E7A5F;margin-bottom:6px">🛡️ Sauvegarde automatique quotidienne (en ligne, 30 jours)</div>'
+    +'<div style="font-size:12.5px;margin-bottom:8px">'+(ab?'Dernière : <b>'+svDT(ab.at)+'</b>'+(ab.size?' · '+(ab.size/1024/1024).toFixed(2)+' Mo':''):'<b>Aucune encore</b> — elle se fait automatiquement à l\'ouverture du logiciel.')+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip" data-act="ab_now">'+ic("down","width:13px;height:13px")+' Sauvegarder maintenant</button><button class="chip" data-act="ab_list">Voir / restaurer une date</button></div><div id="ab_list" style="margin-top:10px"></div>'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-top:6px">Copie complète (clients, dépôts, honoraires, frais, saisies et remarques de l\'équipe) faite chaque jour à la première ouverture. Les sauvegardes Drive restent recommandées une fois par semaine (copie hors du serveur).</div></div>'
+    +'<div style="margin-top:14px;padding:14px 16px;border:1px solid var(--line);background:#fff;border-radius:12px"><div style="font-weight:700;font-size:13.5px;margin-bottom:8px">🔒 Sécurité</div>'
+    +'<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;align-items:center"><label style="display:flex;gap:8px;align-items:center">Déconnexion auto. du collaborateur après '+sel("sec_staff",cab.staffIdle==null?30:cab.staffIdle,[[0,"jamais"],[15,"15 min"],[30,"30 min"],[60,"1 h"],[120,"2 h"]])+' d\'inactivité</label>'
+    +'<label style="display:flex;gap:8px;align-items:center">Déconnexion auto. du cabinet après '+sel("sec_cab",cab.cabIdle||0,[[0,"jamais"],[15,"15 min"],[30,"30 min"],[60,"1 h"],[120,"2 h"]])+'</label></div>'
+    +'</div>';
+  var k=h.lastIndexOf('</div>');return k>0?h.slice(0,k)+add+h.slice(k):h+add;};
+
+/* =========================== RACCORDEMENTS =========================== */
+var _v12AI=svAdminInit;svAdminInit=function(){_v12AI();if(svAdmin()){setTimeout(function(){abRun(false);},20000);msSubRealtime();msInitAll();}};
+setInterval(function(){try{if(!SV.staff)abRun(false);}catch(e){}},3600000);
+/* rendu : sélecteurs, barres de lot, agenda */
+var _v12RV=renderView;renderView=function(){_v12RV.apply(this,arguments);if(SV.staff)return;try{
+  if(S.tab==="ech"){var list=document.getElementById("echlist"),card=list&&list.closest(".card");if(card&&!document.getElementById("ech_tools")){
+      card.insertAdjacentHTML("beforebegin",'<div id="ech_tools" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'+viewToggle(S.echView||"list","ech_view")+'<button class="chip" data-act="ech_selall">☑ Sélectionner toutes les non déposées (filtre)</button></div>'+lotBar(Object.keys(ECH_SEL).length,"ech"));
+      if(S.echView==="agenda"){card.style.display="none";card.insertAdjacentHTML("afterend",'<div id="ech_agenda">'+agendaHtml(agCabItems(),false)+'</div>');var sa=document.querySelector('[data-act="ech_selall"]');if(sa)sa.style.display="none";}}}
+  if(S.tab==="suivi"){var rb=document.querySelector('#view button[data-act="sv_relgrp_open"]');if(rb&&!document.querySelector('#view [data-act="rep_open"]'))rb.insertAdjacentHTML("beforebegin",'<button class="chip" data-act="rep_open">📊 Rapport du mois</button>');
+    var d=new Date();if(d.getDate()<=7&&!document.getElementById("rep_banner")){var w=document.querySelector("#view .wrap .head");if(w)w.insertAdjacentHTML("afterend",'<div id="rep_banner" class="card mt4" style="padding:10px 16px;display:flex;gap:10px;align-items:center;border-left:4px solid #1D6FB8"><span style="flex:1;font-size:13px">📊 Le rapport de <b>'+repLabel(repDefault())+'</b> est prêt.</span><button class="btn-primary" data-act="rep_open">Voir le rapport</button></div>');}}
+}catch(e){}};
+var _v12SR=svStaffRender;svStaffRender=function(k){var r=_v12SR.apply(this,arguments);try{var root=document.getElementById("svStaff");if(!root||SV.tab!=="decl")return r;
+  var list=root.querySelector("#svs_list"),card=list&&list.closest(".card");if(card&&!root.querySelector("#sd_tools")){
+    card.insertAdjacentHTML("beforebegin",'<div id="sd_tools" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0">'+viewToggle(SV.dview||"list","sd_view")+'<button class="chip" data-act="sd_selall">☑ Tout sélectionner (filtre)</button></div>'+lotBar(Object.keys(SV.dsel).length,"sd"));
+    var lb=root.querySelector("#sd_lotbar");if(lb){var bt=lb.querySelector('[data-act="sd_lotgo"]');if(bt)bt.innerHTML=ic("check","width:14px;height:14px")+" Déposer la sélection";}
+    if(SV.dview==="agenda"){card.style.display="none";card.insertAdjacentHTML("afterend",'<div id="sd_agenda">'+agendaHtml(agStaffItems(),true)+'</div>');var sa=root.querySelector('[data-act="sd_selall"]');if(sa)sa.style.display="none";}}}catch(e){}return r;};
+var _v12RM=renderModal;renderModal=function(){if(S.modal&&S.modal.type==="rep"){document.getElementById("overlay").innerHTML=repModal();return;}_v12RM();};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t)return;var a=t.dataset.act;
+  if(a==="ab_now"){abRun(true);}else if(a==="ab_list"){abShowList();}else if(a==="ab_dl"){abDownload(t.dataset.f);}else if(a==="ab_restore"){abRestore(t.dataset.f);}
+  else if(a==="hs_t"){HS.t=t.dataset.v;renderView();}else if(a==="hs_p"){HS.p=t.dataset.v;renderView();}
+  else if(a==="ech_view"){S.echView=t.dataset.v;renderView();}else if(a==="sd_view"){SV.dview=t.dataset.v;svStaffRender();}
+  else if(a==="ag_prev"||a==="ag_next"||a==="ag_today"){if(a==="ag_today")AG.m=null;else agShift(a==="ag_prev"?-1:1);if(SV.staff)svStaffRender();else renderView();}
+  else if(a==="ech_selall"){echFiltered().forEach(function(d){if(!S.done[d.key])ECH_SEL[d.key]=1;});var l=document.getElementById("echlist");if(l)l.innerHTML=echRows();echLotUpdate();}
+  else if(a==="ech_lotclear"){ECH_SEL={};var l2=document.getElementById("echlist");if(l2)l2.innerHTML=echRows();echLotUpdate();}
+  else if(a==="ech_lotgo"){echLotGo();}
+  else if(a==="sd_selall"){var rows=svStaffDeclRows().filter(function(x){if(!smartMatch(SV.sq,x.c.n))return false;if(SV.scat&&SV.scat!=="all"&&svDeclCat(x.d.key)!==SV.scat)return false;var f=SV.sf;if(f==="todo")return x.k==="retard"||x.k==="urgent"||x.k==="venir";if(f==="all")return true;return x.k===f;});
+    rows.forEach(function(x){if(x.k!=="done"&&x.k!=="pend")SV.dsel[x.d.key]=1;});svStaffLists();staffLotUpdate();}
+  else if(a==="sd_lotclear"){SV.dsel={};svStaffLists();staffLotUpdate();}else if(a==="sd_lotgo"){staffLotGo(t);}
+  else if(a==="acc_open"){v12OpenPath(t.dataset.p);}
+  else if(a==="acc_del"){if(SV.staff)return;var p=t.dataset.p;if(!window.confirm("Supprimer cet accusé de dépôt ?"))return;Object.keys(S.docs||{}).forEach(function(k){S.docs[k]=(S.docs[k]||[]).filter(function(m){return m.path!==p;});});save("docs");try{sb.storage.from(DOC_BUCKET).remove([p]);}catch(_e){}renderModal();showOk("Accusé supprimé.");}
+  else if(a==="rep_open"){S.modal={type:"rep",ym:repDefault()};renderModal();}else if(a==="rep_print"){var R=repData(S.modal.ym);svPrintDoc("Rapport "+repLabel(S.modal.ym),repHtml(R));}
+  else if(a==="sit_wa"||a==="sit_print"){var s=t.dataset.s==="1"?sitStaff(+t.dataset.cid):sitCab(+t.dataset.cid);if(!s){showErr("Client introuvable.");return;}if(a==="sit_wa")sitSend(s);else sitPrint(s);}});
+document.addEventListener("change",function(e){var t=e.target;if(!t)return;
+  if(t.classList&&t.classList.contains("ech_sel")){if(t.checked)ECH_SEL[t.dataset.key]=1;else delete ECH_SEL[t.dataset.key];echLotUpdate();}
+  else if(t.classList&&t.classList.contains("sd_sel")){if(t.checked)SV.dsel[t.dataset.key]=1;else delete SV.dsel[t.dataset.key];staffLotUpdate();}
+  else if(t.id==="rep_ym"&&S.modal&&S.modal.type==="rep"){S.modal.ym=t.value;renderModal();}
+  else if(t.id==="sec_staff"){cabinetSet("staffIdle",+t.value);showOk("Réglage enregistré (appliqué au collaborateur à la prochaine mise à jour de sa liste).");try{svSchedulePush(true);}catch(_e){}}
+  else if(t.id==="sec_cab"){cabinetSet("cabIdle",+t.value);showOk("Réglage enregistré.");}
+  else if(t.hasAttribute&&t.hasAttribute("data-dgihide")){dgiSave(+t.dataset.cid,"dgiHide",t.checked?"1":"");showOk(t.checked?"Mot de passe masqué au collaborateur.":"Mot de passe visible par le collaborateur.");try{svSchedulePush(true);}catch(_e){}}
+  else if(t.id==="sv_d_acc"&&t.files&&t.files[0]&&S.modal){var m=S.modal,f=t.files[0];showOk("Envoi de l'accusé…");accUpload(f,m.cid,m.key).then(function(a){accAddDoc(m.cid,a,"Cabinet");renderModal();showOk("Accusé joint à la déclaration.");},function(er){showErr("Envoi impossible : "+(er.message||er));});}});
+document.addEventListener("input",function(e){var t=e.target;if(t&&t.id==="hs_q"){HS.q=t.value;var b=document.getElementById("hs_body");if(b){var ae=t;renderView();var n=document.getElementById("hs_q");if(n){n.focus();n.setSelectionRange(n.value.length,n.value.length);}}}});
+
+/* =========================== RELANCE GROUPÉE DES DEMANDES DE DOCUMENTS (cabinet et collaborateur) ===========================
+   Toutes les demandes encore « en attente » sont regroupées par client : un seul message WhatsApp
+   par client reprend tous les documents attendus. « Relancer le suivant » enchaîne client après client.
+   Chaque relance est comptée sur la demande (nombre + date de la dernière relance). */
+var RG={days:"0",done:{}};
+function drgList(){return (SV.staff?SV.myDocs:SV.docs)||[];}
+function drgTel(cid){if(SV.staff){var sn=svSnap(),c=sn&&sn.clients.find(function(x){return +x.id===+cid;});return c?((c.i||{}).tel||""):"";}
+  var c2;SV_ALL++;try{c2=clients().find(function(x){return +x.id===+cid;});}finally{SV_ALL--;}return c2?(c2.tel||""):"";}
+function drgGroups(){var lim=+RG.days||0,g={};
+  drgList().forEach(function(d){if(d.statut!=="envoyee")return;var age=Math.floor((Date.now()-new Date(d.created_at))/86400000);if(age<lim)return;
+    var k=String(d.client_id);if(!g[k])g[k]={cid:d.client_id,n:d.client_name||"",reqs:[],types:[],per:[],notes:[],age:0,rel:0,last:""};var x=g[k];x.reqs.push(d);
+    (d.types||[]).forEach(function(t){if(x.types.indexOf(t)<0)x.types.push(t);});if(d.periode&&x.per.indexOf(d.periode)<0)x.per.push(d.periode);
+    if(d.note&&(d.types||[])[0]!==d.note&&x.notes.indexOf(d.note)<0)x.notes.push(d.note);x.age=Math.max(x.age,age);x.rel=Math.max(x.rel,(+d.relances||0));if((d.last_relance||"")>x.last)x.last=d.last_relance||"";});
+  return Object.keys(g).map(function(k){var x=g[k];x.tel=drgTel(x.cid);x.ok=waNumbers(x.tel||"").length>0;return x;}).sort(function(a,b){return b.age-a.age;});}
+function drgCount(){return drgGroups().length;}
+function drgMsg(x){return "Rappel — "+svDocMsg(x.n,x.types,x.per.join(", "),x.notes.join(" — "));}
+function drgHtml(){var l=drgGroups(),closeAct=SV.staff?"sv_s_close":"close",todo=l.filter(function(x){return x.ok&&!RG.done[x.cid];}).length;
+  var seg='<div class="seg">'+[["0","Toutes"],["5","> 5 jours"],["10","> 10 jours"],["30","> 30 jours"]].map(function(a){return '<button data-act="drg_days" data-v="'+a[0]+'" style="'+(RG.days===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
+  var rows=l.map(function(x){var dn=RG.done[x.cid];return '<tr style="'+(dn?'background:#F2FAF6':'')+'"><td><b>'+esc(x.n)+'</b><div class="sub">'+esc(x.tel||"pas de téléphone")+'</div></td><td style="min-width:200px;font-size:12.5px">'+esc(x.types.join(", "))+(x.per.length?'<div class="sub">'+esc(x.per.join(", "))+'</div>':'')+'</td>'
+      +'<td class="mono" style="white-space:nowrap">'+x.age+' j</td><td style="font-size:11.5px;color:var(--muted);white-space:nowrap">'+(x.rel?x.rel+' relance(s)<br>'+(x.last?svDT(x.last):""):"jamais")+'</td>'
+      +'<td style="text-align:right;white-space:nowrap">'+(dn?'<span style="color:#0E7A5F;font-weight:700;font-size:12px">✓ relancé</span> ':'')+(x.ok?'<button class="chip" data-act="drg_send" data-cid="'+x.cid+'" style="color:#0E7A5F;border-color:#0E7A5F;padding:4px 10px;font-size:11.5px">'+ic("whatsapp","width:13px;height:13px")+' '+(dn?'Renvoyer':'Relancer')+'</button>':'<span style="font-size:11px;color:var(--faint)">ajoutez son téléphone dans la fiche</span>')+'</td></tr>';}).join("")
+    ||'<tr><td colspan="5" style="text-align:center;padding:22px;color:var(--faint)">Aucune demande de documents en attente pour ce filtre. ✓</td></tr>';
+  return '<div class="ov"><div class="modal" data-stop style="max-width:760px"><div class="mh"><div><h3 class="ff">Relance groupée — demandes de documents</h3><div class="meta"><span>'+l.length+' client(s) · '+l.reduce(function(s,x){return s+x.reqs.length;},0)+' demande(s) en attente</span></div></div><button class="xbtn" data-act="'+closeAct+'">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="padding:0;max-height:76vh;overflow:auto"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 18px">'+seg
+    +(todo?'<button class="btn-primary" data-act="drg_next" style="margin-left:auto;width:auto;flex:0 0 auto">'+ic("whatsapp","width:14px;height:14px")+' Relancer le suivant ('+todo+' restant'+(todo>1?'s':'')+')</button>':(l.length?'<span style="margin-left:auto;color:#0E7A5F;font-weight:700;font-size:13px">✓ Tous les clients ont été relancés</span>':''))+'</div>'
+    +'<div class="note" style="font-size:12px;color:var(--muted);padding:0 18px 10px">Un seul message par client, avec tous les documents attendus. Chaque clic ouvre WhatsApp avec le message prêt : envoyez-le, revenez ici, puis cliquez sur « Relancer le suivant ».</div>'
+    +'<table class="svt"><thead><tr><th>Client</th><th>Documents attendus</th><th>Depuis</th><th>Relances</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div></div>';}
+function drgRender(){if(SV.staff){if(SV.modal&&SV.modal.type==="drg")svStaffModal();}else if(S.modal&&S.modal.type==="drg")renderModal();}
+function drgSend(cid){var x=drgGroups().find(function(g){return +g.cid===+cid;});if(!x)return;var url=svWa(x.tel,drgMsg(x));if(!url){showErr("Pas de numéro de téléphone pour ce client.");return;}
+  svOpen(url);var now=new Date().toISOString();RG.done[x.cid]=1;
+  x.reqs.forEach(function(d){d.relances=(+d.relances||0)+1;d.last_relance=now;try{sb.from("staff_doc_requests").update({relances:d.relances,last_relance:now,updated_at:now}).eq("id",d.id).then(function(){});}catch(e){}});
+  drgRender();clearTimeout(RG.t);RG.t=setTimeout(function(){try{if(SV.staff)svStaffLoadExtra();else svLoadTeamExtra();}catch(e){}},4000);}
+var _drgRM=renderModal;renderModal=function(){if(S.modal&&S.modal.type==="drg"){document.getElementById("overlay").innerHTML=drgHtml();return;}_drgRM();};
+var _drgSM=svStaffModal;svStaffModal=function(){var o=document.getElementById("svOv"),m=SV.modal;if(o&&m&&m.type==="drg"){o.innerHTML=drgHtml();return;}return _drgSM();};
+function drgBtn(){var n=drgCount();return '<button class="'+(n?"btn-primary":"chip")+'" data-act="drg_open" style="width:auto;flex:0 0 auto"'+(n?'':' disabled')+'>📣 Relance groupée'+(n?' ('+n+' client'+(n>1?'s':'')+')':'')+'</button>';}
+var _drgDH=svStaffDocsHtml;svStaffDocsHtml=function(){return '<div style="display:flex;justify-content:flex-end;margin-top:14px">'+drgBtn()+'</div>'+_drgDH();};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t)return;var a=t.dataset.act;
+  if(a==="drg_open"){RG.done={};if(SV.staff){SV.modal={type:"drg"};svStaffModal();}else{S.modal={type:"drg"};renderModal();}}
+  else if(a==="drg_days"){RG.days=t.dataset.v;drgRender();}
+  else if(a==="drg_send"){drgSend(+t.dataset.cid);}
+  else if(a==="drg_next"){var x=drgGroups().find(function(g){return g.ok&&!RG.done[g.cid];});if(x)drgSend(x.cid);}});
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
