@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.12d · exonérations : cotisation minimale 36 mois, taxe professionnelle 5 ans · relance groupée des demandes — PRODUCTION EN LIGNE";
+const VERSION = "v2026.12e · demande de documents groupée · message de paiement après dépôt (cabinet) — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais","histlog"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -14600,7 +14600,7 @@ function vActivite(){var head=header("Activité de l'équipe","Travail réalisé
   var segD='<div class="seg">'+[["open","En attente ("+SV.docs.filter(function(d){return d.statut==="envoyee";}).length+")"],["recue","Reçues"],["all","Toutes"]].map(function(a){return '<button data-act="sv_df" data-v="'+a[0]+'" style="'+(SV.df===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
   return '<div class="wrap">'+head+'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center" class="mt5 mb4">'+segP+'<button class="chip" data-act="sv_team_reload" style="margin-left:auto">Actualiser</button></div>'+cards
     +'<div class="card mt5" style="padding:0;overflow:hidden"><div style="padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="sectit" style="margin:0">'+ic("clock")+' Journal d\'activité ('+ev.length+')</div><select class="ipt" id="sv_ac" style="width:auto">'+opts+'</select></div><div class="svx svscroll"><table class="svt"><thead><tr><th>Date</th><th>Collaborateur</th><th>Action</th><th>Dossier</th><th>Détail</th></tr></thead><tbody>'+evH+'</tbody></table></div></div>'
-    +'<div class="card mt5" style="padding:0;overflow:hidden"><div style="padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="sectit" style="margin:0">'+ic("folder")+' Demandes de documents aux clients</div>'+segD+drgBtn()+'</div><div class="svx svscroll"><table class="svt"><thead><tr><th>Demandée le</th><th>Par</th><th>Client</th><th>Documents</th><th>Statut</th><th>Remarque</th><th></th></tr></thead><tbody>'+dH+'</tbody></table></div></div></div>';}
+    +'<div class="card mt5" style="padding:0;overflow:hidden"><div style="padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="sectit" style="margin:0">'+ic("folder")+' Demandes de documents aux clients</div>'+segD+'<div style="display:flex;gap:8px;flex-wrap:wrap">'+drgBtn()+dgBtn()+'</div></div><div class="svx svscroll"><table class="svt"><thead><tr><th>Demandée le</th><th>Par</th><th>Client</th><th>Documents</th><th>Statut</th><th>Remarque</th><th></th></tr></thead><tbody>'+dH+'</tbody></table></div></div></div>';}
 function svDocBadge(d){return d.statut==="recue"?'<span class="svst" style="background:#E3F1EB;color:#0E7A5F">✓ Reçue</span>':d.statut==="annulee"?'<span class="svst" style="background:#F1EFE8;color:#8A8678">Annulée</span>':'<span class="svst" style="background:#FFF7E0;color:#9A7610">En attente</span>';}
 function svCaisseTable(cx,admin){return '<table class="svt"><thead><tr><th>Date</th><th>Mouvement</th><th>Nature</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Remis</th>'+(admin?'<th></th>':'')+'</tr></thead><tbody>'
   +(cx.mv.map(function(m){return '<tr><td class="mono">'+svD(m.d)+'</td><td>'+esc(m.l)+(m.rc?' <span class="sub" style="display:inline">· '+esc(m.rc)+'</span>':'')+'</td><td>'+esc(m.mo)+'</td><td class="n" style="color:#0a5f4a">'+(m.t==="enc"?svMoney(m.m):"")+'</td><td class="n" style="color:#1D6FB8">'+(m.t==="rem"?svMoney(m.m):"")+'</td>'+(admin?'<td style="text-align:right">'+(m.t==="rem"?'<button class="iconbtn" data-act="sv_rem_del" data-id="'+m.id+'" style="color:#C0392B" title="Supprimer cette remise">'+ic("trash","width:13px;height:13px")+'</button>':'')+'</td>':'')+'</tr>';}).join("")||'<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--faint)">Aucun mouvement.</td></tr>')+'</tbody></table>';}
@@ -16185,6 +16185,144 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
 
 document.addEventListener("change",function(e){var t=e.target;if(!t||!t.dataset||(t.dataset.soc!=="dateConst"&&t.dataset.soc!=="dateDebut"))return;
   setTimeout(function(){try{var m=S.modal;if(!m||m.type!=="infos")return;var c=clients().find(function(x){return x.id===m.id;});var el=document.getElementById("cm_info");if(el&&c)el.textContent=exoInfo(c)||"";if(t.dataset.soc==="dateDebut")renderView();}catch(_e){}},50);});
+/* =========================== DEMANDE DE DOCUMENTS GROUPÉE (cabinet et collaborateur) ===========================
+   En une fois : choisir les clients + les documents + la période → toutes les demandes sont créées.
+   Envoi : WhatsApp client après client (« Envoyer au suivant »), message unique pour une liste de
+   diffusion WhatsApp, ou e-mail groupé (destinataires en copie cachée). */
+var DG={sel:{},q:"",f:"all",types:null,per:"",note:"",sent:{},created:null};
+function dgClients(){if(SV.staff){var sn=svSnap();return ((sn&&sn.clients)||[]).map(function(c){var i=c.i||{};return {id:+c.id,n:c.n,tel:i.tel||"",email:((i.soc||{}).email)||"",reg:i.reg||"",obl:(i.obl||[]).join(" ")};});}
+  return clients().map(function(c){var so=((S.flags[c.id]||{}).societe)||{};return {id:+c.id,n:c.dossier,tel:c.tel||"",email:so.email||"",reg:c.reg||"",obl:c.hasSal?"Salaires":""};}).sort(function(a,b){return String(a.n).localeCompare(String(b.n));});}
+function dgFiltered(){return dgClients().filter(function(c){if(DG.f==="mens"&&c.reg!=="mensuelle")return false;if(DG.f==="trim"&&c.reg!=="trimestrielle")return false;if(DG.f==="sal"&&String(c.obl).indexOf("Salaires")<0)return false;return !DG.q||smartMatch(DG.q,c.n);});}
+function dgDefPer(){var d=new Date(),m=(d.getMonth()+11)%12,y=d.getMonth()===0?d.getFullYear()-1:d.getFullYear();return MOIS_FULL[m]+" "+y;}
+function dgHtml(){var closeAct=SV.staff?"sv_s_close":"close";if(DG.types===null)DG.types=SV_DOC_TYPES.slice(0,3);if(!DG.per)DG.per=dgDefPer();
+  if(DG.created)return dgSendHtml(closeAct);
+  var list=dgFiltered(),n=Object.keys(DG.sel).length;
+  var seg='<div class="seg">'+[["all","Tous"],["mens","TVA mensuelle"],["trim","TVA trimestrielle"],["sal","Avec salariés"]].map(function(a){return '<button data-act="dg_f" data-v="'+a[0]+'" style="'+(DG.f===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
+  var rows=list.map(function(c){return '<label style="display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--line-soft);font-size:13px;cursor:pointer"><input type="checkbox" class="dg_cli" data-id="'+c.id+'"'+(DG.sel[c.id]?" checked":"")+'><b style="flex:1">'+esc(c.n)+'</b><span style="font-size:11px;color:'+(waNumbers(c.tel).length?"var(--muted)":"#B42318")+'">'+(waNumbers(c.tel).length?esc(c.tel):"pas de WhatsApp")+'</span></label>';}).join("")||'<div class="note" style="padding:14px;font-size:12px">Aucun client pour ce filtre.</div>';
+  return '<div class="ov"><div class="modal" data-stop style="max-width:760px"><div class="mh"><div><h3 class="ff">Demande de documents groupée</h3><div class="meta"><span>Une seule fois pour plusieurs clients</span></div></div><button class="xbtn" data-act="'+closeAct+'">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="padding:16px 20px;max-height:80vh;overflow:auto">'
+    +'<div class="flbl">1. Documents demandés</div><div class="grid g2" style="gap:4px 14px">'+SV_DOC_TYPES.map(function(t){return '<label style="display:flex;gap:7px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" class="dg_type" value="'+esc(t)+'"'+(DG.types.indexOf(t)>=0?" checked":"")+'> '+esc(t)+'</label>';}).join("")+'</div>'
+    +'<div class="grid g2 mt3"><div><div class="flbl">Période concernée</div><input class="ipt" id="dg_per" value="'+esc(DG.per)+'"></div><div><div class="flbl">Autre / précision</div><input class="ipt" id="dg_note" value="'+esc(DG.note)+'" placeholder="facultatif"></div></div>'
+    +'<div class="flbl" style="margin-top:16px">2. Clients</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">'+seg+'<div class="search" style="flex:1;min-width:180px">'+ic("search")+'<input id="dg_q" placeholder="Rechercher…" value="'+esc(DG.q)+'"></div>'
+    +'<button class="chip" data-act="dg_all">☑ Tout cocher ('+list.length+')</button><button class="chip" data-act="dg_none">Tout décocher</button></div>'
+    +'<div id="dg_list" style="max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:0 8px">'+rows+'</div>'
+    +'<button class="btn-primary" data-act="dg_create" style="margin-top:14px;width:100%;justify-content:center"'+(n?'':' disabled')+'>'+ic("check","width:14px;height:14px")+' Créer les demandes pour '+n+' client'+(n>1?'s':'')+'</button>'
+    +'<div class="note" style="font-size:11.5px;margin-top:8px">Les demandes sont enregistrées en une seule fois (suivi, relances, réception). L\'étape suivante vous propose 3 façons d\'envoyer le message.</div></div></div></div>';}
+function dgGenericMsg(){var cab=(SV.staff?(svSnap()||{}).cab:svCabHead())||{},types=DG.created.types;
+  return "Bonjour,\n\nAfin de préparer votre dossier comptable"+(DG.created.per?" ("+DG.created.per+")":"")+", merci de nous transmettre :\n"+types.map(function(t){return "• "+t;}).join("\n")+(DG.created.note&&types[0]!==DG.created.note?"\n\n"+DG.created.note:"")+"\n\nVous pouvez nous les envoyer par WhatsApp"+(cab.email?" ou par e-mail à "+cab.email:"")+".\n\nMerci et bonne journée,\n"+(cab.raison||"FID INFO COM");}
+function dgSendHtml(closeAct){var C=DG.created,todo=C.list.filter(function(c){return waNumbers(c.tel).length&&!DG.sent[c.id];}).length,emails=C.list.filter(function(c){return c.email;});
+  var rows=C.list.map(function(c){var ok=waNumbers(c.tel).length,dn=DG.sent[c.id];return '<tr style="'+(dn?'background:#F2FAF6':'')+'"><td><b>'+esc(c.n)+'</b><div class="sub">'+esc(c.tel||"pas de téléphone")+'</div></td><td style="text-align:right;white-space:nowrap">'+(dn?'<span style="color:#0E7A5F;font-weight:700;font-size:12px">✓ envoyé</span> ':'')+(ok?'<button class="chip" data-act="dg_send" data-id="'+c.id+'" style="color:#0E7A5F;border-color:#0E7A5F;padding:3px 9px;font-size:11.5px">'+ic("whatsapp","width:12px;height:12px")+' '+(dn?"Renvoyer":"Envoyer")+'</button>':'<span style="font-size:11px;color:var(--faint)">—</span>')+'</td></tr>';}).join("");
+  return '<div class="ov"><div class="modal" data-stop style="max-width:720px"><div class="mh"><div><h3 class="ff">'+C.list.length+' demande(s) créée(s) ✓</h3><div class="meta"><span>Choisissez comment envoyer le message</span></div></div><button class="xbtn" data-act="'+closeAct+'">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="padding:16px 20px;max-height:80vh;overflow:auto">'
+    +'<div class="card" style="padding:12px 14px;margin-bottom:10px"><b>A. WhatsApp — un message personnalisé par client</b><div class="note" style="font-size:12px;margin:4px 0 8px">Chaque clic ouvre WhatsApp avec le message prêt au nom du client : envoyez, revenez, cliquez à nouveau.</div>'
+    +(todo?'<button class="btn-primary" data-act="dg_next" style="width:auto">'+ic("whatsapp","width:14px;height:14px")+' Envoyer au suivant ('+todo+' restant'+(todo>1?'s':'')+')</button>':'<span style="color:#0E7A5F;font-weight:700">✓ Tous les messages WhatsApp ont été ouverts</span>')+'</div>'
+    +'<div class="card" style="padding:12px 14px;margin-bottom:10px"><b>B. WhatsApp — un seul envoi pour tous (liste de diffusion)</b><div class="note" style="font-size:12px;margin:4px 0 8px">Dans WhatsApp : <b>⋮ → Nouvelle diffusion</b>, ajoutez vos clients une fois pour toutes. Ensuite : copiez le message ci-dessous, collez-le dans la diffusion → <b>un seul envoi</b> pour tous. (Message général, sans le nom du client.)</div><button class="chip" data-act="dg_copy">📋 Copier le message général</button></div>'
+    +'<div class="card" style="padding:12px 14px;margin-bottom:12px"><b>C. E-mail groupé</b><div class="note" style="font-size:12px;margin:4px 0 8px">'+emails.length+' client(s) sur '+C.list.length+' ont une adresse e-mail. Ils seront en copie cachée (aucun ne voit les autres).</div>'+(emails.length?'<button class="chip" data-act="dg_mail">✉️ Ouvrir l\'e-mail groupé ('+emails.length+')</button>':'')+'</div>'
+    +'<table class="svt"><thead><tr><th>Client</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div></div>';}
+function dgRender(){if(SV.staff){if(SV.modal&&SV.modal.type==="dg")svStaffModal();}else if(S.modal&&S.modal.type==="dg")renderModal();}
+function dgRefreshList(){var el=document.getElementById("dg_list");if(!el){dgRender();return;}dgRender();var q=document.getElementById("dg_q");if(q&&DG.q){q.focus();q.setSelectionRange(q.value.length,q.value.length);}}
+async function dgCreate(btn){var types=Array.prototype.slice.call(document.querySelectorAll(".dg_type:checked")).map(function(x){return x.value;}),per=svVal("dg_per").trim(),note=svVal("dg_note").trim();
+  if(!types.length&&!note){showErr("Cochez au moins un document.");return;}if(!types.length)types=[note];DG.types=types;DG.per=per;DG.note=note;
+  var all=dgClients(),list=all.filter(function(c){return DG.sel[c.id];});if(!list.length)return;
+  var who=SV.staff?((SV.me&&SV.me.name)||svEmail()):"Cabinet",email=SV.staff?svEmail():v12Who();
+  var rows=list.map(function(c){return {email:String(email||"").toLowerCase(),author_name:who,client_id:c.id,client_name:c.n,types:types,periode:per,note:note};});
+  if(btn)btn.disabled=true;var r=await sb.from("staff_doc_requests").insert(rows);if(btn)btn.disabled=false;
+  if(r.error){showErr("Enregistrement impossible : "+r.error.message);return;}
+  DG.created={list:list,types:types,per:per,note:note};DG.sent={};showOk(list.length+" demande(s) enregistrée(s).");
+  try{if(SV.staff)svStaffLoadExtra();else svLoadTeamExtra();}catch(e){}dgRender();}
+function dgSend(id){var c=DG.created.list.find(function(x){return +x.id===+id;});if(!c)return;var C=DG.created;
+  var url=svWa(c.tel,svDocMsg(c.n,C.types,C.per,C.note&&C.types[0]!==C.note?C.note:""));if(!url){showErr("Pas de numéro WhatsApp pour ce client.");return;}svOpen(url);DG.sent[c.id]=1;dgRender();}
+function dgCopy(){var t=dgGenericMsg();try{navigator.clipboard.writeText(t).then(function(){showOk("Message copié : collez-le dans votre liste de diffusion WhatsApp.");},function(){window.prompt("Copiez le message :",t);});}catch(e){window.prompt("Copiez le message :",t);}}
+function dgMail(){var C=DG.created,em=C.list.map(function(c){return c.email;}).filter(Boolean),subj="Documents à transmettre"+(C.per?" — "+C.per:"");
+  location.href="mailto:?bcc="+encodeURIComponent(em.join(","))+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(dgGenericMsg());}
+var _dgRM=renderModal;renderModal=function(){if(S.modal&&S.modal.type==="dg"){document.getElementById("overlay").innerHTML=dgHtml();return;}_dgRM();};
+var _dgSM=svStaffModal;svStaffModal=function(){var o=document.getElementById("svOv"),m=SV.modal;if(o&&m&&m.type==="dg"){o.innerHTML=dgHtml();return;}return _dgSM();};
+function dgBtn(){return '<button class="chip" data-act="dg_open" style="width:auto;flex:0 0 auto;color:#1D6FB8;border-color:#BFD7EE">📨 Demande groupée</button>';}
+var _dgDH=svStaffDocsHtml;svStaffDocsHtml=function(){var h=_dgDH();return h.replace('<div style="display:flex;justify-content:flex-end;margin-top:14px">','<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px">'+dgBtn());};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t)return;var a=t.dataset.act;
+  if(a==="dg_open"){DG.sel={};DG.created=null;DG.sent={};DG.q="";if(SV.staff){SV.modal={type:"dg"};svStaffModal();}else{S.modal={type:"dg"};renderModal();}}
+  else if(a==="dg_f"){DG.f=t.dataset.v;dgRender();}
+  else if(a==="dg_all"){dgFiltered().forEach(function(c){DG.sel[c.id]=1;});dgRender();}
+  else if(a==="dg_none"){DG.sel={};dgRender();}
+  else if(a==="dg_create"){dgCreate(t);}
+  else if(a==="dg_send"){dgSend(+t.dataset.id);}
+  else if(a==="dg_next"){var c=DG.created&&DG.created.list.find(function(x){return waNumbers(x.tel).length&&!DG.sent[x.id];});if(c)dgSend(c.id);}
+  else if(a==="dg_copy"){dgCopy();}else if(a==="dg_mail"){dgMail();}});
+document.addEventListener("change",function(e){var t=e.target;if(!t)return;
+  if(t.classList&&t.classList.contains("dg_cli")){if(t.checked)DG.sel[+t.dataset.id]=1;else delete DG.sel[+t.dataset.id];var b=document.querySelector('[data-act="dg_create"]');var n=Object.keys(DG.sel).length;if(b){b.disabled=!n;b.innerHTML=ic("check","width:14px;height:14px")+" Créer les demandes pour "+n+" client"+(n>1?"s":"");}}
+  else if(t.classList&&t.classList.contains("dg_type")){DG.types=Array.prototype.slice.call(document.querySelectorAll(".dg_type:checked")).map(function(x){return x.value;});}
+  else if(t.id==="dg_per"){DG.per=t.value;}else if(t.id==="dg_note"){DG.note=t.value;}});
+document.addEventListener("input",function(e){var t=e.target;if(t&&t.id==="dg_q"){DG.q=t.value;DG.per=svVal("dg_per")||DG.per;DG.note=svVal("dg_note");dgRefreshList();}});
+
+/* =========================== DEMANDE DE PAIEMENT APRÈS DÉPÔT (cabinet uniquement) ===========================
+   Quand une déclaration passe « déposée » pour un client qui paie au mois ou au trimestre, le cabinet
+   est invité à envoyer le message de paiement des honoraires de la période (Envoyer / Plus tard / Non).
+   Les dépôts faits par le collaborateur alimentent une liste « Messages de paiement à envoyer ».
+   Le collaborateur n'envoie plus aucun message de paiement. */
+function ppCand(key){if(SV.staff)return null;var p=String(key).split("|"),Y=+p[0],cid=+p[1],type=p[2],per=p[3]||"";var c=clients().find(function(x){return +x.id===cid;});if(!c||svHon(c)<=0)return null;
+  var r=payRythme(c);if(r==="annuel")return null;var ks=[],lbl="";
+  var TQ={T1:"1er",T2:"2e",T3:"3e",T4:"4e"};
+  if(type==="TVA"){
+    if(/^T[1-4]$/.test(per)){var q=+per[1];if(r==="trimestriel"){ks=[per];}else{ks=[MONTHS[q*3-3],MONTHS[q*3-2],MONTHS[q*3-1]];}lbl="du "+TQ[per]+" trimestre "+Y;}
+    else if(/^M\d+$/.test(per)){var m=+per.slice(1);if(m<1||m>12)return null;if(r==="trimestriel"){if(m%3)return null;ks=["T"+(m/3)];lbl="du "+TQ["T"+(m/3)]+" trimestre "+Y;}else{ks=[MONTHS[m-1]];lbl="de "+MOIS_FULL[m-1].toLowerCase()+" "+Y;}}}
+  else if(type==="BILAN"&&c.hasBilan){ks=["BILAN"];lbl="du bilan (exercice "+(/^\d{4}$/.test(per)?per:(Y-1))+")";}
+  if(!ks.length)return null;var reste=0;ks.forEach(function(k){var due=svWithYear(Y,function(){return svPeriodDue(c,k);}),paid=+S.pay[Y+"|"+cid+"|"+k]||0;reste+=Math.max(0,due-paid);});reste=Math.round(reste*100)/100;if(!(reste>0.5))return null;
+  var dl=null;try{dl=svFindDl(cid,key);}catch(e){}return {key:key,cid:cid,n:c.dossier,tel:c.tel||"",y:Y,k:ks.join("+"),ks:ks,lbl:lbl,reste:reste,decl:dl?dl.label:(type+" "+per),dt:((S.done[key]||{}).d)||todayISO()};}
+function ppArrears(x){/* périodes précédentes de l'année encore impayées (hors bilan) + période en cours */
+  try{var c=clients().find(function(z){return +z.id===+x.cid;});if(!c)return x.reste;if(x.ks[0]==="BILAN")return x.reste;
+    var plan=svWithYear(x.y,function(){return payPlan(c);}).map(function(p){return p.k;}).filter(function(k){return k!=="BILAN"&&k!=="ANNUEL";}),last=-1;
+    x.ks.forEach(function(k){last=Math.max(last,plan.indexOf(k));});if(last<0)return x.reste;var t=0;
+    plan.slice(0,last+1).forEach(function(k){var due=svWithYear(x.y,function(){return svPeriodDue(c,k);}),paid=+S.pay[x.y+"|"+x.cid+"|"+k]||0;t+=Math.max(0,due-paid);});return Math.round(t*100)/100;}catch(e){return x.reste;}}
+function ppMsg(x){var cab=svCabHead(),tot=ppArrears(x);
+  return "Bonjour "+x.n+",\n\nNous vous informons que votre déclaration « "+x.decl+" » a bien été déposée"+(x.dt?" le "+svD(x.dt):"")+".\n\nMerci de bien vouloir régler les honoraires "+x.lbl+" : "+svMoney(x.reste)+"."+(tot>x.reste+0.5?"\nAvec les périodes précédentes non encore réglées, le total à régler est de "+svMoney(tot)+".":"")+"\n\nVous pouvez régler en espèces au bureau, par virement ou par chèque."+(cab.tel?"\nPour toute question : "+cab.tel+".":"")+"\n\nCordialement,\n"+(cab.raison||"FID INFO COM");}
+function ppQueue(){var q=cabinetGet().payQ;return Array.isArray(q)?q:[];}
+function ppSetQueue(q){cabinetSet("payQ",q.slice(0,300));}
+function ppOn(){return cabinetGet().payAsk!==false;}
+function ppQueueAdd(x){if(!x)return;var q=ppQueue();if(q.some(function(e){return e.key===x.key;}))return;q.unshift({key:x.key,at:v12Now(),src:"equipe"});ppSetQueue(q);}
+function ppQueueDel(key){ppSetQueue(ppQueue().filter(function(e){return e.key!==key;}));}
+function ppAsk(key){if(SV.staff||!ppOn())return;var x=ppCand(key);if(!x)return;setTimeout(function(){var prev=(S.modal&&S.modal.type!=="pp")?S.modal:(S.modal&&S.modal.prev)||null;S.modal={type:"pp",key:key,prev:prev};renderModal();},250);}
+function ppSend(key){var x=ppCand(key);if(!x){ppQueueDel(key);showOk("Honoraires de la période déjà réglés.");return;}var url=svWa(x.tel,ppMsg(x));if(!url){showErr("Pas de numéro WhatsApp pour "+x.n+".");return;}
+  svOpen(url);ppQueueDel(key);try{S.honrel.push({cid:x.cid,y:x.y,at:v12Now(),montant:x.reste,k:x.k});save("honrel");}catch(e){}try{histAdd("Demande de paiement",svMoney(x.reste)+" — "+x.n+" — honoraires "+x.lbl,x.cid);}catch(e){}}
+function ppModal(){var x=ppCand(S.modal.key);if(!x){return '';}
+  return '<div class="ov"><div class="modal" data-stop style="max-width:520px"><div class="mh"><div><h3 class="ff">Demander le paiement des honoraires ?</h3><div class="meta"><span>'+esc(x.n)+' · déclaration déposée</span></div></div><button class="xbtn" data-act="pp_later">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="padding:18px 22px"><div style="background:#FAF8F2;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.7">'+esc(x.decl)+' — déposée<br>Honoraires '+esc(x.lbl)+' : <b class="mono" style="color:#B5530A">'+svMoney(x.reste)+'</b> restant à régler</div>'
+    +'<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;color:#1D6FB8">Voir le message</summary><pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;background:#F7F4EC;border-radius:8px;padding:10px;margin-top:6px">'+esc(ppMsg(x))+'</pre></details>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn-primary" data-act="pp_send" data-key="'+esc(x.key)+'" style="width:auto">'+ic("whatsapp","width:14px;height:14px")+' Envoyer le message</button><button class="chip" data-act="pp_later">Plus tard (garder dans la liste)</button><button class="chip" data-act="pp_no" data-key="'+esc(x.key)+'" style="color:#B42318;border-color:#E9C4BF">Non, ne pas envoyer</button></div>'
+    +'<label style="display:flex;gap:6px;align-items:center;font-size:11.5px;color:var(--muted);margin-top:12px;cursor:pointer"><input type="checkbox" id="pp_off"> Ne plus me proposer ce message après un dépôt (réactivable dans Tableau de bord → Sécurité)</label></div></div></div>';}
+function ppListModal(){var q=ppQueue().map(function(e){var x=ppCand(e.key);return x?Object.assign(x,{src:e.src,at:e.at}):null;}).filter(Boolean);
+  var rows=q.map(function(x){return '<tr><td><b>'+esc(x.n)+'</b><div class="sub">'+esc(x.decl)+(x.src==="equipe"?" · déposée par le collaborateur":"")+'</div></td><td>'+esc(x.lbl)+'</td><td class="n" style="color:#B5530A;font-weight:700">'+svMoney(x.reste)+'</td><td style="text-align:right;white-space:nowrap">'+(waNumbers(x.tel).length?'<button class="chip" data-act="pp_send" data-key="'+esc(x.key)+'" style="color:#0E7A5F;border-color:#0E7A5F;padding:3px 9px;font-size:11.5px">'+ic("whatsapp","width:12px;height:12px")+' Envoyer</button> ':'<span style="font-size:11px;color:var(--faint)">pas de tél.</span> ')+'<button class="chip" data-act="pp_no" data-key="'+esc(x.key)+'" style="padding:3px 9px;font-size:11.5px">Ignorer</button></td></tr>';}).join("")
+    ||'<tr><td colspan="4" style="text-align:center;padding:22px;color:var(--faint)">Aucun message de paiement en attente. ✓</td></tr>';
+  var nx=q.filter(function(x){return waNumbers(x.tel).length;}).length;
+  return '<div class="ov"><div class="modal" data-stop style="max-width:720px"><div class="mh"><div><h3 class="ff">Messages de paiement à envoyer</h3><div class="meta"><span>Après dépôt des déclarations — '+q.length+' en attente</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+    +'<div class="mb" style="padding:0;max-height:76vh;overflow:auto"><div style="display:flex;gap:10px;align-items:center;padding:12px 18px;flex-wrap:wrap"><span class="note" style="font-size:12px;flex:1">Honoraires de la période dont la déclaration vient d\'être déposée (clients payant au mois ou au trimestre). Vous seul décidez d\'envoyer ou non.</span>'+(nx?'<button class="btn-primary" data-act="pp_next" style="width:auto">'+ic("whatsapp","width:14px;height:14px")+' Envoyer le suivant ('+nx+')</button>':'')+'</div>'
+    +'<table class="svt"><thead><tr><th>Client / déclaration</th><th>Honoraires</th><th style="text-align:right">Reste</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div></div>';}
+var _ppRM=renderModal;renderModal=function(){var t=S.modal&&S.modal.type;if(t==="pp"){var h=ppModal();if(!h){S.modal=S.modal.prev||null;}else{document.getElementById("overlay").innerHTML=h;return;}}if(t==="ppl"){document.getElementById("overlay").innerHTML=ppListModal();return;}_ppRM();};
+/* déclencheurs côté cabinet */
+var _ppRD=svRecordDecl;svRecordDecl=function(key,o){var was=!!S.done[key];_ppRD(key,o);if(!was&&!SV.staff){if(o&&o.src==="equipe"){if(ppOn())ppQueueAdd(ppCand(key));}else ppAsk(key);}};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t||SV.staff)return;var a=t.dataset.act;
+  if(a==="toggle"){var k=t.dataset.key;setTimeout(function(){if(S.done[k])ppAsk(k);},50);}
+  else if(a==="pp_send"){var off=document.getElementById("pp_off");if(off&&off.checked)cabinetSet("payAsk",false);ppSend(t.dataset.key);if(S.modal&&S.modal.type==="pp")S.modal=S.modal.prev||null;renderModal();renderView();}
+  else if(a==="pp_no"){var off2=document.getElementById("pp_off");if(off2&&off2.checked)cabinetSet("payAsk",false);ppQueueDel(t.dataset.key);if(S.modal&&S.modal.type==="pp")S.modal=S.modal.prev||null;renderModal();renderView();}
+  else if(a==="pp_later"){var key=S.modal&&S.modal.key;var off3=document.getElementById("pp_off");if(off3&&off3.checked)cabinetSet("payAsk",false);if(key)ppQueueAdd(ppCand(key));S.modal=(S.modal&&S.modal.prev)||null;renderModal();renderView();}
+  else if(a==="pp_list"){S.modal={type:"ppl"};renderModal();}
+  else if(a==="pp_next"){var q=ppQueue().map(function(x){return ppCand(x.key);}).filter(function(x){return x&&waNumbers(x.tel).length;});if(q.length){ppSend(q[0].key);renderModal();}}});
+/* dépôt en lot : les messages vont dans la liste */
+var _ppLot=echLotGo;echLotGo=function(){var keys=Object.keys(ECH_SEL).filter(function(k){return !S.done[k];});_ppLot();if(ppOn()){var n=0;keys.forEach(function(k){if(S.done[k]){var x=ppCand(k);if(x){ppQueueAdd(x);n++;}}});if(n)setTimeout(function(){showOk(n+" message(s) de paiement ajouté(s) à la liste « Messages de paiement à envoyer ».");},400);}};
+/* saisies validées du collaborateur → liste */
+var _ppAR=svApplyRow;svApplyRow=function(row){var was=row&&row.type==="declaration"&&!!S.done[row.decl_key];var r=_ppAR(row);try{if(row.type==="declaration"&&!was&&S.done[row.decl_key]&&ppOn())ppQueueAdd(ppCand(row.decl_key));}catch(e){}return r;};
+/* bandeau dans Suivi des dossiers + Échéances */
+var _ppRV=renderView;renderView=function(){_ppRV.apply(this,arguments);if(SV.staff)return;try{if(S.tab!=="suivi"&&S.tab!=="ech"&&S.tab!=="dash")return;var n=ppQueue().filter(function(e){return ppCand(e.key);}).length;if(!n||document.getElementById("pp_banner"))return;
+  var w=document.querySelector("#view .wrap .head");if(w)w.insertAdjacentHTML("afterend",'<div id="pp_banner" class="card mt4" style="padding:10px 16px;display:flex;gap:10px;align-items:center;border-left:4px solid #B5530A"><span style="flex:1;font-size:13px">💬 <b>'+n+' message(s) de paiement</b> à envoyer après dépôt des déclarations.</span><button class="btn-primary" data-act="pp_list" style="width:auto">Voir la liste</button></div>');}catch(e){}};
+/* réglage (Tableau de bord → Sécurité) */
+var _ppDBC=dataBackupCard;dataBackupCard=function(){var h=_ppDBC(),on=ppOn();var opt='<label style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin-top:10px">Après un dépôt, proposer le message de paiement des honoraires (clients au mois / au trimestre) <select class="ipt" id="sec_pp" style="width:auto;padding:6px 8px"><option value="1"'+(on?" selected":"")+'>oui</option><option value="0"'+(on?"":" selected")+'>non</option></select></label>';
+  var k=h.lastIndexOf('</div></div>');return k>0?h.slice(0,k)+opt+h.slice(k):h;};
+document.addEventListener("change",function(e){var t=e.target;if(t&&t.id==="sec_pp"){cabinetSet("payAsk",t.value==="1");showOk("Réglage enregistré.");}});
+/* collaborateur : plus de messages de paiement */
+function ppStaffStrip(h){return String(h||"").replace(/<button class="iconbtn" data-act="sv_s_rel"[\s\S]*?<\/button>/g,"");}
+var _ppSPL=svStaffPayList;svStaffPayList=function(){return ppStaffStrip(_ppSPL());};
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest('[data-act="sv_s_rel"]');if(t&&SV.staff){e.stopImmediatePropagation();e.preventDefault();}},true);
+var _ppSitMsg=sitMsg;sitMsg=function(s){if(!SV.staff)return _ppSitMsg(s);var s2=Object.assign({},s,{exp:0,col:0,fr:0});return _ppSitMsg(s2).replace(/\n\n💰 Honoraires[^\n]*(\n[^\n]*Frais divers[^\n]*)?/,"");};
+
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
   if(SV.staff&&e.target.classList&&e.target.classList.contains("ov")&&e.target.closest("#svOv")){SV.modal=null;svStaffModal();return;}
