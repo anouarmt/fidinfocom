@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.12g · journal du jour (cabinet) · Ma journée enrichie : échéances phares, routine, tous les volets — PRODUCTION EN LIGNE";
+const VERSION = "v2026.12h · obligations État 9421 (annuel) et CNSS mensuelle — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais","histlog"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -709,6 +709,8 @@ function modalCloud(){
 }
 
 /* ---------- RULE ENGINE ---------- */
+/* CNSS mensuelle : premier mois de salaires suivi dans les échéances (réglable dans Échéances). Évite de créer des mois « en retard » déjà déclarés hors du logiciel. */
+function cnssFrom(){var v=(typeof S!=="undefined"&&S.cabinet&&S.cabinet.cnssFrom)||"2026-09";return /^\d{4}-\d{2}$/.test(v)?v:"2026-09";}
 function buildDeadlines(c){
   const Y=S.year,out=[];
   const add=(type,label,period,date,cat)=>out.push({type,label,period,date,cat,key:Y+"|"+c.id+"|"+type+"|"+period});
@@ -720,7 +722,10 @@ function buildDeadlines(c){
   }else if(c.reg==="mensuelle"){
     for(let m=0;m<12;m++) add("TVA","TVA "+MONTHS[m],"M"+(m+1),new Date(Y,m+2,0),"tva"); // CA du mois m -> avant fin du mois suivant
   }
-  if(c.hasSal) add("SALAIRES","Déclaration des salaires",""+Y,new Date(Y,2,0),"sal");   // avant fin février
+  if(c.hasSal){ // État 9421 : déclaration annuelle des traitements et salaires de l'année N-1, avant fin février ; CNSS : déclaration + paiement mensuels (Damancom) avant le 10 du mois suivant
+    add("SALAIRES","État 9421 — salaires "+(Y-1),""+Y,new Date(Y,2,0),"sal");
+    if(c.cnss!==false){var _cf=cnssFrom();for(let m=0;m<12;m++){if((Y+"-"+String(m+1).padStart(2,"0"))<_cf)continue;add("CNSS","CNSS "+MONTHS[m],"M"+(m+1),new Date(Y,m+1,10),"cnss");}}
+  }
   if(c.hasCMpm) add("CMPM","Cotisation minimale (sociétés)",""+Y,new Date(Y,2,31),"cm");
   if(c.hasCMpp) add("CMPP","Cotisation minimale (P. physique)",""+Y,new Date(Y,0,31),"cm");
   if(c.hasFoncier) add("FONCIER","Revenus fonciers",""+Y,new Date(Y,2,0),"foncier");   // avant fin février
@@ -11374,7 +11379,7 @@ function echRows(){
       '<div>'+badge(d.u.color,d.u.bg,d.u.dot+" "+d.u.label)+'</div>'+
       '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
         (ni?'<span title="Notifié le '+fmtDate(new Date(ni.ts))+' ('+esc(canalLabel(ni.canal))+')" style="color:#0E7A5F;display:inline-flex">'+ic("check","width:14px;height:14px")+'</span>':'')+
-        drBtn(d.key,d.client.id,d.label,d.client.dossier)+'<button class="iconbtn" data-act="notify" data-key="'+d.key+'" title="Notifier le client (WhatsApp / SMS)" style="color:#0E7A5F">'+ic("whatsapp")+'</button>'+
+        (/\|(SALAIRES|CNSS)\|/.test(d.key)?'<button class="iconbtn" data-act="paie_go" data-key="'+d.key+'" title="Ouvrir la déclaration dans Paie" style="color:#1D6FB8">'+ic("wallet")+'</button>':'')+drBtn(d.key,d.client.id,d.label,d.client.dossier)+'<button class="iconbtn" data-act="notify" data-key="'+d.key+'" title="Notifier le client (WhatsApp / SMS)" style="color:#0E7A5F">'+ic("whatsapp")+'</button>'+
         '<button class="iconbtn" data-act="toggle" data-key="'+d.key+'" title="Marquer comme déposé" style="color:'+(done?"#0E7A5F":"#d6d3c8")+'">'+ic(done?"check":"dashed")+'</button>'+
       '</div>'+
     '</div>';
@@ -11384,7 +11389,7 @@ function vEch(){
   const dls=allDeadlines();
   const c=k=>dls.filter(d=>d.u.key===k).length;
   const urgs=[["active","À traiter"],["retard","En retard ("+c("retard")+")"],["urgent","Urgent ("+c("urgent")+")"],["venir","À venir ("+c("venir")+")"],["depose","Déposé ("+c("depose")+")"],["all","Tout"]];
-  const cats=[["all","Tous"],["tva","TVA"],["sal","Salaires"],["bilan","Bilan"],["is","Acomptes IS"],["foncier","Fonciers"],["cm","Cot. min."],["ir","Rev. IR"],["tiers","Rém. tiers"],["tp","Taxe pro."],["ras","Ret. source"],["rasf","RAS fonciers"],["delais","Délais paiement"],["cpu","CPU"],["jur","Juridique"]];
+  const cats=[["all","Tous"],["tva","TVA"],["sal","État 9421"],["cnss","CNSS mensuelle"],["bilan","Bilan"],["is","Acomptes IS"],["foncier","Fonciers"],["cm","Cot. min."],["ir","Rev. IR"],["tiers","Rém. tiers"],["tp","Taxe pro."],["ras","Ret. source"],["rasf","RAS fonciers"],["delais","Délais paiement"],["cpu","CPU"],["jur","Juridique"]];
   const mois=[["all","Toutes périodes"],["this","Ce mois-ci"],["next","Mois prochain"]];
   const regs=[["all","Tous régimes"],["mensuelle","Mensuel"],["trimestrielle","Trimestriel"],["neant","Néant"]];
   const seg=(arr,act,cur,onc)=>'<div class="seg">'+arr.map(a=>'<button data-act="'+act+'" data-v="'+a[0]+'" style="'+(cur===a[0]?'background:'+onc+';color:#fff':'')+'">'+a[1]+'</button>').join("")+'</div>';
@@ -11739,7 +11744,7 @@ function modalCEdit(id){
       '<div class="grid g2 mt3"><div><div class="flbl">Régime TVA (déclaration)</div><select class="ipt" id="cf_reg">'+REGS.map(r=>'<option value="'+r[0]+'"'+(c.reg===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div>'+
       '<div><div class="flbl">Régime d\'exigibilité</div><select class="ipt" id="cf_regtva">'+REGS_TVA.map(r=>'<option value="'+r[0]+'"'+(regTvaOf(c)===r[0]?" selected":"")+'>'+r[1]+'</option>').join("")+'</select></div></div>'+
       '<div class="mt3"><div class="cklist">'+ck("cf_cash","Achats réglés en espèces par défaut (pré-coche le règlement caisse à l\'import)",c.cashDefault)+'</div></div>'+
-      '<div class="mt3"><div class="flbl">Obligations (cochez ce qui s\'applique)</div><div class="cklist">'+ck("cf_bilan","Bilan",c.hasBilan)+ck("cf_sal","Salaires",c.hasSal)+ck("cf_dp","Acomptes IS",c.hasDp)+ck("cf_foncier","Revenus fonciers",c.hasFoncier)+ck("cf_cmpm","Cotis. min. sociétés (mois 3)",c.hasCMpm)+ck("cf_cmpp","Cotis. min. P. physique (mois 1)",c.hasCMpp)+ck("cf_ir","Revenu global IR (30 avr)",c.hasIR)+ck("cf_tiers","Rémunérations à des tiers (31 mars)",c.hasTiers)+ck("cf_tp","Taxe pro. / TSC (selon avis)",c.hasTP)+ck("cf_ras","Retenue à la source (à vérifier)",c.hasRAS)+ck("cf_rasfonc","RAS revenus fonciers — loyers versés (mensuelle)",c.hasRasFonc)+ck("cf_delais","Délais de paiement loi 69-21 (CA > 2 MDH, trimestriel)",c.hasDelais)+'</div></div>'+
+      '<div class="mt3"><div class="flbl">Obligations (cochez ce qui s\'applique)</div><div class="cklist">'+ck("cf_bilan","Bilan",c.hasBilan)+ck("cf_sal","Salaires (état 9421)",c.hasSal)+ck("cf_cnss","CNSS mensuelle",c.cnss!==false)+ck("cf_dp","Acomptes IS",c.hasDp)+ck("cf_foncier","Revenus fonciers",c.hasFoncier)+ck("cf_cmpm","Cotis. min. sociétés (mois 3)",c.hasCMpm)+ck("cf_cmpp","Cotis. min. P. physique (mois 1)",c.hasCMpp)+ck("cf_ir","Revenu global IR (30 avr)",c.hasIR)+ck("cf_tiers","Rémunérations à des tiers (31 mars)",c.hasTiers)+ck("cf_tp","Taxe pro. / TSC (selon avis)",c.hasTP)+ck("cf_ras","Retenue à la source (à vérifier)",c.hasRAS)+ck("cf_rasfonc","RAS revenus fonciers — loyers versés (mensuelle)",c.hasRasFonc)+ck("cf_delais","Délais de paiement loi 69-21 (CA > 2 MDH, trimestriel)",c.hasDelais)+'</div></div>'+
       '<div class="mt3"><div class="flbl">Commentaire</div><input class="ipt" id="cf_comment" value="'+esc(c.comment)+'"></div>'+
       '<button class="btn-primary" data-act="csave" data-id="'+(isNew?"":id)+'">'+ic("plus","width:16px;height:16px")+' '+(isNew?"Créer le client":"Enregistrer")+'</button>'+(isNew?'':svDocsSection(id))+
     '</div></div></div>';
@@ -13844,7 +13849,7 @@ function submitClient(id){
     honTrim:parseFloat(g("cf_hontrim").value)||0,honBilan:parseFloat(g("cf_honbilan").value)||0,
     pvDepot:parseFloat(g("cf_pv").value)||0,reg:g("cf_reg").value,regTva:(g("cf_regtva")?g("cf_regtva").value:"debit"),
     cashDefault:(g("cf_cash")?g("cf_cash").checked:false),
-    hasBilan:g("cf_bilan").checked,hasSal:g("cf_sal").checked,hasDp:g("cf_dp").checked,
+    hasBilan:g("cf_bilan").checked,hasSal:g("cf_sal").checked,cnss:(g("cf_cnss")?g("cf_cnss").checked:true),hasDp:g("cf_dp").checked,
     hasFoncier:g("cf_foncier").checked,hasCMpm:(g("cf_cmpm")?g("cf_cmpm").checked:false),hasCMpp:(g("cf_cmpp")?g("cf_cmpp").checked:false),
     hasIR:(g("cf_ir")?g("cf_ir").checked:false),hasTiers:(g("cf_tiers")?g("cf_tiers").checked:false),hasTP:(g("cf_tp")?g("cf_tp").checked:false),hasRAS:(g("cf_ras")?g("cf_ras").checked:false),hasRasFonc:(g("cf_rasfonc")?g("cf_rasfonc").checked:false),hasDelais:(g("cf_delais")?g("cf_delais").checked:false),
     comment:g("cf_comment").value.trim()};if(g("cf_statut"))data.statut=g("cf_statut").value==="—"?"":g("cf_statut").value;
@@ -13931,8 +13936,8 @@ function svState(dl,pd){var d=S.done[dl.key];if(d)return{k:"ok",info:(typeof d==
   var p=(pd||SV._pd||svPendDecl())[dl.key];if(p)return{k:"pend",row:p};var u=urgency(dl,false);return{k:u.key,u:u};}
 function svFindDl(cid,key){var c=clients().find(function(x){return x.id===cid;});if(!c)return null;var y=+String(key).split("|")[0]||S.year;
   return svWithYear(y,function(){return buildDeadlines(c).find(function(d){return d.key===key;})||null;});}
-function svShort(dl){var t=dl.type;if(t==="TVA")return /^M\d+$/.test(dl.period)?MONTHS[+dl.period.slice(1)-1]:dl.period;if(t==="IS"||t==="DELAIS")return dl.period;if(t==="CPU")return /^A\d$/.test(dl.period)?dl.period:"Décl.";
-  var m={SALAIRES:"Salaires",CMPM:"CM",CMPP:"CM",FONCIER:"Fonciers",IR:"IR",TIERS:"Tiers",TP:"TP",RAS:"RAS",BILAN:"Bilan",AGO:"AGO"};return m[t]||t;}
+function svShort(dl){var t=dl.type;if(t==="TVA")return /^M\d+$/.test(dl.period)?MONTHS[+dl.period.slice(1)-1]:dl.period;if(t==="IS"||t==="DELAIS")return dl.period;if(t==="CNSS")return "CNSS "+MONTHS[+dl.period.slice(1)-1];if(t==="CPU")return /^A\d$/.test(dl.period)?dl.period:"Décl.";
+  var m={SALAIRES:"9421",CMPM:"CM",CMPP:"CM",FONCIER:"Fonciers",IR:"IR",TIERS:"Tiers",TP:"TP",RAS:"RAS",BILAN:"Bilan",AGO:"AGO"};return m[t]||t;}
 function svPill(c,dl,st){var tip=dl.label+" — échéance "+fmtDate(dl.date),pre="";
   if(st.k==="ok"){pre="✓ ";var i=st.info;tip+=i?("\nDéposée le "+svD(i.d)+(i.ref?" · réf. "+i.ref:"")+(i.by?" · par "+i.by:"")):"\nDéposée";}
   else if(st.k==="pend"){pre="⏳ ";tip+="\nSaisie de "+(st.row.author_name||st.row.email)+" — en attente de validation";}
@@ -14987,7 +14992,7 @@ var _svMC2=modalClient;modalClient=function(c){var h=_svMC2(c);if(!c||c.sortant)
 
 /* ---------- Filtres des déclarations (collaborateur) : mêmes boutons que le compte cabinet ---------- */
 SV.scat="all";if(SV.sf==="todo"||!SV.sf)SV.sf="todo";
-var SV_DCATS=[["all","Tous"],["TVA","TVA"],["SALAIRES","Salaires"],["BILAN","Bilan"],["IS","Acomptes IS"],["FONCIER","Fonciers"],["CM","Cot. min."],["IR","Rev. IR"],["TIERS","Rém. tiers"],["TP","Taxe pro."],["RAS","Ret. source"],["RASF","RAS fonciers"],["DELAIS","Délais paiement"],["CPU","CPU"],["AGO","Juridique"]];
+var SV_DCATS=[["all","Tous"],["TVA","TVA"],["SALAIRES","État 9421"],["CNSS","CNSS mensuelle"],["BILAN","Bilan"],["IS","Acomptes IS"],["FONCIER","Fonciers"],["CM","Cot. min."],["IR","Rev. IR"],["TIERS","Rém. tiers"],["TP","Taxe pro."],["RAS","Ret. source"],["RASF","RAS fonciers"],["DELAIS","Délais paiement"],["CPU","CPU"],["AGO","Juridique"]];
 function svDeclCat(key){var t=String(key||"").split("|")[2]||"";return (t==="CMPM"||t==="CMPP")?"CM":t;}
 function svStaffDeclFilters(){var all=svStaffDeclRows().filter(function(x){return smartMatch(SV.sq,x.c.n)&&(SV.scat==="all"||svDeclCat(x.d.key)===SV.scat);});
   var n=function(k){return all.filter(function(x){return x.k===k;}).length;};
@@ -16042,7 +16047,7 @@ function repData(ym){var R={ym:ym,dep:{},depN:0,ech:{tot:0,ok:0,list:[]},enc:{ho
   (S.custom||[]).forEach(function(c){var at=(c.staffNew&&c.staffNew.at)||(+c.id>1e12?new Date(+c.id).toISOString():"");if(String(at).slice(0,7)===ym)R.newCli.push(c.dossier);});
   var rows=svComputeRows(),exp=0,col=0,ret=0;rows.forEach(function(x){exp+=x.e;col+=x.cl;ret+=x.r;});R.reste=Math.max(0,exp-col);R.retard=ret;
   R.frReste=(S.frais||[]).reduce(function(s,f){return s+frReste(f);},0);return R;}
-function repHtml(R){var tl={TVA:"TVA",SALAIRES:"Salaires",BILAN:"Bilan",IS:"Acomptes IS",FONCIER:"Revenus fonciers",CMPM:"Cot. min. sociétés",CMPP:"Cot. min. P. physique",IR:"IR",TIERS:"Rém. tiers",TP:"Taxe pro.",RAS:"Ret. source",RASF:"RAS fonciers",DELAIS:"Délais paiement",CPU:"CPU",AGO:"AGO"};
+function repHtml(R){var tl={TVA:"TVA",SALAIRES:"État 9421",CNSS:"CNSS",BILAN:"Bilan",IS:"Acomptes IS",FONCIER:"Revenus fonciers",CMPM:"Cot. min. sociétés",CMPP:"Cot. min. P. physique",IR:"IR",TIERS:"Rém. tiers",TP:"Taxe pro.",RAS:"Ret. source",RASF:"RAS fonciers",DELAIS:"Délais paiement",CPU:"CPU",AGO:"AGO"};
   var cab=svCabHead(),tr=function(a,b){return '<tr><td>'+a+'</td><td class="r"><b>'+b+'</b></td></tr>';};
   return '<div class="fiche"><div class="fh"><div><div class="nm">Rapport mensuel — '+esc(repLabel(R.ym))+'</div><div class="sb">Établi le '+fmtDate(new Date())+'</div></div><div class="cab">'+esc(cab.raison||"FID INFO COM")+'</div></div>'
     +'<h3>Déclarations</h3><table class="pp">'+tr("Déposées pendant le mois",R.depN)+Object.keys(R.dep).sort().map(function(t){return tr("&nbsp;&nbsp;· "+esc(tl[t]||t),R.dep[t]);}).join("")+tr("Échéances du mois",R.ech.tot)+tr("&nbsp;&nbsp;· déposées",R.ech.ok)+tr("&nbsp;&nbsp;· non déposées",R.ech.list.length)+tr("Total en retard à ce jour (exercice "+S.year+")",R.retard)+'</table>'
@@ -16566,6 +16571,37 @@ var _tdTH=svTodayHtml;svTodayHtml=function(){var h=_tdTH.apply(this,arguments);i
 document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t||!SV.staff)return;var a=t.dataset.act;
   if(a==="jr_s_phare"){SV.tab="decl";SV.scat=t.dataset.cat||"all";SV.sf=t.dataset.late==="1"?"retard":"todo";SV.sq="";svStaffRender();}});
 document.addEventListener("change",function(e){var t=e.target;if(!t||!SV.staff||!t.classList||!t.classList.contains("rt_cb"))return;var o=tdRoutineGet();if(t.checked)o.done[t.dataset.i]=1;else delete o.done[t.dataset.i];tdRoutineSet(o);svStaffRender();});
+
+/* =========================== ÉTAT 9421 + CNSS MENSUELLE : OBLIGATIONS (cabinet et collaborateur) ===========================
+   Les échéances « État 9421 » (annuel, avant fin février) et « CNSS » (12 mois, avant le 10 du mois suivant) sont créées dans buildDeadlines()
+   pour tous les clients ayant des salariés ; le collaborateur les voit dans Déclarations / Ma journée comme les autres.
+   Ici : raccourci vers la déclaration dans Paie, état de l'obligation dans Paie, réglage du premier mois CNSS suivi. */
+/* icônes de bouton sans taille (ex. « Ajouter un salarié » dans Paie) : taille par défaut, sans toucher aux icônes déjà dimensionnées */
+try{document.head.insertAdjacentHTML("beforeend","<style>:where(button svg:not([style])){width:14px;height:14px;flex:0 0 auto}</style>");}catch(e){}
+function cnssMonthsList(){var out=[];for(var y=2025;y<=2028;y++)for(var m=1;m<=12;m++)out.push(y+"-"+String(m).padStart(2,"0"));return out;}
+function cnssLabel(ym){var p=ym.split("-");return MOIS_FULL[+p[1]-1]+" "+p[0];}
+/* ouvrir la déclaration dans Paie depuis une échéance */
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest('[data-act="paie_go"]');if(!t||SV.staff)return;
+  var p=String(t.dataset.key).split("|"),Y=+p[0],cid=+p[1],ty=p[2],per=p[3]||"";S.year=Y;S.curClient=cid;S.paieSel.id=cid;S.paieView=ty==="CNSS"?"cnss":"etat9421";
+  if(ty==="CNSS"&&/^M\d+$/.test(per))S.paieSel.mois=("0"+(+per.slice(1))).slice(-2);S.tab="paie";S.modal=null;render();});
+/* Paie : état de l'obligation + bouton « marquer déposé » sous les onglets */
+function paieOblBar(){var c=clients().find(function(x){return +x.id===+S.paieSel.id;});if(!c||!c.hasSal||(S.paieView!=="cnss"&&S.paieView!=="etat9421"))return "";
+  var Y=S.year,key,label,dl,from=cnssFrom();
+  if(S.paieView==="etat9421"){key=Y+"|"+c.id+"|SALAIRES|"+Y;label="État 9421 — salaires "+(Y-1);}
+  else{var m=+paieMoisCur();key=Y+"|"+c.id+"|CNSS|M"+m;label="CNSS — salaires de "+MOIS_FULL[m-1].toLowerCase()+" "+Y;
+    if((Y+"-"+String(m).padStart(2,"0"))<from)return '<div class="note" style="font-size:12px;margin-top:10px;padding:8px 12px;background:#F3F0E6;border-radius:9px">Ce mois n\'est pas suivi dans les échéances (suivi CNSS à partir de '+esc(cnssLabel(from))+'). Réglage : Fiscal → Échéances → CNSS mensuelle.</div>';
+    if(c.cnss===false)return '<div class="note" style="font-size:12px;margin-top:10px;padding:8px 12px;background:#F3F0E6;border-radius:9px">La CNSS de ce client n\'est pas suivie dans les échéances (désactivée sur sa fiche).</div>';}
+  dl=null;try{dl=buildDeadlines(c).find(function(d){return d.key===key;});}catch(x){}if(!dl)return "";
+  var dn=S.done[key],u=urgency(dl,!!dn),info=dn&&typeof dn==="object"?dn:null;
+  return '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:10px 14px;background:'+u.bg+';border-radius:10px;border-left:4px solid '+u.color+'"><div style="flex:1;min-width:220px;font-size:13px"><b>'+esc(label)+'</b><div style="font-size:12px;color:var(--muted);margin-top:2px">Échéance : '+fmtDate(dl.date)+' — '+(dn?'<span style="color:#0E7A5F;font-weight:700">✓ déposée'+(info&&info.d?' le '+svD(info.d):'')+(info&&info.by?' par '+esc(info.by):'')+'</span>':'<span style="color:'+u.color+';font-weight:700">'+u.dot+' '+u.label+(u.j!=null?' ('+(u.j<0?u.j+' j':'J-'+u.j)+')':'')+'</span>')+'</div></div>'
+    +'<button class="'+(dn?'chip':'btn-primary')+'" data-act="toggle" data-key="'+esc(key)+'" style="width:auto">'+(dn?'↺ Annuler le dépôt':'✓ Marquer comme déposé')+'</button></div>';}
+var _oblVP=vPaie;vPaie=function(){var h=_oblVP.apply(this,arguments);try{var b=paieOblBar();if(!b)return h;var mk='État 9421 (annuel)</button></div></div>',i=h.indexOf(mk);return i>0?h.slice(0,i+mk.length-6)+b+'</div>'+h.slice(i+mk.length):h;}catch(e){return h;}};
+/* Échéances : réglage du premier mois CNSS suivi (affiché sur la catégorie « CNSS mensuelle ») */
+var _oblVE=vEch;vEch=function(){var h=_oblVE.apply(this,arguments);if(S.echCat!=="cnss")return h;
+  var cur=cnssFrom(),box='<div class="card mb4" style="padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-left:4px solid #1D6FB8"><div style="flex:1;min-width:240px;font-size:12.5px"><b>CNSS mensuelle (Damancom)</b> — déclaration et paiement avant le <b>10 du mois suivant</b>, pour chaque client ayant des salariés.<div style="color:var(--muted);font-size:11.5px;margin-top:2px">Les mois antérieurs au mois choisi ne sont pas suivis (déjà déclarés hors du logiciel). Pour exclure un client : décochez « CNSS » dans sa fiche.</div></div>'
+    +'<label style="font-size:12px;display:flex;gap:8px;align-items:center">Suivre à partir de <select class="ipt" id="cnss_from" style="width:auto;padding:6px 8px">'+cnssMonthsList().map(function(v){return '<option value="'+v+'"'+(v===cur?" selected":"")+'>'+esc(cnssLabel(v))+'</option>';}).join("")+'</select></label></div>';
+  var mk='<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mb4">',i=h.indexOf(mk);return i>0?h.slice(0,i)+box+h.slice(i):h;};
+document.addEventListener("change",function(e){var t=e.target;if(!t||t.id!=="cnss_from"||SV.staff)return;cabinetSet("cnssFrom",t.value);try{histAdd("Réglage CNSS","Suivi des échéances CNSS à partir de "+cnssLabel(t.value));}catch(x){}showOk("CNSS suivie à partir de "+cnssLabel(t.value)+". Pensez à « Mettre à jour leurs listes » pour les collaborateurs.");renderView();});
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
