@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.12h · obligations État 9421 (annuel) et CNSS mensuelle — PRODUCTION EN LIGNE";
+const VERSION = "v2026.12i · remarques du collaborateur : vue unique + suppression — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais","histlog"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -11876,7 +11876,7 @@ function vFac(){if(S.facDraft)return header("Facturation","STE FIDUCIAIRE FID IN
 
 
 // Libellés courts des modules (utilisés dans la barre de sous-onglets d'un volet).
-const TAB_LABELS={dash:"Tableau de bord",suivi:"Suivi des dossiers",histo:"Historique",frais:"Frais divers",saisies:"Saisies équipe",fiches:"Fiches sociétés",notes:"Remarques équipe",decharges:"Décharges",activite:"Activité équipe",jour:"Journal du jour",sante:"Santé des dossiers",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",relances:"Relances groupées",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
+const TAB_LABELS={dash:"Tableau de bord",suivi:"Suivi des dossiers",histo:"Historique",frais:"Frais divers",saisies:"Saisies équipe",fiches:"Fiches sociétés",notes:"Remarques du collaborateur",decharges:"Décharges",activite:"Activité équipe",jour:"Journal du jour",sante:"Santé des dossiers",analyse:"Analyse financière",compta:"Comptabilité",controle:"Contrôle",tva:"TVA",liasse:"Liasse / IS",ech:"Échéances",teledec:"Téléservices DGI",paie:"Paie · Bulletins",fac:"Facturation",hon:"Honoraires",cli:"Clients",portal:"Espace client",delais:"Délais paiement",relances:"Relances groupées",team:"Équipe / Tâches",docs:"Documents",jur:"Juridique"};
 // Volets de navigation : chaque volet regroupe des modules qui se ressemblent.
 // Pour déplacer un module d'un volet à l'autre, change simplement sa place dans "tabs".
 const GROUPS=[
@@ -16602,6 +16602,115 @@ var _oblVE=vEch;vEch=function(){var h=_oblVE.apply(this,arguments);if(S.echCat!=
     +'<label style="font-size:12px;display:flex;gap:8px;align-items:center">Suivre à partir de <select class="ipt" id="cnss_from" style="width:auto;padding:6px 8px">'+cnssMonthsList().map(function(v){return '<option value="'+v+'"'+(v===cur?" selected":"")+'>'+esc(cnssLabel(v))+'</option>';}).join("")+'</select></label></div>';
   var mk='<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center" class="mb4">',i=h.indexOf(mk);return i>0?h.slice(0,i)+box+h.slice(i):h;};
 document.addEventListener("change",function(e){var t=e.target;if(!t||t.id!=="cnss_from"||SV.staff)return;cabinetSet("cnssFrom",t.value);try{histAdd("Réglage CNSS","Suivi des échéances CNSS à partir de "+cnssLabel(t.value));}catch(x){}showOk("CNSS suivie à partir de "+cnssLabel(t.value)+". Pensez à « Mettre à jour leurs listes » pour les collaborateurs.");renderView();});
+
+
+/* =====================================================================
+   v2026.12i — REMARQUES DU COLLABORATEUR : une seule vue, avec suppression (cabinet uniquement)
+   Regroupe : remarques clients, remarques sur déclarations, commentaires de tâches et de dossiers,
+   anciens commentaires d'avancement, remarques jointes aux saisies.
+   ===================================================================== */
+var RM={src:"all",who:"all",per:"all",unread:false,sel:{},ld:0};
+var RM_SRC={client:["Client","#EEF1EF","#14201C"],decl:["Déclaration","#F7F3FC","#6B3FA0"],task:["Tâche","#E8F0FB","#1D6FB8"],dossier:["Dossier","#E3F1EB","#0E7A5F"],ancien:["Ancien commentaire","#FDF2E3","#B5530A"],saisie:["Saisie","#FBEFD5","#9A7610"]};
+function rmCollab(n){return String(n||"").toLowerCase()!=="cabinet";}
+function rmItems(){var out=[];
+  var push=function(o){var em=String(o.em||"").toLowerCase();o.em=em;o.key=em||String(o.who||"").toLowerCase();o.who=jrName(em,o.who);o.id=o.src+":"+o.rid;out.push(o);};
+  (SV.notes||[]).forEach(function(n){if(!rmCollab(n.author_name))return;
+    push({src:"client",rid:n.id,at:n.created_at,em:n.email,who:n.author_name,cid:n.client_id,c:n.client_name||"",lab:(n.kind&&n.kind!=="remarque"?(n.kind==="urgent"?"⚠ URGENT":n.kind==="nouveaute"?"Nouveauté":n.kind):"Remarque"),text:n.body||"",lu:!!n.lu_cabinet,del:true});});
+  ((typeof DR!=="undefined"&&DR.rows)||[]).forEach(function(r){if(!rmCollab(r.author_name))return;
+    push({src:"decl",rid:r.id,at:r.created_at,em:r.email,who:r.author_name,cid:r.client_id,c:r.client_name||"",lab:r.decl_label||"Déclaration",text:r.note||"",lu:true,del:true,dkey:r.decl_key});});
+  var tasks=(teamGet().tasks)||[];
+  (SV.tc||[]).forEach(function(c){var cab=!c.author_email||c.author_name==="Cabinet"||(c.author_email||"").toLowerCase()!==(c.staff_email||"").toLowerCase();if(cab)return;
+    var isT=c.kind==="task",k=isT?tasks.find(function(x){return String(x.id)===String(c.ref);}):null;
+    var cid=c.client_id!=null?c.client_id:(isT?(k&&k.dossierId):(+c.ref||null));
+    push({src:isT?"task":"dossier",rid:c.id,at:c.created_at,em:c.author_email||c.staff_email,who:c.author_name,cid:cid,c:c.client_name||(cid!=null?teamClientName(cid):""),lab:isT?("Tâche : "+(k?k.label:"—")):"Fil du dossier",text:c.body||"",lu:true,del:true});});
+  (SV.dprog||[]).forEach(function(p){if(!String(p.note||"").trim())return;
+    push({src:"ancien",rid:"dp_"+(p.email||"")+"_"+p.client_id,at:p.updated_at,em:p.email,who:p.updated_by||p.email,cid:p.client_id,c:p.client_name||teamClientName(p.client_id),lab:"Avancement du dossier",text:p.note,lu:true,del:true,dp:p});});
+  (SV.tsRows||[]).forEach(function(t){if(!String(t.note||"").trim())return;var k=tasks.find(function(x){return String(x.id)===String(t.task_id);});
+    push({src:"ancien",rid:"ts_"+(t.email||"")+"_"+t.task_id,at:t.note_at||t.updated_at,em:t.email,who:"",cid:k&&k.dossierId,c:k&&k.dossierId!=null?teamClientName(k.dossierId):"",lab:"Tâche : "+(k?k.label:"—"),text:t.note,lu:true,del:false});});
+  (SV.rows||[]).forEach(function(r){var d=r.data||{};if(!String(d.note||"").trim())return;
+    push({src:"saisie",rid:r.id,at:r.created_at,em:r.email,who:r.author_name,cid:r.client_id,c:r.client_name||"",lab:(r.type==="declaration"?"Dépôt : "+(d.label||""):r.type==="client"?"Nouveau client":(d.k==="FRAIS"?"Frais : ":"Paiement : ")+(d.label||d.nature||""))+(r.statut==="rejete"?" (rejeté)":""),text:d.note,lu:true,del:false});});
+  out.sort(function(a,b){return String(b.at).localeCompare(String(a.at));});return out;}
+function rmPerOk(at){if(RM.per==="all")return true;var t=new Date(at).getTime();if(isNaN(t))return false;var days=RM.per==="today"?0:RM.per==="7"?6:29,lim=new Date();lim.setHours(0,0,0,0);lim.setDate(lim.getDate()-days);return t>=lim.getTime();}
+function rmBase(all){var q=SV.nq;return all.filter(function(it){if(RM.who!=="all"&&it.key!==RM.who)return false;if(!rmPerOk(it.at))return false;if(RM.unread&&it.lu)return false;
+  return !q||smartMatch(q,it.c+" "+it.text+" "+it.who+" "+it.lab);});}
+function rmList(){var all=rmItems(),b=rmBase(all);return {all:all,base:b,list:RM.src==="all"?b:b.filter(function(x){return x.src===RM.src;})};}
+function rmBadge(s){var x=RM_SRC[s];return '<span class="svst" style="background:'+x[1]+';color:'+x[2]+'">'+x[0]+'</span>';}
+function rmItemHtml(it){var chk=it.del?'<input type="checkbox" data-rmchk="'+esc(it.id)+'"'+(RM.sel[it.id]?" checked":"")+' style="margin:3px 8px 0 0;flex:0 0 auto">':'<span style="width:22px;flex:0 0 22px"></span>';
+  var btns='';
+  if(it.src==="client"&&!it.lu)btns+='<button class="chip" data-act="sv_note_read" data-id="'+esc(it.rid)+'" style="padding:2px 8px;font-size:11px">✓ Lu</button>';
+  if(it.src==="decl")btns+='<button class="chip" data-act="dr_open" data-key="'+esc(it.dkey||"")+'" data-cid="'+(it.cid||"")+'" data-l="'+esc(it.lab)+'" data-n="'+esc(it.c)+'" style="padding:2px 8px;font-size:11px">Ouvrir</button>';
+  if(it.src==="saisie")btns+='<button class="chip" data-act="rm_go" data-tab="saisies" style="padding:2px 8px;font-size:11px">Voir les saisies</button>';
+  if(it.del)btns+='<button class="iconbtn" data-act="rm_del" data-id="'+esc(it.id)+'" title="Supprimer cette remarque" style="color:#C0392B">'+ic("trash","width:13px;height:13px")+'</button>';
+  else if(it.src==="ancien")btns+='<span style="font-size:10.5px;color:var(--faint)" title="Ancien format : non supprimable">lecture seule</span>';
+  else btns+='<span style="font-size:10.5px;color:var(--faint)" title="Fait partie de la saisie : à traiter dans Saisies équipe">dans la saisie</span>';
+  return '<div style="display:flex;padding:11px 14px;border-bottom:1px solid var(--line-soft);'+(!it.lu?'background:#FFFBEF;':'')+(/URGENT/.test(it.lab)?'border-left:3px solid #B42318;':'')+'">'+chk
+   +'<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">'+rmBadge(it.src)
+   +(it.c?(it.cid?'<button data-act="client" data-id="'+it.cid+'" style="font-weight:700;font-size:12.5px;padding:0;text-decoration:underline;text-decoration-color:#d6d3c8">'+esc(it.c)+'</button>':'<b style="font-size:12.5px">'+esc(it.c)+'</b>'):'')
+   +'<span style="font-size:11.5px;color:var(--muted)">'+esc(it.who||"—")+' · '+svDT(it.at)+'</span>'+(!it.lu?'<span class="svst" style="background:#C8941A;color:#fff">NOUVEAU</span>':'')+'</div>'
+   +'<div style="display:flex;gap:6px;align-items:center">'+btns+'</div></div>'
+   +'<div style="font-size:11px;color:var(--muted);margin-top:3px">'+esc(it.lab)+'</div>'
+   +'<div style="font-size:13px;margin-top:4px;white-space:pre-wrap;line-height:1.5">'+esc(it.text)+'</div></div></div>';}
+function rmFeedHtml(){var R=rmList(),l=R.list;
+  if(!l.length)return '<div style="text-align:center;padding:30px;color:var(--faint)">'+(R.all.length?"Aucune remarque ne correspond à ces filtres.":"Aucune remarque du collaborateur pour le moment.")+'</div>';
+  return l.slice(0,400).map(rmItemHtml).join("")+(l.length>400?'<div style="padding:12px;text-align:center;font-size:12px;color:var(--muted)">400 remarques affichées sur '+l.length+' — affinez avec les filtres ou la recherche.</div>':'');}
+function rmBarHtml(){var R=rmList(),n=function(s){return R.base.filter(function(x){return x.src===s;}).length;},selN=Object.keys(RM.sel).filter(function(k){return RM.sel[k];}).length;
+  var seg='<div class="seg" style="flex-wrap:wrap">'+[["all","Toutes ("+R.base.length+")"],["client","Clients ("+n("client")+")"],["decl","Déclarations ("+n("decl")+")"],["task","Tâches ("+n("task")+")"],["dossier","Dossiers ("+n("dossier")+")"],["ancien","Anciens ("+n("ancien")+")"],["saisie","Saisies ("+n("saisie")+")"]].map(function(a){return '<button data-act="rm_src" data-v="'+a[0]+'" style="'+(RM.src===a[0]?'background:#14201C;color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
+  var who={};rmItems().forEach(function(x){who[x.key]=x.who;});
+  var ws='<select class="ipt" id="rm_who" style="width:auto;padding:6px 10px"><option value="all">Tous les collaborateurs</option>'+Object.keys(who).sort(function(a,b){return who[a].localeCompare(who[b]);}).map(function(k){return '<option value="'+esc(k)+'"'+(RM.who===k?" selected":"")+'>'+esc(who[k])+'</option>';}).join("")+'</select>';
+  var ps='<select class="ipt" id="rm_per" style="width:auto;padding:6px 10px">'+[["all","Toute la période"],["today","Aujourd'hui"],["7","7 derniers jours"],["30","30 derniers jours"]].map(function(a){return '<option value="'+a[0]+'"'+(RM.per===a[0]?" selected":"")+'>'+a[1]+'</option>';}).join("")+'</select>';
+  var unr=svUnreadNotes(),delable=R.list.filter(function(x){return x.del;}).length;
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 10px">'+seg+ws+ps
+   +'<button class="chip" data-act="rm_unread" style="'+(RM.unread?'background:#14201C;color:#fff':'')+'">Nouvelles seulement ('+unr+')</button>'+(unr?'<button class="chip" data-act="sv_note_readall">✓ Tout marquer comme lu</button>':'')+'</div>'
+   +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 10px;font-size:12.5px"><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-act="rm_all"'+(delable&&selN>=delable?" checked":"")+'> Tout cocher ('+delable+')</label>'
+   +'<button class="chip" data-act="rm_bulk" style="color:#B42318;border-color:#F0C6C0'+(selN?'':';opacity:.45')+'"'+(selN?'':' disabled')+'>'+ic("trash","width:12px;height:12px")+' Supprimer la sélection ('+selN+')</button>'
+   +'<button class="chip" data-act="rm_print" style="margin-left:auto">'+ic("printer","width:12px;height:12px")+' Imprimer la liste</button></div>';}
+vNotes=function(){var head=header("Remarques du collaborateur","Toutes les remarques, commentaires et notes saisis par l'équipe, au même endroit — suppression réservée au cabinet");
+  if(!(CLOUD&&sb&&session))return '<div class="wrap">'+head+'<div class="card mt5" style="padding:30px;text-align:center">Connectez-vous au cloud.</div></div>';
+  if(Date.now()-RM.ld>20000){RM.ld=Date.now();try{svLoadTC();}catch(e){}try{drLoad();}catch(e){}}
+  return '<div class="wrap">'+head+'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0 10px"><div class="search">'+ic("search")+'<input id="svn_q" placeholder="Client, texte, collaborateur…" value="'+esc(SV.nq)+'"></div></div>'
+   +'<div id="rm_bar">'+rmBarHtml()+'</div><div class="card" style="padding:0;overflow:hidden" id="svn_feed">'+rmFeedHtml()+'</div>'
+   +'<details class="mt5"><summary style="cursor:pointer;font-size:13px;font-weight:600">'+ic("plus","width:13px;height:13px")+' Ajouter une remarque (cabinet)</summary><div class="mt3">'+svNewNoteBox()+'</div></details></div>';};
+var _rmFeed=svNotesFeed;svNotesFeed=function(admin){return admin?rmFeedHtml():_rmFeed(admin);};
+function rmRefresh(){if(SV.staff||S.tab!=="notes")return;var b=document.getElementById("rm_bar"),f=document.getElementById("svn_feed");if(!b||!f)return;b.innerHTML=rmBarHtml();f.innerHTML=rmFeedHtml();}
+function rmRefreshSafe(){var ae=document.activeElement;if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||"")&&ae.type!=="checkbox")return;rmRefresh();}
+var _rmDR=drRefresh;drRefresh=function(){_rmDR.apply(this,arguments);rmRefreshSafe();};
+var _rmTC=svTCRefreshAll;svTCRefreshAll=function(){_rmTC.apply(this,arguments);rmRefreshSafe();};
+async function rmDelete(items){if(SV.staff||!items.length)return;
+  if(!window.confirm("Supprimer définitivement "+(items.length>1?items.length+" remarques":"cette remarque")+" ?\n\nCette action est irréversible."))return;
+  var by={client:[],decl:[],tc:[],dp:[]};items.forEach(function(it){if(it.src==="client")by.client.push(it);else if(it.src==="decl")by.decl.push(it);else if(it.src==="task"||it.src==="dossier")by.tc.push(it);else if(it.dp)by.dp.push(it);});
+  var done=0,fail=0,go=async function(tbl,arr,after){if(!arr.length)return;var ids=arr.map(function(x){return x.rid;});
+    var r=await sb.from(tbl).delete().in("id",ids).select("id");if(r.error){showErr("Suppression impossible : "+r.error.message);fail+=arr.length;return;}
+    var ok={};(r.data||[]).forEach(function(x){ok[String(x.id)]=1;});var n=Object.keys(ok).length;done+=n;if(n<arr.length)fail+=arr.length-n;after(ok);};
+  try{
+    await go("client_notes",by.client,function(ok){SV.notes=SV.notes.filter(function(x){return !ok[String(x.id)];});});
+    await go("decl_remarks",by.decl,function(ok){DR.rows=DR.rows.filter(function(x){return !ok[String(x.id)];});drIndex();});
+    await go("task_comments",by.tc,function(ok){SV.tc=SV.tc.filter(function(x){return !ok[String(x.id)];});});
+    for(var i=0;i<by.dp.length;i++){var p=by.dp[i].dp,r=await sb.from("staff_dossier_progress").update({note:""}).eq("email",p.email).eq("client_id",p.client_id).select("email");
+      if(r.error){showErr("Suppression impossible : "+r.error.message);fail++;}else if(!(r.data||[]).length)fail++;else{p.note="";done++;}}
+  }catch(e){showErr("Suppression impossible : "+(e.message||e));}
+  items.forEach(function(it){delete RM.sel[it.id];});
+  if(done){try{histAdd("Remarques supprimées",done+" remarque(s) du collaborateur supprimée(s)");}catch(e){}}
+  try{renderNav();}catch(e){}try{drViews();}catch(e){}try{svTCRefreshThreads();}catch(e){}
+  if(S.tab==="notes")rmRefresh();else if(S.modal)try{renderModal();}catch(e){}
+  if(done)showOk(done+" remarque"+(done>1?"s supprimées":" supprimée")+(fail?" — "+fail+" non supprimée(s).":"."));else if(!fail)showErr("Rien n'a été supprimé.");}
+function rmPrint(){var R=rmList(),rows=R.list;var f=[RM.src!=="all"?RM_SRC[RM.src][0]:"",RM.who!=="all"?(rows[0]&&rows[0].who)||"":"",RM.per==="today"?"aujourd'hui":RM.per==="7"?"7 derniers jours":RM.per==="30"?"30 derniers jours":"",SV.nq?"« "+SV.nq+" »":""].filter(Boolean).join(" · ");
+  var body='<h1 style="font-size:18px;margin:0 0 4px">Remarques du collaborateur</h1><div style="font-size:11px;color:#555;margin-bottom:10px">'+rows.length+' remarque(s)'+(f?" — "+esc(f):"")+'</div>'
+   +'<table class="lst"><tr><th>Date et heure</th><th>Collaborateur</th><th>Type</th><th>Dossier</th><th>Objet</th><th>Remarque</th></tr>'+rows.map(function(it){return '<tr><td>'+esc(svDT(it.at))+'</td><td>'+esc(it.who||"")+'</td><td>'+esc(RM_SRC[it.src][0])+'</td><td>'+esc(it.c)+'</td><td>'+esc(it.lab)+'</td><td style="white-space:pre-wrap">'+esc(it.text)+'</td></tr>';}).join("")+'</table>';
+  svPrintDoc("Remarques du collaborateur",body,true);}
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t||SV.staff)return;var a=t.dataset.act;
+  if(a==="rm_src"){RM.src=t.dataset.v;rmRefresh();}
+  else if(a==="rm_unread"){RM.unread=!RM.unread;rmRefresh();}
+  else if(a==="rm_go"){S.tab=t.dataset.tab;render();}
+  else if(a==="rm_print"){rmPrint();}
+  else if(a==="rm_del"){e.stopImmediatePropagation();var it=rmItems().find(function(x){return x.id===t.dataset.id;});if(it)rmDelete([it]);}
+  else if(a==="rm_bulk"){var ids=Object.keys(RM.sel).filter(function(k){return RM.sel[k];}),its=rmItems().filter(function(x){return ids.indexOf(x.id)>=0&&x.del;});rmDelete(its);}
+  else if(a==="rm_all"){var on=!!t.checked;rmList().list.forEach(function(x){if(x.del){if(on)RM.sel[x.id]=true;else delete RM.sel[x.id];}});rmRefresh();}
+},true);
+document.addEventListener("change",function(e){var t=e.target;if(!t||SV.staff)return;
+  if(t.dataset&&t.dataset.rmchk){if(t.checked)RM.sel[t.dataset.rmchk]=true;else delete RM.sel[t.dataset.rmchk];var b=document.getElementById("rm_bar");if(b)b.innerHTML=rmBarHtml();}
+  else if(t.id==="rm_who"){RM.who=t.value;rmRefresh();}
+  else if(t.id==="rm_per"){RM.per=t.value;rmRefresh();}});
+document.addEventListener("input",function(e){var t=e.target;if(t&&t.id==="svn_q"&&!SV.staff){setTimeout(function(){var b=document.getElementById("rm_bar");if(b)b.innerHTML=rmBarHtml();},0);}});
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
