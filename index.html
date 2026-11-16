@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.12j · adhésion SIMPL : rapprochement des 88 adhérents — PRODUCTION EN LIGNE";
+const VERSION = "v2026.12k · correctif dépôts rejetés tout seuls + adhésion SIMPL — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais","histlog"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -13309,7 +13309,7 @@ document.addEventListener("click",e=>{
   else if(a==="gsearch_open"){S.gq="";S.modal={type:"gsearch"};renderModal();}
   else if(a==="side_toggle"){sideToggle();}
   else if(a==="gsearch_go"){gsearchGo(t);}
-  else if(a==="toggle"){const k=t.dataset.key;if(S.done[k])delete S.done[k];else S.done[k]=true;save("done");
+  else if(a==="toggle"){const k=t.dataset.key;if(S.done[k]){delete S.done[k];doneUserDel(k);}else S.done[k]=true;save("done");
       if(t.dataset.stay==="client"){S.modal={type:"client",id:+t.dataset.cid};}render();}
   else if(a==="client"){S.modal={type:"client",id:+t.dataset.id};renderModal();}
   else if(a==="pay"){S.modal={type:"pay",id:+t.dataset.id};renderModal();}
@@ -14695,7 +14695,7 @@ async function svDeleteRow(id){var r=SV.rows.find(function(x){return x.id===id;}
   if(!window.confirm(msg))return;
   var res=await sb.from("staff_saisies").delete().eq("id",id);if(res.error){showErr("Suppression impossible : "+res.error.message);return;}
   if(r.type==="document"){var dk=String(r.client_id);if(S.docs&&S.docs[dk]){S.docs[dk]=S.docs[dk].filter(function(m){return m.path!==d.path;});save("docs");}try{await sb.storage.from(DOC_BUCKET).remove([d.path]);}catch(_e){}}
-  else if(r.statut==="valide"){if(r.type==="declaration"){var dn=S.done[r.decl_key];if(dn&&(typeof dn!=="object"||dn.src==="equipe")){delete S.done[r.decl_key];save("done");}}
+  else if(r.statut==="valide"){if(r.type==="declaration"){var dn=S.done[r.decl_key];if(dn&&(typeof dn!=="object"||dn.src==="equipe")){delete S.done[r.decl_key];doneUserDel(r.decl_key);save("done");}}
     else{svUndoPay(+r.client_id,+d.year||S.year,d.k,d.montant,d.rcNo,(((S.paylog||[]).find(function(p){return p.sid===r.id;}))||{}).id||null);if(d.k==="FRAIS")frCleanupRow(r.id);if(d.newClient)frCleanupClient(+r.client_id,r.id);}}
   SV.rows=SV.rows.filter(function(x){return x.id!==id;});renderNav();renderView();showOk("Saisie supprimée.");}
 function svDeletePl(id){var p=(S.paylog||[]).find(function(x){return x.id===id;});if(!p)return;var c=clients().find(function(x){return +x.id===+p.cid;});
@@ -16847,6 +16847,40 @@ document.addEventListener("click",function(e){var t=e.target.closest&&e.target.c
 },true);
 document.addEventListener("input",function(e){var t=e.target;if(t&&t.id==="simpl_q"){SMP.q=t.value;var b=document.getElementById("simpl_body");if(b)b.innerHTML=simplBodyHtml();}});
 
+
+/* =====================================================================
+   v2026.12k — CORRECTIF : dépôts du collaborateur « rejetés » tout seuls
+   Cause : quand deux fenêtres de l'application (ou deux appareils) enregistrent en même temps,
+   la synchronisation pouvait prendre une version plus ancienne de la liste des dépôts pour une
+   « annulation » et passait alors les saisies du collaborateur en « Rejetée — Dépôt annulé par le cabinet ».
+   Désormais : seul un geste réel du cabinet (décocher un dépôt, « Annuler le dépôt », supprimer une saisie
+   validée) annule un dépôt et rejette la saisie. Une disparition due à la synchronisation est ignorée.
+   ===================================================================== */
+DONE_SYNC.userDel={};DONE_SYNC.restoreUntil=0;
+function doneUserDel(k){if(k!=null)DONE_SYNC.userDel[String(k)]=Date.now();}
+doneMergeSave=async function(localRef){var local=doneClone(localRef),base=DONE_SYNC.base,adds={},dels=[],ud=DONE_SYNC.userDel;
+  Object.keys(ud).forEach(function(k){if(k in local)delete ud[k];});
+  Object.keys(local).forEach(function(k){if(!base||JSON.stringify(local[k])!==JSON.stringify(base[k]))adds[k]=local[k];});
+  if(base)Object.keys(base).forEach(function(k){if(!(k in local))dels.push(k);});
+  var cloud=null;try{var r=await sb.from("app_data").select("v").eq("user_id",session.user.id).eq("k","done").maybeSingle();if(!r.error&&r.data&&r.data.v&&typeof r.data.v==="object")cloud=r.data.v;}catch(e){}
+  if(!cloud){_dsCU("done",localRef);DONE_SYNC.base=local;return;}
+  var restoring=Date.now()<DONE_SYNC.restoreUntil;
+  var expl=dels.filter(function(k){return restoring||ud[k];}),kept=dels.filter(function(k){return !(restoring||ud[k])&&(k in cloud);});
+  var merged=Object.assign({},cloud,adds);expl.forEach(function(k){delete merged[k];});
+  var extra=Object.keys(cloud).some(function(k){return !(k in local)&&expl.indexOf(k)<0;});
+  var cur=S.done||{},view=Object.assign({},merged);
+  Object.keys(cur).forEach(function(k){if(JSON.stringify(cur[k])!==JSON.stringify(local[k]))view[k]=cur[k];});
+  Object.keys(local).forEach(function(k){if(!(k in cur)&&ud[k])delete view[k];});
+  S.done=view;try{localStorage.setItem(LS.done,JSON.stringify(view));}catch(e){}
+  _dsCU("done",merged);DONE_SYNC.base=merged;
+  expl.forEach(function(k){delete ud[k];});
+  if(expl.length&&!restoring)doneRejectStaff(expl);
+  try{histDone(adds,expl,base);}catch(e){}
+  if(kept.length){try{console.warn("[FID] "+kept.length+" dépôt(s) conservé(s) : disparition due à la synchronisation, pas à une annulation.",kept);}catch(e){}}
+  if(extra||kept.length){var ae=document.activeElement;if(!S.modal&&!(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||""))){try{renderNav();renderView();}catch(e){}}}};
+/* une restauration de sauvegarde remet les dépôts à l'état choisi sans toucher aux saisies du collaborateur */
+var _dkAR=abRestore;abRestore=async function(){DONE_SYNC.restoreUntil=Date.now()+20000;return _dkAR.apply(this,arguments);};
+
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
   if(SV.staff&&e.target.classList&&e.target.classList.contains("ov")&&e.target.closest("#svOv")){SV.modal=null;svStaffModal();return;}
@@ -16857,7 +16891,7 @@ document.addEventListener("click",function(e){
   else if(a==="sv_decl_save"){var m=S.modal;if(!m)return;svRecordDecl(m.key,{d:svVal("sv_d_date"),ref:svVal("sv_d_ref").trim(),m:+svVal("sv_d_mt")||0,note:svVal("sv_d_note").trim(),by:"Cabinet"});
     var pr=svPendDecl()[m.key];S.modal=null;renderModal();renderView();showOk("Déclaration marquée déposée.");
     if(pr&&window.confirm("Une saisie du collaborateur existe pour cette déclaration. La marquer « validée » ?")){sb.from("staff_saisies").update({statut:"valide",traite_at:new Date().toISOString()}).eq("id",pr.id).then(function(){svLoad();});}}
-  else if(a==="sv_decl_undo"){var m2=S.modal;if(!m2||!window.confirm("Annuler le dépôt de cette déclaration ?"))return;delete S.done[m2.key];save("done");S.modal=null;renderModal();renderView();}
+  else if(a==="sv_decl_undo"){var m2=S.modal;if(!m2||!window.confirm("Annuler le dépôt de cette déclaration ?"))return;delete S.done[m2.key];doneUserDel(m2.key);save("done");S.modal=null;renderModal();renderView();}
   else if(a==="sv_payopen"){S.modal={type:"sv_pay",cid:+t.dataset.cid};renderModal();}
   else if(a==="sv_pay_save"){var m3=S.modal,mt=+svVal("sv_p_mt");if(!m3)return;if(!(mt>0)){showErr("Saisissez un montant.");return;}
     var o3={cid:m3.cid,y:S.year,k:svVal("sv_p_k"),montant:mt,mode:svVal("sv_p_mode"),date:svVal("sv_p_date"),ref:svVal("sv_p_ref").trim(),note:svVal("sv_p_note").trim(),by:"Cabinet"},wantRc=!!(document.getElementById("sv_p_rc")||{}).checked;
