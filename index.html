@@ -363,7 +363,7 @@ const SUPABASE_URL = "https://htbzuplccjokijviwqbl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_VzOWqVr-T1c_tvdwTc6U1A_2177zhre";
 
 const CLOUD = !!(SUPABASE_URL && SUPABASE_KEY);
-const VERSION = "v2026.12i · remarques du collaborateur : vue unique + suppression — PRODUCTION EN LIGNE";
+const VERSION = "v2026.12j · adhésion SIMPL : rapprochement des 88 adhérents — PRODUCTION EN LIGNE";
 let sb=null, session=null, syncState=CLOUD?"login":"local";
 const KEYS=["flags","done","pay","jur","custom","deleted","years","receipts","tva","sal","liasse","docs","compta","emprunts","factures","cabinet","paie","portal","team","notiflog","controle","relancelog","paylog","honrel","frais","histlog"];
 const SEED = [];  /* PRODUCTION EN LIGNE : donnees reelles videes du code — chargees depuis le cloud apres connexion */
@@ -16711,6 +16711,141 @@ document.addEventListener("change",function(e){var t=e.target;if(!t||SV.staff)re
   else if(t.id==="rm_who"){RM.who=t.value;rmRefresh();}
   else if(t.id==="rm_per"){RM.per=t.value;rmRefresh();}});
 document.addEventListener("input",function(e){var t=e.target;if(t&&t.id==="svn_q"&&!SV.staff){setTimeout(function(){var b=document.getElementById("rm_bar");if(b)b.innerHTML=rmBarHtml();},0);}});
+
+
+/* =====================================================================
+   v2026.12j — ADHÉSION SIMPL : liste des adhérents (88) intégrée + rapprochement avec les dossiers
+   - remplit l'identifiant fiscal (IF) des clients à partir de la liste SIMPL ;
+   - enregistre la date d'adhésion SIMPL de chaque dossier ;
+   - signale les clients sans adhésion et les adhérents absents de l'application ;
+   - la liste peut être mise à jour en collant les lignes copiées depuis le portail SIMPL.
+   ===================================================================== */
+var SIMPL_SEED_AT="2026-11-05";
+var SIMPL_SEED=[
+["2016-12-21","MC CARRE","18808038"],["2017-11-07","AUTO SERVICES WISSAM SARL AU","3308471"],["2017-01-24","BAHHARNEO CAR","18766070"],["2017-01-22","STE NOUVELLE DES SERVICE ET ACTIVITES TECHNIQUES","3700133"],["2018-10-31","EXCELLENCE PREPA PRIVE (SARL AU)","26100344"],["2024-08-26","AQUA BEN BRAHIM SARL AU","40158302"],["2026-04-24","SEEVOI SARLAU","72067081"],["2025-09-01","W & S PROMOTION SARLAU","68349692"],["2026-10-19","MOHAMMED DEHBI","32800695"],["2021-11-25","ABDERRAFIH SOULAMI","46101111"],
+["2016-10-31","ZAKARIA ESSABOYA","29620062"],["2016-11-09","FID INFO COM SARL AU","3371053"],["2016-12-29","YASSINE KADRI","18750797"],["2017-10-04","ETABLISSEMENT OURIOUR PRIVE","20799043"],["2019-09-06","LOUBNA SAFINI","33683017"],["2025-09-24","ABDERRAZZAK SAGHIR","29621222"],["2023-08-28","KHALID EL OMARY","15201106"],["2018-05-28","STE X-PRO SARL AU","6527741"],["2018-03-16","UNION CONCEPT (SARL AU)","25009650"],["2021-01-13","CENTRE DE MALADIES RENALES ET D HEMODIALYSE AL HAKIM SARL AU","34458417"],
+["2020-02-14","LA VISEE PRIVEE","34476100"],["2021-06-18","HYPE MEDIA","37752294"],["2022-04-06","KENIDOM SARL AU","45716021"],["2020-07-16","OUALID NDOUFFI","45739117"],["2020-11-24","NEHJI-TRANS -SARL AU-","45961049"],["2020-02-04","NOUR EDDINE JAIT","97400799"],["2025-03-29","SOCIETE CIVILE PROFESSIONNELLE CENTRE DENTAIRE AL AZHAR","66194833"],["2020-07-11","GOUCAFE SARL AU","42726666"],["2021-05-19","LG CARRIERE SARL","50183841"],["2021-04-15","SO BUSINESS SARL","50139796"],
+["2021-07-16","M K S CAR SARL","50260925"],["2021-10-05","SOCIETE EGUINE -SARL AU-","50333598"],["2022-01-27","GERMARDIS -SARL AU-","51610114"],["2022-03-31","NEW MEDISTRIB","50630019"],["2022-05-23","IMAZONIA SARL","51692884"],["2022-09-26","MY7 -SARL AU-","52654397"],["2023-01-02","ALLIED-LAB -SARL-","53278727"],["2023-01-07","CHAHBOUNI CAPITALE SARL AU","52596614"],["2018-02-09","MOULAY SOUHAIL ALAOUI BELGHITI","34625333"],["2023-10-18","TOMOUH HOUSE -SARL AU-","53602508"],
+["2025-10-20","SUNDAY MORNING","53734782"],["2023-06-09","ADN ENERGY INVEST -SARL AU-","53797344"],["2023-10-04","IDRISSAYMAN CAR -SARL AU-","54005082"],["2024-09-02","IMANE BETTAT","54009540"],["2024-01-15","ARIA AGENCY SARL","54024641"],["2024-01-25","AQUA CROSS SARL","60207734"],["2024-03-25","INGENIERIE ET FOURNITURE INDUSTRIELLE AU MAROC SARL","60195057"],["2024-04-23","GENIUS STORE CONCEPT SARL","53876759"],["2024-08-09","AMISTAD ELEC -SARL-","65942521"],["2024-05-24","QUAD ET JET SKI LATLANTIQUE","65969893"],
+["2024-07-31","BEAUTIVA CENTRE SARL AU","65991060"],["2024-08-09","PARA SIRENE SARL AU","66031267"],["2024-10-30","SALHIEVENT -SARL AU-","66035523"],["2024-12-02","CONSTRUCIMMO SARL AU","66063388"],["2025-07-16","EXPLORLUBE -SARL AU-","66172656"],["2025-01-08","DS FASTKEY SARLAU","66122401"],["2025-01-30","ALFALA FOR TRADE AND INVESTMENT -SARL-","66183682"],["2026-01-30","Y N DEPANNAGE -SARL AU-","66183636"],["2026-04-20","OUSNASA -SARL AU-","66206853"],["2025-02-09","BLUE SIGHT SARLAU","66202533"],
+["2025-03-06","MAGHREB NUTRITION -SARL AU-","66228014"],["2025-03-13","JADO ZIYAD SARL","66240782"],["2025-10-28","CAFE PLASENCIA SARLAU","66256890"],["2025-10-27","HAJAR MOUMEN IMMOBILIER -SARL AU-","66295626"],["2025-05-22","LUMI SOLUTIONS SARL AU","66971725"],["2025-06-17","TASNIME TISSUE MOROCCO","66991752"],["2025-07-25","AYRAMECOM SARLAU","66991735"],["2025-07-25","AI STUDY SARL","66994772"],["2025-10-27","BUS HABIBALLAH -SARL AU-","68378106"],["2025-10-31","GERMANYPLUS 59A SARLAU","68605281"],
+["2026-01-31","5G DELIVERY SARL","68732395"],["2026-02-02","PROJETS DE CONSTRUCTION PRESTIGE SARL","68768162"],["2025-11-20","AURORA PARTNERS SARLAU","68813891"],["2026-02-05","CROUSTY RICE -SARL-","71815186"],["2026-02-13","B GREEN SOLUTIONS SARL","71841282"],["2026-02-18","RAXINO NEGOCE SARL AU","71824811"],["2026-03-10","SAFARI CROSS 26 SARLAU","71893715"],["2026-04-20","TARVEXIUM NEGOCE SARLAU","72065253"],["2026-04-24","KRYTALIX SARLAU","72066437"],["2026-06-06","AICHA LYOUBI","73089090"],
+["2026-06-11","NORD AFRIQUE STRAT SARLAU","73089602"],["2026-06-18","AGRICULTURE NEGOCE ACHEMINEMENT SERVICE SARLAU","73113427"],["2026-10-27","IAY STUDY SARL","73142784"],["2026-09-21","BENSAT EXPERTISE CATENAIRE SARLAU","73375599"],["2026-10-19","CHAKIR.OUTLET SARLAU","73426605"],["2026-10-20","DAR WAGYU SARL","73386261"],["2026-10-28","ABDELHALIM BEROUINE","68194961"],["2026-11-04","AHMED SAISSI MESLOUHI","97360478"]];
+var SMP={tab:"apply",q:"",imp:false};
+var SMP_STOP={SARL:1,SARLAU:1,AU:1,SA:1,SAS:1,STE:1,SOCIETE:1,ETS:1,ETB:1,ETABLISSEMENT:1,DE:1,DES:1,DU:1,D:1,LA:1,LE:1,LES:1,ET:1,L:1,MR:1,MME:1,CIVILE:1,PROFESSIONNELLE:1,SCP:1};
+function sIFd(v){return String(v||"").replace(/\D/g,"");}
+function sTok(name){var s=String(name||"").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\([^)]*\)?/g," ").replace(/\bDELAIS? DE PAIEMENT\)?/g," ").replace(/[’']/g," ").replace(/&/g," ET ").replace(/[^A-Z0-9]+/g," ").trim();
+  return s.split(" ").filter(function(t){return t&&!SMP_STOP[t];});}
+function sLev(a,b){if(a===b)return 0;var m=a.length,n=b.length;if(!m)return n;if(!n)return m;var p=[],i,j;for(j=0;j<=n;j++)p[j]=j;
+  for(i=1;i<=m;i++){var c=[i];for(j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c;}return p[n];}
+function sScore(A,B){if(!A.length||!B.length)return 0;var ja=A.join(""),jb=B.join("");if(ja===jb)return 1;if(A.slice().sort().join(" ")===B.slice().sort().join(" "))return 1;
+  var used=[],ma=[],ex=0,fz=0;A.forEach(function(t,i){var k=B.findIndex(function(u,q){return !used[q]&&u===t;});if(k>=0){used[k]=1;ma[i]=1;ex++;}});
+  A.forEach(function(t,i){if(ma[i]||t.length<5)return;var k=B.findIndex(function(u,q){return !used[q]&&u.length>=5&&sLev(t,u)<=(Math.max(t.length,u.length)>=9?2:1);});if(k>=0){used[k]=1;ma[i]=1;fz++;}});
+  var mx=Math.max(A.length,B.length),mn=Math.min(A.length,B.length),s=(ex+0.9*fz)/mx;
+  if(ex+fz===mn){if(mn>=2)s=Math.max(s,0.85);else if((A.length===1?A[0]:B[0]).length>=5)s=Math.max(s,0.7);}
+  var L=Math.max(ja.length,jb.length);if(L>=7){var cs=1-sLev(ja,jb)/L;if(cs>=0.8)s=Math.max(s,Math.min(0.97,cs));}
+  return Math.min(s,0.97);}
+function simplList(){var o=cabinetGet().simplList;return (o&&Array.isArray(o.rows)&&o.rows.length)?{at:o.at||"",rows:o.rows,seed:false}:{at:SIMPL_SEED_AT,rows:SIMPL_SEED,seed:true};}
+function simplDate(d){var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(d||"");return m?m[3]+"/"+m[2]+"/"+m[1]:(d||"—");}
+function simplCompute(){var Lr=simplList(),L=Lr.rows,ign=cabinetGet().simplIgn||[],no=cabinetGet().simplNo||[],cl;
+  SV_ALL++;try{cl=clients();}finally{SV_ALL--;}
+  var ent=L.map(function(r,i){return {i:i,date:r[0],nom:r[1],idf:sIFd(r[2]),tok:sTok(r[1])};});
+  var cs=cl.map(function(c){return {c:c,tok:sTok(c.dossier),idf:sIFd((c.societe||{}).idf)};});
+  var pairs=[];
+  cs.forEach(function(x){ent.forEach(function(e){if(no.indexOf(x.c.id+"|"+e.idf)>=0)return;var s,how;
+    if(x.c.simpl&&sIFd(x.c.simpl.idf)===e.idf){s=3;how="lien";}
+    else if(x.idf&&x.idf===e.idf){s=2;how="if";}
+    else{s=sScore(x.tok,e.tok);how=s>=1?"nom":"probable";}
+    if(s>=0.6)pairs.push({x:x,e:e,s:s,how:how});});});
+  pairs.sort(function(a,b){return b.s-a.s;});
+  var uc={},ue={},m=[];
+  pairs.forEach(function(p){if(uc[p.x.c.id]||ue[p.e.i])return;uc[p.x.c.id]=1;ue[p.e.i]=1;
+    var conflict=!!(p.x.idf&&p.x.idf!==p.e.idf),done=!!(p.x.c.simpl&&sIFd(p.x.c.simpl.idf)===p.e.idf);
+    m.push({c:p.x.c,e:p.e,s:p.s,how:p.how,conflict:conflict,done:done,sure:(p.how==="if"||p.how==="lien"||(p.how==="nom"&&!conflict))});});
+  var R={L:L,at:Lr.at,seed:Lr.seed,m:m};
+  R.done=m.filter(function(x){return x.done;});
+  R.apply=m.filter(function(x){return !x.done&&x.sure;});
+  R.confirm=m.filter(function(x){return !x.done&&!x.sure;});
+  R.noadh=cs.filter(function(x){return !uc[x.c.id]&&!x.c.sortant;}).map(function(x){return x.c;});
+  R.absent=ent.filter(function(e){return !ue[e.i]&&ign.indexOf(e.idf)<0;});
+  return R;}
+function simplApply(cid,i,mode){var L=simplList().rows,r=L[i];if(!r)return false;var idf=sIFd(r[2]);
+  S.flags[cid]=Object.assign({},S.flags[cid]);var f=S.flags[cid];f.simpl={date:r[0],nom:r[1],idf:idf};
+  f.societe=Object.assign({},f.societe);if(mode==="use"||!String(f.societe.idf||"").trim())f.societe.idf=idf;save("flags");return true;}
+function simplFlagTag(c){return c&&c.simpl?'<span class="svst" style="background:#E3F1EB;color:#0E7A5F;margin-left:6px;font-size:10px" title="Adhérent SIMPL depuis le '+simplDate(c.simpl.date)+'">SIMPL ✓</span>':'';}
+/* ---- affichage ---- */
+function simplTh(a){return '<tr>'+a.map(function(x){return '<th>'+x+'</th>';}).join("")+'</tr>';}
+function simplBtn(act,txt,attrs,st){return '<button class="chip" data-act="'+act+'" '+(attrs||"")+' style="padding:3px 9px;font-size:11.5px;'+(st||"")+'">'+txt+'</button>';}
+function simplRowsHtml(R){var q=SMP.q,ok=function(t){return !q||smartMatch(q,t);},h="",n=0;
+  var ifCell=function(a,b){return '<span class="mono">'+(a?esc(a):'<span style="color:#9A7610">à remplir</span>')+'</span>'+(a&&b&&a!==b?' <span style="color:#B42318">≠ <span class="mono">'+esc(b)+'</span></span>':'');};
+  if(SMP.tab==="apply"){R.apply.filter(function(x){return ok(x.c.dossier+" "+x.e.nom+" "+x.e.idf);}).forEach(function(x){n++;
+    h+='<tr><td><b>'+esc(x.c.dossier)+'</b>'+(x.c.sortant?' <span class="svst" style="background:#EEF1EF">sortant</span>':'')+'</td><td>'+esc(x.e.nom)+'</td><td>'+ifCell(sIFd((x.c.societe||{}).idf),x.e.idf)+(!sIFd((x.c.societe||{}).idf)?' → <span class="mono">'+esc(x.e.idf)+'</span>':'')+'</td><td>'+simplDate(x.e.date)+'</td><td><span class="svst" style="background:#E3F1EB;color:#0E7A5F">'+(x.how==="if"?"IF identique":x.how==="lien"?"Lien manuel":"Nom identique")+'</span></td><td>'+simplBtn("simpl_ap",'Appliquer','data-cid="'+x.c.id+'" data-i="'+x.e.i+'"')+'</td></tr>';});
+    return {n:n,head:simplTh(["Dossier","Nom sur SIMPL","IF","Adhésion","Rapprochement",""]),body:h};}
+  if(SMP.tab==="confirm"){R.confirm.filter(function(x){return ok(x.c.dossier+" "+x.e.nom+" "+x.e.idf);}).forEach(function(x){n++;var idc=sIFd((x.c.societe||{}).idf);
+    h+='<tr><td><b>'+esc(x.c.dossier)+'</b>'+(x.c.sortant?' <span class="svst" style="background:#EEF1EF">sortant</span>':'')+'</td><td>'+esc(x.e.nom)+'</td><td>'+(idc?ifCell(idc,x.e.idf):'<span class="mono">'+esc(x.e.idf)+'</span>')+'</td><td>'+simplDate(x.e.date)+'</td><td>'+Math.round(x.s*100)+' %</td><td style="white-space:nowrap">'
+      +(idc&&idc!==x.e.idf?simplBtn("simpl_ap",'Garder mon IF','data-cid="'+x.c.id+'" data-i="'+x.e.i+'" data-m="keep"')+' '+simplBtn("simpl_ap",'Utiliser l\'IF SIMPL','data-cid="'+x.c.id+'" data-i="'+x.e.i+'" data-m="use"'):simplBtn("simpl_ap",'✓ Confirmer','data-cid="'+x.c.id+'" data-i="'+x.e.i+'"'))
+      +' '+simplBtn("simpl_no",'✕ Pas le même','data-cid="'+x.c.id+'" data-idf="'+x.e.idf+'"','color:#B42318')+'</td></tr>';});
+    return {n:n,head:simplTh(["Dossier","Nom sur SIMPL","IF","Adhésion","Ressemblance",""]),body:h};}
+  if(SMP.tab==="done"){R.done.filter(function(x){return ok(x.c.dossier+" "+x.e.nom+" "+x.e.idf);}).forEach(function(x){n++;
+    h+='<tr><td><b>'+esc(x.c.dossier)+'</b>'+(x.c.sortant?' <span class="svst" style="background:#EEF1EF">sortant</span>':'')+'</td><td>'+esc(x.e.nom)+'</td><td class="mono">'+esc(x.e.idf)+(sIFd((x.c.societe||{}).idf)&&sIFd((x.c.societe||{}).idf)!==x.e.idf?' <span style="color:#B42318;font-family:inherit" title="IF saisi dans la fiche du client">≠ fiche : '+esc(sIFd((x.c.societe||{}).idf))+'</span>':'')+'</td><td>'+simplDate(x.e.date)+'</td><td>'+simplBtn("simpl_rm",'Retirer','data-cid="'+x.c.id+'"','color:#B42318')+'</td></tr>';});
+    return {n:n,head:simplTh(["Dossier","Nom sur SIMPL","IF","Adhésion",""]),body:h};}
+  if(SMP.tab==="noadh"){var opts='<option value="">— lier à un adhérent SIMPL —</option>'+R.absent.slice().sort(function(a,b){return a.nom.localeCompare(b.nom);}).map(function(e){return '<option value="'+e.i+'">'+esc(e.nom)+' · '+esc(e.idf)+'</option>';}).join("");
+    R.noadh.filter(function(c){return ok(c.dossier+" "+(c.forme||""));}).forEach(function(c){n++;
+      h+='<tr><td><b>'+esc(c.dossier)+'</b></td><td>'+esc(c.forme||"—")+'</td><td class="mono">'+esc(sIFd((c.societe||{}).idf)||"—")+'</td><td style="white-space:nowrap"><select class="ipt" data-simpl-sel="'+c.id+'" style="width:auto;max-width:260px;padding:4px 8px;font-size:12px">'+opts+'</select> '+simplBtn("simpl_link",'Lier','data-cid="'+c.id+'"')+'</td></tr>';});
+    return {n:n,head:simplTh(["Dossier sans adhésion SIMPL","Forme","IF dans l'application","Rapprochement manuel"]),body:h};}
+  R.absent.filter(function(e){return ok(e.nom+" "+e.idf);}).slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(e){n++;
+    h+='<tr><td>'+esc(e.nom)+'</td><td class="mono">'+esc(e.idf)+'</td><td>'+simplDate(e.date)+'</td><td style="white-space:nowrap">'+simplBtn("simpl_mk",'+ Créer le dossier','data-i="'+e.i+'"')+' '+simplBtn("simpl_ig",'Ignorer','data-idf="'+e.idf+'"','color:var(--muted)')+'</td></tr>';});
+  return {n:n,head:simplTh(["Adhérent SIMPL absent de l'application","IF","Adhésion",""]),body:h};}
+function simplBodyHtml(){var R=simplCompute(),T=simplRowsHtml(R);
+  return '<div class="svx" style="max-height:48vh;overflow:auto"><table class="svt"><thead>'+T.head+'</thead><tbody>'+(T.n?T.body:'<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:22px">Rien à afficher ici.</td></tr>')+'</tbody></table></div>';}
+function simplModalHtml(){var R=simplCompute(),tabs=[["apply","À appliquer ("+R.apply.length+")","#0E7A5F"],["confirm","À confirmer ("+R.confirm.length+")","#B5530A"],["done","Enregistrés ("+R.done.length+")","#14201C"],["noadh","Sans adhésion SIMPL ("+R.noadh.length+")","#B42318"],["absent","Absents de l'application ("+R.absent.length+")","#1D6FB8"]];
+  var seg='<div class="seg" style="flex-wrap:wrap">'+tabs.map(function(a){return '<button data-act="simpl_tab" data-v="'+a[0]+'" style="'+(SMP.tab===a[0]?'background:'+a[2]+';color:#fff':'')+'">'+a[1]+'</button>';}).join("")+'</div>';
+  var tp=function(c,t){return t;};
+  return '<div class="ov"><div class="modal" data-stop style="max-width:1080px"><div class="mh"><div><h3 class="ff">Adhésion SIMPL — rapprochement</h3><div class="meta"><span>'+R.L.length+' adhérents · liste du '+simplDate(R.at)+(R.seed?' (liste d\'origine)':' (mise à jour)')+'</span></div></div><button class="xbtn" data-act="close">'+ic("x")+'</button></div>'
+   +'<div class="mb" style="padding:16px 22px;max-height:80vh;overflow:auto" id="simpl_mb">'
+   +'<div class="note" style="font-size:12.5px;margin-bottom:12px">Chaque adhérent SIMPL est rapproché d\'un dossier par son <b>IF</b> puis par son <b>nom</b>. « Appliquer » enregistre la date d\'adhésion et <b>remplit l\'IF</b> du client s\'il est vide ; un IF déjà saisi n\'est jamais écrasé sans votre accord.</div>'
+   +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+seg
+   +(R.apply.length?'<button class="btn-primary" data-act="simpl_all" style="width:auto;padding:7px 14px">'+ic("check","width:14px;height:14px")+' Appliquer les '+R.apply.length+' rapprochements sûrs</button>':'')+'</div>'
+   +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><div class="search">'+ic("search")+'<input id="simpl_q" placeholder="Filtrer…" value="'+esc(SMP.q)+'"></div>'
+   +'<button class="chip" data-act="simpl_print" style="margin-left:auto">'+ic("printer","width:12px;height:12px")+' Imprimer cet onglet</button><button class="chip" data-act="simpl_imp_t">'+(SMP.imp?"Fermer":"Mettre à jour la liste SIMPL")+'</button></div>'
+   +(SMP.imp?'<div class="card" style="padding:12px 14px;margin-bottom:12px;background:#FAF8F2"><div style="font-size:12.5px;margin-bottom:6px">Sur le portail SIMPL, sélectionnez le tableau des adhérents (une page à la fois ou toutes), copiez-le puis collez-le ici. Les lignes reconnues : <i>date · nom · identifiant fiscal</i>.</div><textarea class="ipt" id="simpl_imp" rows="5" style="font-family:monospace;font-size:12px;resize:vertical" placeholder="2026-11-04 00:00:00	AHMED SAISSI MESLOUHI	97360478"></textarea>'
+     +'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'+simplBtn("simpl_imp_add","Ajouter / mettre à jour")+simplBtn("simpl_imp_rep","Remplacer toute la liste")+(R.seed?'':simplBtn("simpl_imp_reset","Revenir à la liste d'origine"))+'</div></div>':'')
+   +'<div id="simpl_body">'+simplBodyHtml()+'</div></div></div></div>';}
+/* ---- intégration dans l'interface ---- */
+var _smRM=renderModal;renderModal=function(){if(S.modal&&S.modal.type==="simpl"){document.getElementById("overlay").innerHTML=simplModalHtml();return;}_smRM();};
+var _smVC=vCli;vCli=function(){var h=_smVC();return h.replace('<button class="btn-add" data-act="cnew">','<button class="chip" data-act="simpl_open" style="margin-right:8px">'+ic("check","width:13px;height:13px")+' Adhésion SIMPL</button><button class="btn-add" data-act="cnew">');};
+var _smCC=cliCards;cliCards=function(){var h=_smCC(),cs={};clients().forEach(function(c){cs[c.id]=c;});
+  return h.split('<div class="card ccard"').map(function(p,i){if(!i)return p;var m=/data-id="(\d+)"/.exec(p),c=m&&cs[+m[1]];return c&&c.simpl?p.replace('</div><div class="tel">',simplFlagTag(c)+'</div><div class="tel">'):p;}).join('<div class="card ccard"');};
+var _smMC=modalClient;modalClient=function(c){var h=_smMC(c);if(!c||!c.simpl)return h;var k=h.indexOf(' RÉGIME &amp; OBLIGATIONS</div>');if(k<0)return h;var s=h.lastIndexOf('<div style="margin-top:22px">',k);if(s<0)return h;
+  return h.slice(0,s)+'<div class="note" style="margin-top:18px;border-left:4px solid #0E7A5F;background:#F2F9F6"><b>Adhérent SIMPL</b> depuis le <b>'+simplDate(c.simpl.date)+'</b> · IF <span class="mono">'+esc(c.simpl.idf||"")+'</span> <span style="color:var(--muted)">(nom sur SIMPL : '+esc(c.simpl.nom||"")+')</span></div>'+h.slice(s);};
+function simplReopen(keep){var mb=document.getElementById("simpl_mb"),st=mb?mb.scrollTop:0;renderModal();if(keep){var m2=document.getElementById("simpl_mb");if(m2)m2.scrollTop=st;}}
+function simplParse(txt){var out=[];String(txt||"").split(/\r?\n/).forEach(function(l){l=l.replace(/\s+$/,"");if(!l.trim())return;
+  var m=/(\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2}(?::\d{2})?)?\s+(.+?)\s+(\d{4,10})\s*$/.exec(l),d,n,f;
+  if(m){d=m[1];n=m[2];f=m[3];}else{var m2=/(\d{2})\/(\d{2})\/(\d{4})(?:\s+\d{2}:\d{2}(?::\d{2})?)?\s+(.+?)\s+(\d{4,10})\s*$/.exec(l);if(!m2)return;d=m2[3]+"-"+m2[2]+"-"+m2[1];n=m2[4];f=m2[5];}
+  n=n.replace(/^[\s\t]+|[\s\t]+$/g,"").replace(/\s+/g," ");if(n)out.push([d,n,f]);});return out;}
+document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest("[data-act]");if(!t||(typeof SV!=="undefined"&&SV.staff))return;var a=t.dataset.act;if(a.indexOf("simpl_")!==0)return;
+  if(a==="simpl_open"){SMP.tab="apply";SMP.q="";SMP.imp=false;S.modal={type:"simpl"};renderModal();return;}
+  if(a==="simpl_tab"){SMP.tab=t.dataset.v;SMP.q="";simplReopen(false);return;}
+  if(a==="simpl_imp_t"){SMP.imp=!SMP.imp;simplReopen(true);return;}
+  if(a==="simpl_ap"){simplApply(+t.dataset.cid,+t.dataset.i,t.dataset.m||"fill");simplReopen(true);return;}
+  if(a==="simpl_all"){var R=simplCompute(),n=0;R.apply.forEach(function(x){if(simplApply(x.c.id,x.e.i,"fill"))n++;});try{histAdd("Adhésion SIMPL",n+" dossier(s) rapproché(s) de la liste SIMPL");}catch(x){}showOk(n+" dossier(s) mis à jour : adhésion SIMPL et IF.");simplReopen(true);return;}
+  if(a==="simpl_no"){var no=(cabinetGet().simplNo||[]).slice();no.push(t.dataset.cid+"|"+t.dataset.idf);cabinetSet("simplNo",no);simplReopen(true);return;}
+  if(a==="simpl_rm"){var f=S.flags[+t.dataset.cid];if(f){f=S.flags[+t.dataset.cid]=Object.assign({},f);delete f.simpl;save("flags");}simplReopen(true);return;}
+  if(a==="simpl_ig"){var ig=(cabinetGet().simplIgn||[]).slice();ig.push(t.dataset.idf);cabinetSet("simplIgn",ig);simplReopen(true);return;}
+  if(a==="simpl_link"){var sel=document.querySelector('[data-simpl-sel="'+t.dataset.cid+'"]');if(!sel||!sel.value){showErr("Choisissez d'abord l'adhérent SIMPL à lier.");return;}simplApply(+t.dataset.cid,+sel.value,"fill");try{histAdd("Adhésion SIMPL","Lien manuel : dossier "+t.dataset.cid);}catch(x){}showOk("Dossier lié à l'adhérent SIMPL.");simplReopen(true);return;}
+  if(a==="simpl_mk"){var L=simplList().rows,r=L[+t.dataset.i];if(!r)return;if(!Array.isArray(S.custom))S.custom=[];var nid=Date.now();while(S.custom.some(function(c){return +c.id===nid;}))nid++;
+    var pp=!/\b(SARL|SARLAU|SA|STE|SOCIETE)\b/i.test(r[1])&&/^[A-Za-z' ]+$/.test(r[1])&&r[1].trim().split(/\s+/).length<=3;
+    S.custom.push({id:nid,dossier:String(r[1]).replace(/\s*[-(]?\s*SARL\s*AU\s*[-)]?\s*$|\s+SARLAU\s*$|\s+SARL\s*$/i,"").trim()||r[1],forme:pp?"personne physique":"personne morale",tel:"",honTrim:0,honBilan:0,pvDepot:0,reg:"neant",hasBilan:false,hasSal:false,hasDp:false,hasFoncier:false,comment:"Créé depuis la liste SIMPL (adhésion du "+simplDate(r[0])+") — fiche à compléter"});
+    save("custom");if(S.deleted&&S.deleted[nid]){delete S.deleted[nid];save("deleted");}S.flags[nid]=Object.assign({},S.flags[nid]);S.flags[nid].societe=Object.assign({},S.flags[nid].societe,{idf:sIFd(r[2])});S.flags[nid].simpl={date:r[0],nom:r[1],idf:sIFd(r[2])};save("flags");
+    try{histAdd("Adhésion SIMPL","Dossier créé : "+r[1]);}catch(x){}showOk("Dossier créé : "+r[1]+". Complétez sa fiche (forme, régime, honoraires).");simplReopen(true);return;}
+  if(a==="simpl_print"){var R2=simplCompute(),T=simplRowsHtml(R2),names={apply:"À appliquer",confirm:"À confirmer",done:"Enregistrés",noadh:"Clients sans adhésion SIMPL",absent:"Adhérents SIMPL absents de l'application"};
+    svPrintDoc("Adhésion SIMPL — "+names[SMP.tab],'<h1 style="font-size:18px;margin:0 0 4px">Adhésion SIMPL — '+esc(names[SMP.tab])+'</h1><div style="font-size:11px;color:#555;margin-bottom:10px">'+T.n+' ligne(s) · liste SIMPL du '+simplDate(R2.at)+'</div><table class="lst">'+T.head+T.body.replace(/<button[\s\S]*?<\/button>/g,"").replace(/<select[\s\S]*?<\/select>/g,"")+'</table>',false);return;}
+  if(a==="simpl_imp_add"||a==="simpl_imp_rep"){var rows=simplParse((document.getElementById("simpl_imp")||{}).value);if(!rows.length){showErr("Aucune ligne reconnue. Format attendu : date, nom, identifiant fiscal.");return;}
+    var base=a==="simpl_imp_add"?simplList().rows.map(function(r){return r.slice();}):[];rows.forEach(function(r){var k=base.findIndex(function(x){return sIFd(x[2])===sIFd(r[2]);});if(k>=0)base[k]=r;else base.push(r);});
+    cabinetSet("simplList",{at:todayISO(),rows:base});SMP.imp=false;try{histAdd("Liste SIMPL","Liste mise à jour : "+base.length+" adhérents ("+rows.length+" ligne(s) importée(s))");}catch(x){}showOk(rows.length+" ligne(s) importée(s) — la liste compte "+base.length+" adhérents.");simplReopen(false);return;}
+  if(a==="simpl_imp_reset"){cabinetSet("simplList",null);SMP.imp=false;showOk("Liste d'origine rétablie.");simplReopen(false);return;}
+},true);
+document.addEventListener("input",function(e){var t=e.target;if(t&&t.id==="simpl_q"){SMP.q=t.value;var b=document.getElementById("simpl_body");if(b)b.innerHTML=simplBodyHtml();}});
 
 /* =========================== ÉVÉNEMENTS =========================== */
 document.addEventListener("click",function(e){
